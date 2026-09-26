@@ -1,0 +1,35 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12'
+      - name: Restore signing key
+        env:
+          KEY_DATA: ${{ secrets.PHOTO_SWEEP_KEYSTORE_BASE64 }}
+          KEY_PASSWORD: ${{ secrets.PHOTO_SWEEP_STORE_PASSWORD }}
+        run: |
+          test -n "$KEY_DATA" && test -n "$KEY_PASSWORD"
+          printf '%s' "$KEY_DATA" | base64 --decode > app/photosweep-signing.p12
+          chmod 600 app/photosweep-signing.p12
+      - name: Build signed APK
+        env:
+          PHOTO_SWEEP_KEYSTORE_PATH: ${{ github.workspace }}/app/photosweep-signing.p12
+          PHOTO_SWEEP_STORE_PASSWORD: ${{ secrets.PHOTO_SWEEP_STORE_PASSWORD }}
+        run: gradle assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhotoSweep-installable-apk
+          path: app/build/outputs/apk/release/app-release.apk

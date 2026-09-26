@@ -1,0 +1,30 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.dominic.photosweep'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.dominic.photosweep'
+        minSdk 30
+        targetSdk 35
+        versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+        versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '1'}"
+    }
+    signingConfigs {
+        release {
+            def keyPath = System.getenv('PHOTO_SWEEP_KEYSTORE_PATH')
+            if (keyPath) storeFile file(keyPath)
+            storePassword System.getenv('PHOTO_SWEEP_STORE_PASSWORD')
+            keyAlias 'photosweep'
+            keyPassword System.getenv('PHOTO_SWEEP_STORE_PASSWORD')
+            storeType 'pkcs12'
+        }
+    }
+    buildTypes {
+        release { signingConfig signingConfigs.release }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
