@@ -199,6 +199,7 @@ public class MainActivity extends Activity {
     private boolean reviewing, loading, duplicateScanning;
     private boolean showingTrash, deletingOld;
     private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
+    private boolean arachnophobiaMode, animateThemeChange;
     private int themeChoice, musicVolume;
     private AudioTrack musicTrack;
     private Bitmap spaceBackdrop;
@@ -242,6 +243,7 @@ public class MainActivity extends Activity {
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
         musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
         musicVolume = getPreferences(MODE_PRIVATE).getInt("music_volume", 18);
+        arachnophobiaMode = getPreferences(MODE_PRIVATE).getBoolean("arachnophobia_mode", false);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         reviewed = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("reviewed", Collections.emptySet()));
         rewarded = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("rewarded", Collections.emptySet()));
@@ -450,6 +452,9 @@ public class MainActivity extends Activity {
 
     private void render() {
         rememberScroll();
+        FrameLayout previousHost = host;
+        boolean transition = animateThemeChange && previousHost != null && previousHost.getParent() != null;
+        animateThemeChange = false;
         activeScroll = null;
         activeScrollPage = null;
         host = new FrameLayout(this);
@@ -460,14 +465,19 @@ public class MainActivity extends Activity {
         root.setPadding(dp(22), dp(20), dp(22), dp(16));
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
         if (themeChoice != 18) host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
-        setContentView(host);
-        if (!hasAccess()) { intro(); return; }
-        if (loading) { heading("Photo Sweep", "Gathering your photos…"); return; }
-        if (showingSettings) { settingsScreen(); return; }
-        if (showingTrash) { trashScreen(); return; }
-        if (reviewing && selectedMonth != null) { reviewScreen(); return; }
-        if (selectedYear != -1) { monthsScreen(); return; }
-        yearsScreen();
+        if (!hasAccess()) intro();
+        else if (loading) heading("Photo Sweep", "Gathering your photos…");
+        else if (showingSettings) settingsScreen();
+        else if (showingTrash) trashScreen();
+        else if (reviewing && selectedMonth != null) reviewScreen();
+        else if (selectedYear != -1) monthsScreen();
+        else yearsScreen();
+        if (transition) {
+            FrameLayout content = findViewById(android.R.id.content);
+            host.setAlpha(0f);
+            content.addView(host, new FrameLayout.LayoutParams(-1, -1));
+            host.animate().alpha(1f).setDuration(260).withEndAction(() -> content.removeView(previousHost)).start();
+        } else setContentView(host);
     }
 
     private void intro() {
@@ -501,6 +511,12 @@ public class MainActivity extends Activity {
         TextView brand = new TextView(this); brand.setText("PHOTO SWEEP"); brand.setLetterSpacing(.13f);
         brand.setTextColor(GREEN); brand.setTextSize(15); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView trash = new TextView(this); trash.setText("🗑"); trash.setTextSize(25); trash.setTextColor(GOLD);
+        trash.setGravity(Gravity.CENTER); trash.setContentDescription("Recently trashed, " + trashEntries.size() + " photos");
+        trash.setBackground(themeButton(PANEL, 16));
+        LinearLayout.LayoutParams trashLp = new LinearLayout.LayoutParams(dp(52), dp(52)); trashLp.rightMargin = dp(8);
+        top.addView(trash, trashLp);
+        trash.setOnClickListener(v -> { showingTrash = true; render(); });
         TextView gear = new TextView(this); gear.setText("⚙"); gear.setTextSize(28); gear.setTextColor(INK);
         gear.setGravity(Gravity.CENTER); gear.setContentDescription("Options and sound settings");
         gear.setBackground(themeButton(PANEL, 16)); top.addView(gear, new LinearLayout.LayoutParams(dp(52), dp(52)));
@@ -551,7 +567,6 @@ public class MainActivity extends Activity {
             int year = entry.getKey(); int[] count = entry.getValue();
             tile(list, Integer.toString(year), count[0] + " photos  •  " + count[1] + " to review", () -> { selectedYear = year; render(); });
         }
-        button(root, "Recently trashed  ·  " + trashEntries.size() + "/20", PANEL, GOLD, () -> { showingTrash = true; render(); });
     }
 
     private void levelPanel() {
@@ -603,7 +618,7 @@ public class MainActivity extends Activity {
                 themeChoice = getPreferences(MODE_PRIVATE).getInt("theme_before_admin", 0);
                 getPreferences(MODE_PRIVATE).edit().putInt("theme", themeChoice).apply();
             }
-            applyTheme(); render();
+            applyTheme(); animateThemeChange = true; render();
         });
         sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
@@ -617,7 +632,12 @@ public class MainActivity extends Activity {
             themeTile(list, choice, unlocked, requiredLevel, () -> {
                 if (!unlocked) return;
                 themeChoice = choice; getPreferences(MODE_PRIVATE).edit().putInt("theme", choice).apply();
-                applyTheme(); render();
+                applyTheme(); animateThemeChange = true; render();
+            });
+            if (choice == 3) settingSwitch(list, "Arachnophobia mode", "Hide the spider in Web Hero", arachnophobiaMode, value -> {
+                arachnophobiaMode = value;
+                getPreferences(MODE_PRIVATE).edit().putBoolean("arachnophobia_mode", value).apply();
+                if (activeBackdrop != null) activeBackdrop.invalidate();
             });
         }
         sectionTitle(list, "AUDIO");
@@ -1286,6 +1306,7 @@ public class MainActivity extends Activity {
         private void drawGeneratedEffect(Canvas canvas, float w, float h, float time) {
             int theme = themeChoice;
             if (theme == 18) return; // Candy Land has its own eight-piece physics sprites.
+            if (theme == 3 && arachnophobiaMode) return;
             if (themeEffects[theme] == null) {
                 BitmapFactory.Options opts = new BitmapFactory.Options(); opts.inScaled = false;
                 themeEffects[theme] = BitmapFactory.decodeResource(getResources(), THEME_FX_IDS[theme], opts);
@@ -1294,17 +1315,45 @@ public class MainActivity extends Activity {
             if (sprite == null) return;
             float unit = dp(1);
             if (theme == 3) {
-                // The transparent strand remains attached to the top as the spider lowers and climbs.
-                float phase = (float)(.5 - .5 * Math.cos(time * .65));
-                float height = Math.min(h * .58f, 265 * unit);
+                // Alternate sides with varied destinations, while the spider bounces on its web.
+                float trip = time / 3.2f;
+                int leg = (int)trip;
+                float progress = trip - leg;
+                float ease = progress * progress * (3 - 2 * progress);
+                float from = .16f + .18f * pseudoRandom(leg - 1);
+                float to = .16f + .18f * pseudoRandom(leg);
+                if ((leg & 1) == 0) to = 1 - to;
+                else from = 1 - from;
+                float height = Math.min(h * .28f, 154 * unit);
                 float width = height * sprite.getWidth() / sprite.getHeight();
-                float x = w * .77f + (float)Math.sin(time * .9f) * 7 * unit;
-                float top = -height + 42 * unit + phase * (height + h * .18f);
+                float x = w * (from + (to - from) * ease);
+                float top = h * (.08f + .21f * pseudoRandom(leg + 37))
+                        + (float)Math.abs(Math.sin(progress * Math.PI * 2.5)) * 34 * unit;
                 paint.setColor(0x887FC9FF); paint.setStrokeWidth(1.4f * unit);
-                canvas.drawLine(x, 0, x, Math.max(0, top + 9 * unit), paint);
+                canvas.drawLine(x, 0, x, top + 12 * unit, paint);
                 paint.setAlpha(200);
                 canvas.drawBitmap(sprite, null, new RectF(x - width / 2, top,
                         x + width / 2, top + height), paint);
+                paint.setAlpha(255);
+                return;
+            }
+            if (theme == 20) {
+                // Each comet crosses the full width in under a second, alternating directions.
+                for (int i = 0; i < 2; i++) {
+                    float cycle = (time + i * 2.9f) / 6.1f;
+                    int flight = (int)cycle;
+                    float progress = cycle - flight;
+                    if (progress > .19f) continue;
+                    float travel = progress / .19f;
+                    float size = 115 * unit;
+                    float x = i == 0 ? -size + (w + size * 2) * travel
+                            : w + size - (w + size * 2) * travel;
+                    float y = h * (.16f + .45f * pseudoRandom(flight * 7 + i * 19));
+                    canvas.save(); canvas.translate(x, y); canvas.rotate(i == 0 ? -135 : 45);
+                    paint.setAlpha(210);
+                    canvas.drawBitmap(sprite, null, new RectF(-size / 2, -size / 2, size / 2, size / 2), paint);
+                    canvas.restore();
+                }
                 paint.setAlpha(255);
                 return;
             }
@@ -1330,6 +1379,11 @@ public class MainActivity extends Activity {
             }
             paint.setAlpha(255);
         }
+        private float pseudoRandom(int seed) {
+            int n = seed * 1664525 + 1013904223;
+            n ^= n >>> 16;
+            return (n & 0x7fffffff) / (float)0x7fffffff;
+        }
         private void drawThemeMotion(Canvas canvas, float w, float h, float time) {
             int theme = themeChoice;
             float unit = dp(1);
@@ -1351,9 +1405,6 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.argb(75 + (int)(115 * (.5 + .5 * Math.sin(time * 2 + i))), 195, 228, 255));
                     canvas.drawCircle(x, y, (i % 5 == 0 ? 3.5f : 1.8f) * unit, paint);
                 }
-                float flight = loop(time * 125 * unit, w + h);
-                paint.setColor(0x9CB9E7FF); paint.setStrokeWidth(2 * unit);
-                canvas.drawLine(flight - h * .35f, flight, flight - h * .35f - 36 * unit, flight - 36 * unit, paint);
             } else if (theme == 21) { // Fire: embers rise and flicker.
                 for (int i = 0; i < 24; i++) {
                     float x = w * ((i * 59 % 97) / 97f) + (float)Math.sin(time * 2 + i) * 11 * unit;
