@@ -124,6 +124,15 @@ public class MainActivity extends Activity {
             {0xFF2D3024, 0xFF535D3C, 0xFFC0DF86, 0xFFFFA789, 0xFFE8D596},
             {0xFF1A2143, 0xFF333B6D, 0xFFB9B8FF, 0xFFFFA3B6, 0xFFFFDF8A}
     };
+    private static final int[] THEME_DISPLAY_ORDER = {
+            0, 1, 2, 13, 14, 15, 16, 17,
+            3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+            18, 19, 20, 21, 22, 23, 24, 25
+    };
+    private static int requiredThemeLevel(int index) {
+        if (index < 3 || (index >= 13 && index <= 17)) return 1;
+        return index < 13 ? index - 1 : index - 6;
+    }
     private static final int[] THEME_BACKDROP_IDS = {
             R.drawable.theme_00, R.drawable.theme_01, R.drawable.theme_02, R.drawable.theme_03,
             R.drawable.theme_04, R.drawable.theme_05, R.drawable.theme_06, R.drawable.theme_07,
@@ -197,8 +206,9 @@ public class MainActivity extends Activity {
             if (rotation == android.view.Surface.ROTATION_90) { float t = x; x = -y; y = t; }
             else if (rotation == android.view.Surface.ROTATION_270) { float t = x; x = y; y = -t; }
             else if (rotation == android.view.Surface.ROTATION_180) { x = -x; y = -y; }
-            gravityX = Math.max(-1, Math.min(1, x / 7f));
-            gravityY = Math.max(-1, Math.min(1, -y / 7f));
+            // Sensor acceleration points opposite the direction a loose object falls.
+            gravityX = Math.max(-1, Math.min(1, -x / 7f));
+            gravityY = Math.max(-1, Math.min(1, y / 7f));
         }
     };
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
@@ -265,7 +275,7 @@ public class MainActivity extends Activity {
 
     private void applyTheme() {
         if (themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
-                (!adminMode && themeChoice >= 3 && xp / 500 + 1 < themeChoice - 1)) themeChoice = 0;
+                (!adminMode && xp / 500 + 1 < requiredThemeLevel(themeChoice))) themeChoice = 0;
         for (int i = 0; i < themeBackdrops.length; i++) if (i != themeChoice && themeBackdrops[i] != null) {
             themeBackdrops[i].recycle(); themeBackdrops[i] = null;
         }
@@ -528,7 +538,7 @@ public class MainActivity extends Activity {
             if (value) getPreferences(MODE_PRIVATE).edit().putInt("theme_before_admin", themeChoice).apply();
             adminMode = value;
             getPreferences(MODE_PRIVATE).edit().putBoolean("admin_mode", value).apply();
-            if (!value && themeChoice >= 3 && xp / 500 + 1 < themeChoice - 1) {
+            if (!value && xp / 500 + 1 < requiredThemeLevel(themeChoice)) {
                 themeChoice = getPreferences(MODE_PRIVATE).getInt("theme_before_admin", 0);
                 getPreferences(MODE_PRIVATE).edit().putInt("theme", themeChoice).apply();
             }
@@ -536,15 +546,14 @@ public class MainActivity extends Activity {
         });
         sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
-        for (int i = 0; i < THEME_NAMES.length; i++) {
-            if (i == 0) sectionTitle(list, "ORIGINAL");
-            else if (i == 3) sectionTitle(list, "HERO COLORS");
-            else if (i == 13) sectionTitle(list, "MORE COLORS");
-            else if (i == 18) sectionTitle(list, "WORLDS & ELEMENTS");
-            final int choice = i;
-            int requiredLevel = i < 3 ? 1 : i - 1;
+        for (int position = 0; position < THEME_DISPLAY_ORDER.length; position++) {
+            if (position == 0) sectionTitle(list, "BASIC COLORS");
+            else if (position == 8) sectionTitle(list, "HERO COLORS");
+            else if (position == 18) sectionTitle(list, "WORLDS & ELEMENTS");
+            final int choice = THEME_DISPLAY_ORDER[position];
+            int requiredLevel = requiredThemeLevel(choice);
             boolean unlocked = adminMode || level >= requiredLevel;
-            themeTile(list, i, unlocked, requiredLevel, () -> {
+            themeTile(list, choice, unlocked, requiredLevel, () -> {
                 if (!unlocked) return;
                 themeChoice = choice; getPreferences(MODE_PRIVATE).edit().putInt("theme", choice).apply();
                 applyTheme(); render();
@@ -1205,16 +1214,142 @@ public class MainActivity extends Activity {
                 canvas.drawColor(0x500D0922);
                 drawCandies(canvas, w, h);
             } else {
-                // A gentle shimmer keeps still artwork alive without distracting from photos.
-                long tick = android.os.SystemClock.uptimeMillis();
-                paint.setColor(Color.argb(22, Color.red(GREEN), Color.green(GREEN), Color.blue(GREEN)));
-                for (int i = 0; i < 12; i++) {
-                    float x = ((i * 173) % 997) / 997f * w;
-                    float y = (((i * 311) % 991) / 991f * h + tick * (i % 3 + 1) * .004f) % h;
-                    canvas.drawCircle(x, y, dp(1 + i % 3), paint);
-                }
+                drawThemeMotion(canvas, w, h, android.os.SystemClock.uptimeMillis() / 1000f);
                 if (isAttachedToWindow()) postInvalidateDelayed(65);
             }
+        }
+        private float loop(float value, float span) {
+            return (value % span + span) % span;
+        }
+        private void drawThemeMotion(Canvas canvas, float w, float h, float time) {
+            int theme = themeChoice;
+            float unit = dp(1);
+            paint.setShader(null);
+            paint.setStyle(Paint.Style.FILL);
+            if (theme == 19) { // Toxic: bubbles rise while drops slide down the edges.
+                for (int i = 0; i < 15; i++) {
+                    float x = w * (.07f + ((i * 67) % 89) / 100f);
+                    float y = h - loop(time * (18 + i % 4 * 9) * unit + i * h / 13, h + 80 * unit);
+                    paint.setColor(0x668BFF51); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(1.6f * unit);
+                    canvas.drawCircle(x + (float)Math.sin(time + i) * 9 * unit, y, (5 + i % 5 * 3) * unit, paint);
+                }
+                paint.setStyle(Paint.Style.FILL); paint.setColor(0x88ABFC4E);
+                for (int i = 0; i < 4; i++) canvas.drawRoundRect(new RectF(w * (i + 1) / 5, 0,
+                        w * (i + 1) / 5 + 4 * unit, loop(time * (12 + i * 4) * unit + i * 71 * unit, h)), 4 * unit, 4 * unit, paint);
+            } else if (theme == 20) { // Space: star twinkle and occasional shooting stars.
+                for (int i = 0; i < 30; i++) {
+                    float x = ((i * 173) % 991) / 991f * w, y = ((i * 311) % 997) / 997f * h;
+                    paint.setColor(Color.argb(30 + (int)(65 * (.5 + .5 * Math.sin(time * 2 + i))), 195, 228, 255));
+                    canvas.drawCircle(x, y, (i % 5 == 0 ? 2.2f : 1f) * unit, paint);
+                }
+                float flight = loop(time * 125 * unit, w + h);
+                paint.setColor(0x9CB9E7FF); paint.setStrokeWidth(2 * unit);
+                canvas.drawLine(flight - h * .35f, flight, flight - h * .35f - 36 * unit, flight - 36 * unit, paint);
+            } else if (theme == 21) { // Fire: embers rise and flicker.
+                for (int i = 0; i < 24; i++) {
+                    float x = w * ((i * 59 % 97) / 97f) + (float)Math.sin(time * 2 + i) * 11 * unit;
+                    float y = h - loop(time * (22 + i % 6 * 9) * unit + i * h / 19, h + 30 * unit);
+                    paint.setColor(i % 3 == 0 ? 0x99FFDC62 : 0x88FF7950);
+                    canvas.drawCircle(x, y, (1.5f + i % 4) * unit, paint);
+                }
+            } else if (theme == 22) { // Water: spreading ripples and slow currents.
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(1.5f * unit);
+                for (int i = 0; i < 9; i++) {
+                    float x = w * ((i * 37 % 93) / 93f), y = h * ((i * 29 % 89) / 89f);
+                    float ripple = loop(time * 22 * unit + i * 17 * unit, 75 * unit);
+                    paint.setColor(Color.argb((int)(85 * (1 - ripple / (75 * unit))), 138, 231, 255));
+                    canvas.drawOval(x - ripple, y - ripple * .32f, x + ripple, y + ripple * .32f, paint);
+                }
+                paint.setStyle(Paint.Style.FILL);
+            } else if (theme == 23) { // Ice: gently falling six armed snow crystals.
+                paint.setColor(0x99DDF6FF); paint.setStrokeWidth(1.4f * unit);
+                for (int i = 0; i < 16; i++) {
+                    float x = w * ((i * 47 % 97) / 97f) + (float)Math.sin(time + i) * 9 * unit;
+                    float y = loop(time * (13 + i % 4 * 5) * unit + i * h / 14, h + 30 * unit) - 15 * unit;
+                    float r = (3 + i % 4) * unit;
+                    for (int a = 0; a < 3; a++) {
+                        double angle = a * Math.PI / 3;
+                        float dx = (float)Math.cos(angle) * r, dy = (float)Math.sin(angle) * r;
+                        canvas.drawLine(x - dx, y - dy, x + dx, y + dy, paint);
+                    }
+                }
+            } else if (theme == 24) { // Earth: leaves drift sideways and downward.
+                for (int i = 0; i < 16; i++) {
+                    float x = loop(i * w / 12 + time * (10 + i % 3 * 6) * unit, w + 30 * unit) - 15 * unit;
+                    float y = loop(i * h / 14 + time * 13 * unit, h + 30 * unit) - 15 * unit;
+                    canvas.save(); canvas.rotate((float)Math.sin(time + i) * 45, x, y);
+                    paint.setColor(i % 2 == 0 ? 0x8898CD65 : 0x99D8BB77);
+                    canvas.drawOval(x - 5 * unit, y - 2 * unit, x + 5 * unit, y + 2 * unit, paint);
+                    canvas.restore();
+                }
+            } else if (theme == 25) { // Lightning: brief branching flashes, then darkness.
+                float flash = loop(time, 4.2f);
+                if (flash < .16f || (flash > .28f && flash < .36f)) {
+                    float x = w * (.3f + (int)(time / 4.2f) % 4 * .13f);
+                    paint.setColor(0xBBD7E6FF); paint.setStrokeWidth(2 * unit);
+                    for (int i = 0; i < 6; i++) {
+                        float y = h * (i + 1) / 8;
+                        float next = x + (i % 2 == 0 ? 24 : -34) * unit;
+                        canvas.drawLine(x, y, next, h * (i + 2) / 8, paint);
+                        if (i == 3) canvas.drawLine(x, y, x - 31 * unit, y + 36 * unit, paint);
+                        x = next;
+                    }
+                }
+            } else if (theme == 3) { // Web hero: threads grow from corners.
+                paint.setColor(0x607EBEFF); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(unit);
+                float radius = (42 + 8 * (float)Math.sin(time)) * unit;
+                for (int corner = 0; corner < 2; corner++) {
+                    float x = corner == 0 ? 0 : w, y = corner == 0 ? 0 : h;
+                    for (int i = 1; i <= 3; i++) canvas.drawArc(x - radius * i, y - radius * i,
+                            x + radius * i, y + radius * i, corner == 0 ? 0 : 180, 90, false, paint);
+                    for (int i = 0; i <= 4; i++) canvas.drawLine(x, y, x + (corner == 0 ? 1 : -1) * radius * 3 * i / 4,
+                            y + (corner == 0 ? 1 : -1) * radius * 3 * (4 - i) / 4, paint);
+                }
+                paint.setStyle(Paint.Style.FILL);
+            } else if (theme == 4 || theme == 12) { // Armor / Solar: rotating warm rays.
+                paint.setColor(0x44FFD081); paint.setStrokeWidth(2 * unit);
+                float cx = w * .78f, cy = h * .22f;
+                for (int i = 0; i < 12; i++) {
+                    double a = i * Math.PI / 6 + time * .18;
+                    canvas.drawLine(cx + (float)Math.cos(a) * 35 * unit, cy + (float)Math.sin(a) * 35 * unit,
+                            cx + (float)Math.cos(a) * 55 * unit, cy + (float)Math.sin(a) * 55 * unit, paint);
+                }
+            } else if (theme == 5 || theme == 11) { // Thunder / Nebula: pulsing arcs or drifting stardust.
+                paint.setColor(theme == 5 ? 0x66C2D5FF : 0x6699E9FF);
+                for (int i = 0; i < 16; i++) {
+                    float x = loop(i * w / 13 + time * (theme == 5 ? 19 : 8) * unit, w);
+                    float y = h * ((i * 37 % 97) / 97f);
+                    canvas.drawCircle(x, y, (2 + i % 3) * unit * (1 + .25f * (float)Math.sin(time * 3 + i)), paint);
+                }
+            } else if (theme == 6 || theme == 10) { // Gamma / Stealth: pulsing green nodes.
+                paint.setColor(0x558FEB70); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(1.5f * unit);
+                for (int i = 0; i < 8; i++) {
+                    float x = w * ((i * 31 % 89) / 89f), y = h * ((i * 53 % 91) / 91f);
+                    canvas.drawCircle(x, y, (10 + 5 * (float)Math.sin(time * 2 + i)) * unit, paint);
+                }
+                paint.setStyle(Paint.Style.FILL);
+            } else if (theme == 7) { // Shield: concentric waves.
+                paint.setColor(0x558AC7F5); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2 * unit);
+                for (int i = 0; i < 4; i++) canvas.drawCircle(w * .5f, h * .5f,
+                        loop(time * 18 * unit + i * 34 * unit, 140 * unit), paint);
+                paint.setStyle(Paint.Style.FILL);
+            } else if (theme == 8 || theme == 9) { // Cosmic / Scarlet: wisps orbit or rose petals drift.
+                paint.setColor(theme == 8 ? 0x608EEBE4 : 0x77FF99B8);
+                for (int i = 0; i < 14; i++) {
+                    float x = w * ((i * 47 % 97) / 97f) + (float)Math.sin(time * .6 + i) * 12 * unit;
+                    float y = loop(i * h / 12 - time * (theme == 8 ? 9 : -13) * unit, h);
+                    canvas.drawOval(x - 3 * unit, y - 6 * unit, x + 3 * unit, y + 6 * unit, paint);
+                }
+            } else { // Basic palettes: matching colored dust, each with its own flow.
+                int direction = theme % 3;
+                paint.setColor(Color.argb(75, Color.red(GREEN), Color.green(GREEN), Color.blue(GREEN)));
+                for (int i = 0; i < 18; i++) {
+                    float x = loop(w * ((i * 67 % 97) / 97f) + (direction == 1 ? time * 11 * unit : 0), w);
+                    float y = loop(h * ((i * 41 % 91) / 91f) + (direction == 2 ? -time * 12 * unit : time * 7 * unit), h);
+                    canvas.drawCircle(x, y, (1 + i % 3) * unit, paint);
+                }
+            }
+            paint.setStyle(Paint.Style.FILL); paint.setAlpha(255);
         }
         private void drawCandies(Canvas canvas, float w, float h) {
             if (candySprites == null) candySprites = BitmapFactory.decodeResource(getResources(), R.drawable.candy_sprites);
