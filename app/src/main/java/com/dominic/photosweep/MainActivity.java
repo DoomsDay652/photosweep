@@ -621,8 +621,8 @@ public class MainActivity extends Activity {
             badge.setMargins(dp(12), dp(12), dp(12), 0); card.addView(bubble, badge);
         }
         TextView date = pill(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(shown.timestamp)), Color.rgb(33, 57, 75), INK);
-        FrameLayout.LayoutParams dateParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        dateParams.bottomMargin = dp(22); card.addView(date, dateParams);
+        FrameLayout.LayoutParams dateParams = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        dateParams.topMargin = dp(18); card.addView(date, dateParams);
         LinearLayout overlay = new LinearLayout(this); overlay.setGravity(Gravity.CENTER);
         overlay.setClickable(false);
         FrameLayout.LayoutParams overlayLp = new FrameLayout.LayoutParams(-1, dp(64), Gravity.CENTER);
