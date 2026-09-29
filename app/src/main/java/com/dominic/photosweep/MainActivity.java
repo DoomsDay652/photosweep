@@ -637,7 +637,7 @@ public class MainActivity extends Activity {
             if (choice == 3) settingSwitch(list, "Arachnophobia mode", "Hide the spider in Web Hero", arachnophobiaMode, value -> {
                 arachnophobiaMode = value;
                 getPreferences(MODE_PRIVATE).edit().putBoolean("arachnophobia_mode", value).apply();
-                if (activeBackdrop != null) activeBackdrop.invalidate();
+                if (activeBackdrop != null) activeBackdrop.resetSpider();
             });
         }
         sectionTitle(list, "AUDIO");
@@ -1275,9 +1275,26 @@ public class MainActivity extends Activity {
         private final float[] sweetX = new float[18], sweetY = new float[18];
         private final float[] speedX = new float[18], speedY = new float[18];
         private final float[] spin = new float[18];
+        private final java.util.Random spiderRandom = new java.util.Random();
+        private long spiderStageStart, spiderStageDuration;
+        private int spiderStage; // descend, hang, climb, wait
+        private boolean spiderStarted;
+        private float spiderX = -1, spiderDepth;
         private long lastFrame;
         private boolean initialized;
         TextureBackdrop() { super(MainActivity.this); }
+        void resetSpider() { spiderStarted = false; invalidate(); }
+        private void beginSpiderDescent(long start) {
+            float next = .12f + spiderRandom.nextFloat() * .76f;
+            for (int i = 0; i < 8 && Math.abs(next - spiderX) < .26f; i++)
+                next = .12f + spiderRandom.nextFloat() * .76f;
+            spiderX = next;
+            spiderDepth = .08f + spiderRandom.nextFloat() * .24f;
+            spiderStage = 0;
+            spiderStageStart = start;
+            spiderStageDuration = 650 + spiderRandom.nextInt(1550);
+            spiderStarted = true;
+        }
         @Override protected void onDraw(Canvas canvas) {
             float w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
@@ -1315,22 +1332,28 @@ public class MainActivity extends Activity {
             if (sprite == null) return;
             float unit = dp(1);
             if (theme == 3) {
-                // Alternate sides with varied destinations, while the spider bounces on its web.
-                float trip = time / 3.2f;
-                int leg = (int)trip;
-                float progress = trip - leg;
-                float ease = progress * progress * (3 - 2 * progress);
-                float from = .16f + .18f * pseudoRandom(leg - 1);
-                float to = .16f + .18f * pseudoRandom(leg);
-                if ((leg & 1) == 0) to = 1 - to;
-                else from = 1 - from;
+                long now = android.os.SystemClock.uptimeMillis();
+                if (!spiderStarted || now - spiderStageStart > 30000) beginSpiderDescent(now);
+                while (now - spiderStageStart >= spiderStageDuration) {
+                    spiderStageStart += spiderStageDuration;
+                    if (spiderStage == 0) {
+                        spiderStage = 1; spiderStageDuration = 650 + spiderRandom.nextInt(2200);
+                    } else if (spiderStage == 1) {
+                        spiderStage = 2; spiderStageDuration = 550 + spiderRandom.nextInt(1450);
+                    } else if (spiderStage == 2) {
+                        spiderStage = 3; spiderStageDuration = 850 + spiderRandom.nextInt(3700);
+                    } else beginSpiderDescent(spiderStageStart);
+                }
+                if (spiderStage == 3) return;
                 float height = Math.min(h * .28f, 154 * unit);
                 float width = height * sprite.getWidth() / sprite.getHeight();
-                float x = w * (from + (to - from) * ease);
-                float top = h * (.08f + .21f * pseudoRandom(leg + 37))
-                        + (float)Math.abs(Math.sin(progress * Math.PI * 2.5)) * 34 * unit;
+                float progress = (now - spiderStageStart) / (float) spiderStageDuration;
+                float amount = spiderStage == 1 ? 1 : (float)(.5 - .5 * Math.cos(Math.PI * progress));
+                if (spiderStage == 2) amount = 1 - amount;
+                float x = w * spiderX + (float)Math.sin(now * .0017) * 3 * unit;
+                float top = -height + (spiderDepth * h + height) * amount;
                 paint.setColor(0x887FC9FF); paint.setStrokeWidth(1.4f * unit);
-                canvas.drawLine(x, 0, x, top + 12 * unit, paint);
+                if (top > 0) canvas.drawLine(x, 0, x, top + 12 * unit, paint);
                 paint.setAlpha(200);
                 canvas.drawBitmap(sprite, null, new RectF(x - width / 2, top,
                         x + width / 2, top + height), paint);
