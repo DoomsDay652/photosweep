@@ -73,9 +73,31 @@ public class MainActivity extends Activity {
     private static final int PERMISSION_REQUEST = 31;
     private static final int TRASH_REQUEST = 32;
     private static final int RESTORE_REQUEST = 33;
-    private static final int CLEANUP_REQUEST = 34;
     private static final long SEVEN_DAYS = 7L * 24 * 60 * 60 * 1000;
     private static final int TRASH_LIMIT = 20;
+    private static final String[] THEME_NAMES = {
+            "Midnight · teal and navy", "Lagoon · sea glass", "Dusk · violet glow",
+            "Web Hero · red and blue", "Armored Gold · crimson and gold",
+            "Thunder · indigo and silver", "Gamma · emerald and violet",
+            "Vibrant Shield · blue and amber", "Cosmic · plum and aqua",
+            "Scarlet Magic · ruby and rose", "Stealth · charcoal and lime",
+            "Nebula · violet and cyan", "Solar · orange and sky"
+    };
+    private static final int[][] THEME_COLORS = {
+            {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
+            {0xFF092730, 0xFF18464B, 0xFF5DE5C2, 0xFFFF8484, 0xFFFFD382},
+            {0xFF231B33, 0xFF41314E, 0xFFB29BFF, 0xFFFF8492, 0xFFFFCB81},
+            {0xFF142B55, 0xFF244672, 0xFFFA6570, 0xFFFFB277, 0xFF84BCFF},
+            {0xFF421B29, 0xFF693144, 0xFFFFCD66, 0xFFFF8586, 0xFF8DE5DF},
+            {0xFF1D244B, 0xFF333E70, 0xFFC1D7FF, 0xFFFF8B9A, 0xFFFFCB76},
+            {0xFF1D2A27, 0xFF354A3B, 0xFF9EE477, 0xFFFF9AB6, 0xFFCFABF5},
+            {0xFF132D45, 0xFF254961, 0xFF8EC9FF, 0xFFFF8B8C, 0xFFFFCA73},
+            {0xFF241B3B, 0xFF3B305B, 0xFF8CE8E2, 0xFFFF8CA3, 0xFFD7A9FF},
+            {0xFF391D32, 0xFF59314D, 0xFFFF8CB2, 0xFFFFB18E, 0xFFFFD487},
+            {0xFF202831, 0xFF34434A, 0xFFB5EE74, 0xFFFF9490, 0xFFE8D88A},
+            {0xFF202548, 0xFF353D69, 0xFF9CE1FF, 0xFFFF8FB4, 0xFFCCB2FF},
+            {0xFF33253A, 0xFF55445D, 0xFFFFBE74, 0xFFFF8F91, 0xFF88DDF5}
+    };
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
     private int BG = Color.rgb(15, 28, 47);
@@ -108,6 +130,7 @@ public class MainActivity extends Activity {
     };
     private final ArrayList<Photo> photos = new ArrayList<>();
     private final HashSet<Long> duplicates = new HashSet<>();
+    private final HashSet<Long> shownSwipeOverlays = new HashSet<>();
     private final ArrayList<TrashEntry> trashEntries = new ArrayList<>();
     private Set<String> reviewed = new HashSet<>();
     private Set<String> rewarded = new HashSet<>();
@@ -126,7 +149,6 @@ public class MainActivity extends Activity {
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private long pendingTrash = -1;
     private long pendingRestore = -1;
-    private final ArrayList<Long> pendingCleanup = new ArrayList<>();
     private long lastKept = -1;
     private int generation;
     private float touchX, touchY;
@@ -137,13 +159,13 @@ public class MainActivity extends Activity {
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
         musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
         musicVolume = getPreferences(MODE_PRIVATE).getInt("music_volume", 18);
-        applyTheme();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         reviewed = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("reviewed", Collections.emptySet()));
         rewarded = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("rewarded", Collections.emptySet()));
         keptIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("kept_ids", reviewed));
         trashedIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("trashed_ids", Collections.emptySet()));
         xp = getPreferences(MODE_PRIVATE).getInt("xp", 0);
+        applyTheme();
         keptCount = keptIds.size();
         trashedCount = trashedIds.size();
         restoredCount = getPreferences(MODE_PRIVATE).getInt("restored_count", 0);
@@ -177,16 +199,10 @@ public class MainActivity extends Activity {
     }
 
     private void applyTheme() {
-        if (themeChoice == 1) { // Lagoon
-            BG = Color.rgb(9, 39, 48); PANEL = Color.rgb(24, 70, 75);
-            GREEN = Color.rgb(93, 229, 194); RED = Color.rgb(255, 132, 132); GOLD = Color.rgb(255, 211, 130);
-        } else if (themeChoice == 2) { // Dusk
-            BG = Color.rgb(35, 27, 51); PANEL = Color.rgb(65, 49, 78);
-            GREEN = Color.rgb(178, 155, 255); RED = Color.rgb(255, 132, 146); GOLD = Color.rgb(255, 203, 129);
-        } else {
-            BG = Color.rgb(15, 28, 47); PANEL = Color.rgb(35, 56, 77);
-            GREEN = Color.rgb(64, 210, 188); RED = Color.rgb(255, 117, 128); GOLD = Color.rgb(247, 204, 128);
-        }
+        if (themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
+                (themeChoice >= 3 && xp / 500 + 1 < themeChoice - 1)) themeChoice = 0;
+        int[] palette = THEME_COLORS[themeChoice];
+        BG = palette[0]; PANEL = palette[1]; GREEN = palette[2]; RED = palette[3]; GOLD = palette[4];
         INK = Color.rgb(237, 248, 249); MUTED = Color.rgb(170, 193, 205);
         if (getWindow() != null) getWindow().setNavigationBarColor(BG);
     }
@@ -428,10 +444,14 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         sectionTitle(list, "THEME");
-        String[] themes = {"Midnight  ·  teal and navy", "Lagoon  ·  sea glass", "Dusk  ·  violet glow"};
-        for (int i = 0; i < themes.length; i++) {
+        int level = xp / 500 + 1;
+        for (int i = 0; i < THEME_NAMES.length; i++) {
             final int choice = i;
-            tile(list, (themeChoice == i ? "✓  " : "○  ") + themes[i], "Tap to use this color palette", () -> {
+            int requiredLevel = i < 3 ? 1 : i - 1;
+            boolean unlocked = level >= requiredLevel;
+            tile(list, (themeChoice == i ? "✓  " : unlocked ? "○  " : "🔒  ") + THEME_NAMES[i],
+                    unlocked ? "Color palette" : "Unlocks at level " + requiredLevel, () -> {
+                if (!unlocked) return;
                 themeChoice = choice; getPreferences(MODE_PRIVATE).edit().putInt("theme", choice).apply();
                 applyTheme(); render();
             });
@@ -510,18 +530,9 @@ public class MainActivity extends Activity {
 
     private void trashScreen() {
         back("Photo Sweep", () -> { showingTrash = false; render(); });
-        heading("Recently trashed", "Restore within 7 days  •  last 20 photos");
-        LinearLayout recovery = new LinearLayout(this); recovery.setOrientation(LinearLayout.VERTICAL);
-        recovery.setPadding(dp(18), dp(15), dp(18), dp(15)); recovery.setBackground(rounded(Color.rgb(67, 57, 72), 20));
-        root.addView(recovery, new LinearLayout.LayoutParams(-1, -2));
-        TextView recoveryTitle = new TextView(this); recoveryTitle.setText("RECOVERY WINDOW"); recoveryTitle.setTextColor(GOLD);
-        recoveryTitle.setTextSize(12); recoveryTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD); recovery.addView(recoveryTitle);
-        TextView recoveryCount = new TextView(this); recoveryCount.setText(trashEntries.size() + " photos can be restored");
-        recoveryCount.setTextColor(INK); recoveryCount.setTextSize(17); recoveryCount.setTypeface(Typeface.DEFAULT, Typeface.BOLD); recovery.addView(recoveryCount);
-        spacer(16);
+        heading("Recently trashed", "Last 20 photos · up to 7 days");
         if (trashEntries.isEmpty()) {
-            spacer(36); label("Nothing in your Trash yet.", 21, INK, true);
-            spacer(8); label("Swipe left on a photo to place it here.", 15, MUTED, false);
+            spacer(36); label("Trash is empty", 21, INK, true);
             return;
         }
         ScrollView scroll = new ScrollView(this);
@@ -546,14 +557,6 @@ public class MainActivity extends Activity {
             restore.setTextColor(GREEN); restore.setTextSize(13); restore.setBackground(rounded(Color.rgb(42, 91, 94), 12));
             restore.setOnClickListener(v -> restore(entry)); row.addView(restore, new LinearLayout.LayoutParams(dp(90), dp(46)));
         }
-        spacer(8);
-        LinearLayout safety = new LinearLayout(this); safety.setOrientation(LinearLayout.VERTICAL);
-        safety.setPadding(dp(18), dp(17), dp(18), dp(17)); safety.setBackground(rounded(PANEL, 22));
-        root.addView(safety, new LinearLayout.LayoutParams(-1, -2));
-        TextView safetyTitle = new TextView(this); safetyTitle.setText("Your safety net"); safetyTitle.setTextSize(18);
-        safetyTitle.setTextColor(INK); safetyTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD); safety.addView(safetyTitle);
-        TextView safetyCopy = new TextView(this); safetyCopy.setText("Oldest item leaves at 20 photos. Timed cleanup may run later.");
-        safetyCopy.setTextColor(MUTED); safetyCopy.setTextSize(14); safety.addView(safetyCopy);
     }
 
     private void reviewScreen() {
@@ -616,24 +619,23 @@ public class MainActivity extends Activity {
         }
         TextView date = pill(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(shown.timestamp)), Color.rgb(33, 57, 75), INK);
         FrameLayout.LayoutParams dateParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        dateParams.bottomMargin = dp(78); card.addView(date, dateParams);
+        dateParams.bottomMargin = dp(22); card.addView(date, dateParams);
         LinearLayout overlay = new LinearLayout(this); overlay.setGravity(Gravity.CENTER);
-        FrameLayout.LayoutParams overlayLp = new FrameLayout.LayoutParams(-1, dp(58), Gravity.BOTTOM);
-        overlayLp.setMargins(dp(13), 0, dp(13), dp(13)); card.addView(overlay, overlayLp);
-        Button trashAction = button(overlay, "←  Trash", Color.rgb(91, 50, 67), INK,
-                () -> { if (canManage()) trash(shown); else requestMediaManagement(); });
-        Button keepAction = button(overlay, "Keep  →", GREEN, BG, () -> keep(shown));
-        LinearLayout.LayoutParams leftLp = new LinearLayout.LayoutParams(0, dp(54), 1); leftLp.rightMargin = dp(7); trashAction.setLayoutParams(leftLp);
-        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(0, dp(54), 1); rightLp.leftMargin = dp(7); keepAction.setLayoutParams(rightLp);
-        overlay.setAlpha(1f);
-        Runnable fadeActions = () -> overlay.animate().alpha(0f).setDuration(500)
-                .withEndAction(() -> overlay.setVisibility(View.INVISIBLE)).start();
-        uiHandler.postDelayed(fadeActions, 2800);
+        overlay.setClickable(false);
+        FrameLayout.LayoutParams overlayLp = new FrameLayout.LayoutParams(-1, dp(64), Gravity.CENTER);
+        overlayLp.setMargins(dp(22), 0, dp(22), 0); card.addView(overlay, overlayLp);
+        TextView trashAction = swipeOverlayLabel("←  Trash", RED);
+        TextView keepAction = swipeOverlayLabel("Keep  →", GREEN);
+        overlay.addView(trashAction, new LinearLayout.LayoutParams(0, -2, 1));
+        overlay.addView(keepAction, new LinearLayout.LayoutParams(0, -2, 1));
+        if (shownSwipeOverlays.add(shown.id)) {
+            overlay.setAlpha(1f);
+            uiHandler.postDelayed(() -> overlay.animate().alpha(0f).setDuration(400)
+                    .withEndAction(() -> overlay.setVisibility(View.GONE)).start(), 2300);
+        } else overlay.setVisibility(View.GONE);
         card.setOnTouchListener((v, e) -> {
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
                 touchX = e.getRawX(); touchY = e.getRawY();
-                uiHandler.removeCallbacks(fadeActions); overlay.animate().cancel(); overlay.setVisibility(View.VISIBLE);
-                overlay.animate().alpha(1f).setDuration(140).start();
                 return true;
             }
             if (e.getAction() == MotionEvent.ACTION_MOVE) {
@@ -660,22 +662,16 @@ public class MainActivity extends Activity {
                 } else {
                     effect.progress = 0; effect.invalidate();
                     card.animate().translationX(0).rotation(0).setDuration(200).start();
-                    trashAction.setAlpha(1f); keepAction.setAlpha(1f);
-                    uiHandler.postDelayed(fadeActions, 2200);
                 }
                 return true;
             }
             if (e.getAction() == MotionEvent.ACTION_CANCEL) {
                 effect.progress = 0; effect.invalidate();
                 card.animate().translationX(0).rotation(0).setDuration(200).start();
-                trashAction.setAlpha(1f); keepAction.setAlpha(1f); uiHandler.postDelayed(fadeActions, 2200);
                 return true;
             }
             return true;
         });
-        spacer(7);
-        TextView hint = label("Drag photo left or right  ·  Tap to show actions", 13, MUTED, false);
-        hint.setGravity(Gravity.CENTER);
         if (lastKept != -1) {
             TextView undo = label("Undo last keep", 14, GREEN, true);
             undo.setPadding(0, dp(9), 0, 0);
@@ -826,21 +822,28 @@ public class MainActivity extends Activity {
     private void cleanupTrash() {
         if (deletingOld || pendingTrash != -1 || pendingRestore != -1 || !canManage()) return;
         long now = System.currentTimeMillis();
-        ArrayList<Uri> expired = new ArrayList<>(); pendingCleanup.clear();
+        ArrayList<TrashEntry> expired = new ArrayList<>();
         for (int i = 0; i < trashEntries.size(); i++) {
             TrashEntry entry = trashEntries.get(i);
-            if (now - entry.trashedAt >= SEVEN_DAYS || i >= TRASH_LIMIT) {
-                expired.add(entry.uri); pendingCleanup.add(entry.id);
-            }
+            if (now - entry.trashedAt >= SEVEN_DAYS || i >= TRASH_LIMIT) expired.add(entry);
         }
         if (expired.isEmpty()) return;
-        try {
-            deletingOld = true;
-            PendingIntent request = MediaStore.createDeleteRequest(getContentResolver(), expired);
-            startIntentSenderForResult(request.getIntentSender(), CLEANUP_REQUEST, null, 0, 0, 0);
-        } catch (Exception e) {
-            deletingOld = false; pendingCleanup.clear();
-        }
+        deletingOld = true;
+        io.execute(() -> {
+            ArrayList<Long> deleted = new ArrayList<>();
+            for (TrashEntry entry : expired) {
+                try {
+                    if (getContentResolver().delete(entry.uri, null, null) > 0) deleted.add(entry.id);
+                } catch (Exception ignored) { }
+            }
+            runOnUiThread(() -> {
+                deletingOld = false;
+                if (deleted.isEmpty() || isDestroyed()) return;
+                trashEntries.removeIf(entry -> deleted.contains(entry.id));
+                for (Long id : deleted) previews.remove(id);
+                saveTrashEntries(); render();
+            });
+        });
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -875,14 +878,6 @@ public class MainActivity extends Activity {
                 loadPhotos();
             }
             render();
-        } else if (requestCode == CLEANUP_REQUEST) {
-            deletingOld = false;
-            if (resultCode == RESULT_OK) {
-                trashEntries.removeIf(e -> pendingCleanup.contains(e.id));
-                for (Long id : pendingCleanup) previews.remove(id);
-                saveTrashEntries();
-            }
-            pendingCleanup.clear(); render();
         }
     }
 
@@ -901,7 +896,7 @@ public class MainActivity extends Activity {
                             if (expired) {
                                 Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, item.getLong("id"));
                                 try {
-                                    MediaStore.createDeleteRequest(getContentResolver(), Collections.singletonList(uri)).send();
+                                    if (getContentResolver().delete(uri, null, null) <= 0) remaining.put(item);
                                 } catch (Exception e) { remaining.put(item); }
                             } else remaining.put(item);
                         }
@@ -1032,6 +1027,12 @@ public class MainActivity extends Activity {
     private TextView pill(String value, int bg, int color) {
         TextView text = new TextView(this); text.setText(value); text.setTextSize(13); text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         text.setTextColor(color); text.setPadding(dp(13), dp(8), dp(13), dp(8)); text.setBackground(rounded(bg, 30)); return text;
+    }
+    private TextView swipeOverlayLabel(String value, int color) {
+        TextView text = new TextView(this); text.setText(value); text.setTextSize(21);
+        text.setTextColor(color); text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        text.setGravity(Gravity.CENTER); text.setShadowLayer(dp(6), 0, dp(2), Color.BLACK);
+        return text;
     }
     private Button button(LinearLayout parent, String value, int bg, int color, Runnable action) {
         Button button = new Button(this); button.setText(value); button.setAllCaps(false); button.setTextSize(16);
