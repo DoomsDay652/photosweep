@@ -13,11 +13,14 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
@@ -81,7 +84,12 @@ public class MainActivity extends Activity {
             "Thunder · indigo and silver", "Gamma · emerald and violet",
             "Vibrant Shield · blue and amber", "Cosmic · plum and aqua",
             "Scarlet Magic · ruby and rose", "Stealth · charcoal and lime",
-            "Nebula · violet and cyan", "Solar · orange and sky"
+            "Nebula · violet and cyan", "Solar · orange and sky",
+            "Coral · sunset pink", "Forest · moss and mint", "Royal · sapphire and gold",
+            "Berry · plum and raspberry", "Citrus · tangerine and lime",
+            "Candy Land · pastel sweets", "Toxic · neon ooze", "Space · starfield",
+            "Fire · glowing embers", "Water · ocean currents", "Ice · crystal frost",
+            "Earth · stone and leaves", "Lightning · electric sky"
     };
     private static final int[][] THEME_COLORS = {
             {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
@@ -96,7 +104,20 @@ public class MainActivity extends Activity {
             {0xFF391D32, 0xFF59314D, 0xFFFF8CB2, 0xFFFFB18E, 0xFFFFD487},
             {0xFF202831, 0xFF34434A, 0xFFB5EE74, 0xFFFF9490, 0xFFE8D88A},
             {0xFF202548, 0xFF353D69, 0xFF9CE1FF, 0xFFFF8FB4, 0xFFCCB2FF},
-            {0xFF33253A, 0xFF55445D, 0xFFFFBE74, 0xFFFF8F91, 0xFF88DDF5}
+            {0xFF33253A, 0xFF55445D, 0xFFFFBE74, 0xFFFF8F91, 0xFF88DDF5},
+            {0xFF382538, 0xFF60405A, 0xFFFFA7AC, 0xFFFFD2A2, 0xFFFFDEB4},
+            {0xFF152D28, 0xFF315143, 0xFF94E1AC, 0xFFFFA4A0, 0xFFE3D39A},
+            {0xFF172A50, 0xFF2D4672, 0xFFFFCE75, 0xFFFF9B9B, 0xFF98C5FF},
+            {0xFF33243C, 0xFF5D365D, 0xFFFF91BF, 0xFFFFA199, 0xFFD7B0F2},
+            {0xFF372B25, 0xFF65503C, 0xFFFFB46B, 0xFFFF8F8E, 0xFFCEF087},
+            {0xFF392D4E, 0xFF6B527A, 0xFFFFBAE5, 0xFFFF91BB, 0xFFFFDC93},
+            {0xFF172E29, 0xFF315746, 0xFFAEF76A, 0xFFFFA482, 0xFFD7F67A},
+            {0xFF101B3B, 0xFF263458, 0xFFA8C8FF, 0xFFFF96D7, 0xFFACFFF1},
+            {0xFF391E26, 0xFF683631, 0xFFFFA45F, 0xFFFF7272, 0xFFFFD176},
+            {0xFF122B42, 0xFF255572, 0xFF85DFFF, 0xFFFFA9A4, 0xFFB4E9FF},
+            {0xFF1D3345, 0xFF39596D, 0xFFB4EFFF, 0xFFFFA8AD, 0xFFE4F9FF},
+            {0xFF2D3024, 0xFF535D3C, 0xFFC0DF86, 0xFFFFA789, 0xFFE8D596},
+            {0xFF1A2143, 0xFF333B6D, 0xFFB9B8FF, 0xFFFFA3B6, 0xFFFFDF8A}
     };
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
@@ -130,7 +151,6 @@ public class MainActivity extends Activity {
     };
     private final ArrayList<Photo> photos = new ArrayList<>();
     private final HashSet<Long> duplicates = new HashSet<>();
-    private final HashSet<Long> shownSwipeOverlays = new HashSet<>();
     private final ArrayList<TrashEntry> trashEntries = new ArrayList<>();
     private Set<String> reviewed = new HashSet<>();
     private Set<String> rewarded = new HashSet<>();
@@ -143,9 +163,10 @@ public class MainActivity extends Activity {
     private String selectedMonth;
     private boolean reviewing, loading, duplicateScanning;
     private boolean showingTrash, deletingOld;
-    private boolean showingSettings, soundEnabled, musicEnabled;
+    private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen;
     private int themeChoice, musicVolume;
     private AudioTrack musicTrack;
+    private Bitmap spaceBackdrop;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private long pendingTrash = -1;
     private long pendingRestore = -1;
@@ -164,9 +185,9 @@ public class MainActivity extends Activity {
         rewarded = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("rewarded", Collections.emptySet()));
         keptIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("kept_ids", reviewed));
         trashedIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("trashed_ids", Collections.emptySet()));
-        for (String id : getPreferences(MODE_PRIVATE).getStringSet("seen_swipe_overlays", Collections.emptySet())) {
-            try { shownSwipeOverlays.add(Long.parseLong(id)); } catch (NumberFormatException ignored) { }
-        }
+        swipeHintSeen = getPreferences(MODE_PRIVATE).getBoolean("swipe_hint_seen",
+                !getPreferences(MODE_PRIVATE).getStringSet("seen_swipe_overlays", Collections.emptySet()).isEmpty());
+        statsExpanded = getPreferences(MODE_PRIVATE).getBoolean("stats_expanded", false);
         xp = getPreferences(MODE_PRIVATE).getInt("xp", 0);
         applyTheme();
         keptCount = keptIds.size();
@@ -370,18 +391,29 @@ public class MainActivity extends Activity {
         gear.setGravity(Gravity.CENTER); gear.setContentDescription("Options and sound settings");
         gear.setBackground(rounded(PANEL, 16)); top.addView(gear, new LinearLayout.LayoutParams(dp(52), dp(52)));
         gear.setOnClickListener(v -> { showingSettings = true; render(); });
-        label("Your photo journey", 31, INK, true); spacer(5);
-        label("A little progress, one photo at a time", 15, MUTED, false); spacer(23);
-        levelPanel();
-        spacer(19);
-        label("Your stats", 21, INK, true);
-        spacer(11);
-        LinearLayout stats = new LinearLayout(this);
-        root.addView(stats, new LinearLayout.LayoutParams(-1, dp(88)));
-        statTile(stats, Integer.toString(keptCount), "Kept", GREEN);
-        statTile(stats, Integer.toString(trashedCount), "Trashed", RED);
-        statTile(stats, Integer.toString(restoredCount), "Restored", GOLD);
-        spacer(20);
+        label("Your photos", 28, INK, true); spacer(13);
+        LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
+        statsToggle.setPadding(dp(16), dp(8), dp(16), dp(8)); statsToggle.setBackground(rounded(PANEL, 17));
+        root.addView(statsToggle, new LinearLayout.LayoutParams(-1, dp(54)));
+        TextView progressTitle = new TextView(this);
+        progressTitle.setText("✦  Level " + (xp / 500 + 1) + "  ·  " + (xp % 500) + "/500 XP");
+        progressTitle.setTextColor(INK); progressTitle.setTextSize(16); progressTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        statsToggle.addView(progressTitle, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView chevron = new TextView(this); chevron.setText(statsExpanded ? "Stats  ▴" : "Stats  ▾");
+        chevron.setTextColor(GREEN); chevron.setTextSize(14); statsToggle.addView(chevron);
+        statsToggle.setOnClickListener(v -> {
+            statsExpanded = !statsExpanded;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("stats_expanded", statsExpanded).apply(); render();
+        });
+        if (statsExpanded) {
+            spacer(9); levelPanel(); spacer(10);
+            LinearLayout stats = new LinearLayout(this);
+            root.addView(stats, new LinearLayout.LayoutParams(-1, dp(80)));
+            statTile(stats, Integer.toString(keptCount), "Kept", GREEN);
+            statTile(stats, Integer.toString(trashedCount), "Trashed", RED);
+            statTile(stats, Integer.toString(restoredCount), "Restored", GOLD);
+        }
+        spacer(16);
         label("Browse by year", 21, INK, true);
         spacer(12);
         if (!canManage()) {
@@ -446,14 +478,17 @@ public class MainActivity extends Activity {
         heading("Options", "Make each sweep feel like yours");
         ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
-        sectionTitle(list, "THEME");
+        sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
         for (int i = 0; i < THEME_NAMES.length; i++) {
+            if (i == 0) sectionTitle(list, "ORIGINAL");
+            else if (i == 3) sectionTitle(list, "HERO COLORS");
+            else if (i == 13) sectionTitle(list, "MORE COLORS");
+            else if (i == 18) sectionTitle(list, "WORLDS & ELEMENTS");
             final int choice = i;
             int requiredLevel = i < 3 ? 1 : i - 1;
             boolean unlocked = level >= requiredLevel;
-            tile(list, (themeChoice == i ? "✓  " : unlocked ? "○  " : "🔒  ") + THEME_NAMES[i],
-                    unlocked ? "Color palette" : "Unlocks at level " + requiredLevel, () -> {
+            themeTile(list, i, unlocked, requiredLevel, () -> {
                 if (!unlocked) return;
                 themeChoice = choice; getPreferences(MODE_PRIVATE).edit().putInt("theme", choice).apply();
                 applyTheme(); render();
@@ -491,6 +526,28 @@ public class MainActivity extends Activity {
         TextView label = new TextView(this); label.setText(title); label.setTextColor(GREEN);
         label.setLetterSpacing(.12f); label.setTextSize(13); label.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(18); lp.bottomMargin = dp(12); parent.addView(label, lp);
+    }
+
+    private void themeTile(LinearLayout parent, int index, boolean unlocked, int requiredLevel, Runnable action) {
+        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(8), dp(14), dp(8)); row.setBackground(rounded(PANEL, 16));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(70)); lp.bottomMargin = dp(8); parent.addView(row, lp);
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
+        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView name = new TextView(this); name.setText((themeChoice == index ? "✓  " : "") + THEME_NAMES[index]);
+        name.setTextSize(16); name.setTextColor(INK); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); copy.addView(name);
+        TextView detail = new TextView(this); detail.setText(unlocked ? "Available" : "Unlock at level " + requiredLevel);
+        detail.setTextSize(12); detail.setTextColor(unlocked ? GREEN : MUTED); copy.addView(detail);
+        if (unlocked) {
+            for (int color : new int[]{THEME_COLORS[index][2], THEME_COLORS[index][3], THEME_COLORS[index][4]}) {
+                View swatch = new View(this); swatch.setBackground(rounded(color, 15));
+                LinearLayout.LayoutParams circle = new LinearLayout.LayoutParams(dp(13), dp(13));
+                circle.leftMargin = dp(3); row.addView(swatch, circle);
+            }
+        } else {
+            TextView lock = new TextView(this); lock.setText("🔒"); lock.setTextSize(16); row.addView(lock);
+        }
+        row.setOnClickListener(v -> action.run());
     }
 
     private interface ToggleAction { void changed(boolean enabled); }
@@ -631,10 +688,10 @@ public class MainActivity extends Activity {
         TextView keepAction = swipeOverlayLabel("Keep  →", GREEN);
         overlay.addView(trashAction, new LinearLayout.LayoutParams(0, -2, 1));
         overlay.addView(keepAction, new LinearLayout.LayoutParams(0, -2, 1));
-        if (shownSwipeOverlays.add(shown.id)) {
-            HashSet<String> seen = new HashSet<>();
-            for (Long id : shownSwipeOverlays) seen.add(Long.toString(id));
-            getPreferences(MODE_PRIVATE).edit().putStringSet("seen_swipe_overlays", seen).apply();
+        if (!swipeHintSeen) {
+            swipeHintSeen = true;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("swipe_hint_seen", true)
+                    .remove("seen_swipe_overlays").apply();
             overlay.setAlpha(1f);
             uiHandler.postDelayed(() -> overlay.animate().alpha(0f).setDuration(400)
                     .withEndAction(() -> overlay.setVisibility(View.GONE)).start(), 2300);
@@ -710,25 +767,54 @@ public class MainActivity extends Activity {
         SwipeEffect() { super(MainActivity.this); setClickable(false); }
         @Override protected void onDraw(Canvas canvas) {
             float w = getWidth(), h = getHeight(), amount = Math.abs(progress);
-            if (progress > 0) {
-                float glowWidth = w * (.1f + .75f * amount);
-                paint.setShader(new LinearGradient(w - glowWidth, 0, w, 0,
-                        new int[]{Color.TRANSPARENT, Color.argb((int)(125 * amount), 255,255,255), Color.argb((int)(210 * amount), 255,255,255)},
-                        null, Shader.TileMode.CLAMP));
-                canvas.drawRect(w - glowWidth, 0, w, h, paint); paint.setShader(null);
-                paint.setColor(Color.argb((int)(230 * amount), 255, 255, 255));
-                canvas.drawRect(w - dp(4), 0, w, h, paint);
-            } else if (progress < 0) {
-                float edge = w * (1 - amount * .72f);
-                paint.setColor(Color.argb((int)(175 * amount), 20, 39, 53));
-                canvas.drawRect(edge, 0, w, h, paint);
-                for (int i = 0; i < 27; i++) {
-                    float x = edge + (w - edge) * ((i * 37 % 29) / 29f);
-                    float y = h * ((i * 13 % 31) / 31f);
-                    float size = dp(5 + (i * 7 % 12)) * amount;
-                    paint.setColor(Color.argb((int)(180 * amount), 72, 190, 188));
-                    Path chip = new Path(); chip.moveTo(x, y); chip.lineTo(x + size, y - size / 2);
-                    chip.lineTo(x + size * 1.4f, y + size); chip.close(); canvas.drawPath(chip, paint);
+            if (amount < .01f || w <= 0) return;
+            boolean keep = progress > 0;
+            int accent = keep ? GREEN : RED;
+            int style = themeChoice < 18 ? themeChoice % 5 : themeChoice - 17;
+            float edge = keep ? w * (1 - amount * .78f) : w * amount * .78f;
+            float left = keep ? edge : 0, right = keep ? w : edge;
+            int haze = Color.argb((int)(110 * amount), Color.red(accent), Color.green(accent), Color.blue(accent));
+            paint.setShader(new LinearGradient(left, 0, right + 1, 0,
+                    keep ? new int[]{Color.TRANSPARENT, haze} : new int[]{haze, Color.TRANSPARENT},
+                    null, Shader.TileMode.CLAMP));
+            canvas.drawRect(left, 0, right, h, paint); paint.setShader(null);
+            paint.setColor(Color.argb((int)(210 * amount), Color.red(accent), Color.green(accent), Color.blue(accent)));
+            canvas.drawRect(edge - dp(2), 0, edge + dp(2), h, paint);
+            for (int i = 0; i < 36; i++) {
+                float x = left + (right - left) * ((i * 37 % 41) / 41f);
+                float y = h * ((i * 23 % 37) / 37f);
+                float size = dp(2 + i % 5) * (.35f + amount);
+                int color = (style == 1 && i % 3 == 0) ? GOLD : (style == 3 && i % 3 == 0) ? Color.WHITE : accent;
+                paint.setColor(Color.argb((int)((90 + i % 4 * 34) * amount),
+                        Color.red(color), Color.green(color), Color.blue(color)));
+                if (style == 1 || style == 5) { // candy drops or water bubbles
+                    paint.setStyle(style == 5 ? Paint.Style.STROKE : Paint.Style.FILL);
+                    paint.setStrokeWidth(dp(1.5f)); canvas.drawCircle(x, y, size * (style == 1 ? 1.8f : 2.2f), paint);
+                    paint.setStyle(Paint.Style.FILL);
+                } else if (style == 2) { // toxic drips
+                    canvas.drawCircle(x, y, size * 1.3f, paint);
+                    canvas.drawRoundRect(x - size * .4f, y, x + size * .4f, y + size * 4, size, size, paint);
+                } else if (style == 3) { // shooting stars
+                    canvas.drawCircle(x, y, size * .7f, paint);
+                    paint.setStrokeWidth(dp(1)); canvas.drawLine(x, y, x + (keep ? -1 : 1) * size * 6, y + size, paint);
+                } else if (style == 4) { // fire sparks
+                    Path flame = new Path(); flame.moveTo(x, y - size * 3); flame.quadTo(x + size * 2, y, x, y + size);
+                    flame.quadTo(x - size * 2, y, x, y - size * 3); canvas.drawPath(flame, paint);
+                } else if (style == 6) { // ice crystals
+                    Path shard = new Path(); shard.moveTo(x, y - size * 3); shard.lineTo(x + size, y);
+                    shard.lineTo(x, y + size * 3); shard.lineTo(x - size, y); shard.close(); canvas.drawPath(shard, paint);
+                } else if (style == 7) { // leaves and earth flecks
+                    canvas.drawOval(x - size, y - size * 2, x + size, y + size * 2, paint);
+                    paint.setStrokeWidth(dp(1)); canvas.drawLine(x, y - size * 2, x, y + size * 2, paint);
+                } else if (style == 8) { // electric bolts
+                    Path bolt = new Path(); bolt.moveTo(x, y - size * 3); bolt.lineTo(x + size, y - size);
+                    bolt.lineTo(x - size * .4f, y); bolt.lineTo(x + size * .7f, y + size * 2);
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2)); canvas.drawPath(bolt, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                } else { // sparkles for simple palettes
+                    canvas.drawCircle(x, y, size * .5f, paint);
+                    paint.setStrokeWidth(dp(1)); canvas.drawLine(x - size * 2, y, x + size * 2, y, paint);
+                    canvas.drawLine(x, y - size * 2, x, y + size * 2, paint);
                 }
             }
         }
@@ -1007,15 +1093,62 @@ public class MainActivity extends Activity {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         TextureBackdrop() { super(MainActivity.this); }
         @Override protected void onDraw(Canvas canvas) {
-            paint.setShader(new LinearGradient(0, 0, getWidth(), getHeight(),
+            float w = getWidth(), h = getHeight();
+            paint.setShader(new LinearGradient(0, 0, w, h,
                     new int[]{BG, PANEL, BG},
                     null, Shader.TileMode.CLAMP));
-            canvas.drawRect(0, 0, getWidth(), getHeight(), paint); paint.setShader(null);
-            paint.setColor(Color.argb(42, Color.red(GREEN), Color.green(GREEN), Color.blue(GREEN)));
-            for (int i = 0; i < 175; i++) {
-                float x = ((i * 137L + 73) % 1000) / 1000f * getWidth();
-                float y = ((i * 263L + 117) % 1000) / 1000f * getHeight();
-                canvas.drawCircle(x, y, dp(0.7f), paint);
+            canvas.drawRect(0, 0, w, h, paint); paint.setShader(null);
+            if (themeChoice == 20) {
+                if (spaceBackdrop == null) spaceBackdrop = BitmapFactory.decodeResource(getResources(), R.drawable.space_nebula);
+                if (spaceBackdrop != null) {
+                    paint.setAlpha(185);
+                    canvas.drawBitmap(spaceBackdrop, new Rect(0, 0, spaceBackdrop.getWidth(), spaceBackdrop.getHeight()),
+                            new RectF(0, 0, w, h), paint);
+                    paint.setAlpha(255);
+                }
+                return;
+            }
+            int style = themeChoice < 18 ? themeChoice % 5 : themeChoice - 17;
+            if (themeChoice == 18) {
+                paint.setStrokeWidth(dp(13));
+                for (int i = -6; i < 16; i++) {
+                    paint.setColor(i % 2 == 0 ? 0x23FFB8D9 : 0x2699E5F2);
+                    canvas.drawLine(i * dp(90), 0, i * dp(90) + h * .37f, h, paint);
+                }
+            } else if (themeChoice == 19) {
+                paint.setColor(0x2841FF84);
+                for (int i = 0; i < 8; i++) {
+                    float x = w * ((i * 37 % 83) / 83f);
+                    canvas.drawCircle(x, h * ((i * 29 % 101) / 101f), dp(22 + i * 6), paint);
+                }
+            } else if (themeChoice == 22) {
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2));
+                for (int i = 0; i < 14; i++) {
+                    paint.setColor(0x2A9CEBFF);
+                    Path wave = new Path(); float y = h * i / 13f;
+                    wave.moveTo(0, y);
+                    for (int j = 0; j < 6; j++) wave.quadTo(w * (j + .5f) / 6f, y - dp(18), w * (j + 1f) / 6f, y);
+                    canvas.drawPath(wave, paint);
+                }
+                paint.setStyle(Paint.Style.FILL);
+            }
+            int count = themeChoice >= 18 ? 74 : 128;
+            for (int i = 0; i < count; i++) {
+                float x = ((i * 137L + 73) % 1000) / 1000f * w;
+                float y = ((i * 263L + 117) % 1000) / 1000f * h;
+                float size = dp(2 + i % 4);
+                paint.setColor(Color.argb(35 + i % 4 * 12, Color.red(GREEN), Color.green(GREEN), Color.blue(GREEN)));
+                if (style == 5 || style == 1) canvas.drawCircle(x, y, size * 1.4f, paint);
+                else if (style == 6) {
+                    Path crystal = new Path(); crystal.moveTo(x, y - size * 2); crystal.lineTo(x + size, y);
+                    crystal.lineTo(x, y + size * 2); crystal.lineTo(x - size, y); crystal.close(); canvas.drawPath(crystal, paint);
+                } else if (style == 8) {
+                    canvas.drawLine(x, y, x + size, y + size * 3, paint);
+                } else if (style == 7) {
+                    canvas.drawOval(x - size, y - size * 2, x + size, y + size * 2, paint);
+                } else if (style == 4) {
+                    canvas.drawOval(x - size, y - size * 2, x + size, y + size, paint);
+                } else canvas.drawCircle(x, y, dp(0.9f + i % 3 * .4f), paint);
             }
         }
     }
