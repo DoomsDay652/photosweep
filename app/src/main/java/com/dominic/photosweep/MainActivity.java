@@ -217,6 +217,10 @@ public class MainActivity extends Activity {
     private TextureBackdrop activeBackdrop;
     private FrameLayout zoomOverlay;
     private Bitmap zoomBitmap;
+    private final java.util.Random cometRandom = new java.util.Random();
+    private long nextCometAt, cometStart, cometDuration;
+    private boolean cometFlying;
+    private float cometFromX, cometFromY, cometToX, cometToY, cometAngle;
     private float gravityX = 0, gravityY = 1;
     private final SensorEventListener tiltListener = new SensorEventListener() {
         @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
@@ -1501,19 +1505,21 @@ public class MainActivity extends Activity {
                 return;
             }
             if (theme == 20) {
-                // Each comet crosses the full width in under a second, alternating directions.
-                for (int i = 0; i < 2; i++) {
-                    float cycle = (time + i * 2.9f) / 6.1f;
-                    int flight = (int)cycle;
-                    float progress = cycle - flight;
-                    if (progress > .19f) continue;
-                    float travel = progress / .19f;
+                long now = android.os.SystemClock.uptimeMillis();
+                if (nextCometAt == 0) nextCometAt = now + 3500 + cometRandom.nextInt(5000);
+                if (cometFlying && now - cometStart >= cometDuration) {
+                    cometFlying = false;
+                    nextCometAt = now + 7000 + cometRandom.nextInt(12000);
+                }
+                if (!cometFlying && now >= nextCometAt) launchComet(now, w, h, 115 * unit);
+                if (cometFlying) {
+                    float travel = Math.min(1f, (now - cometStart) / (float) cometDuration);
+                    float x = cometFromX + (cometToX - cometFromX) * travel;
+                    float y = cometFromY + (cometToY - cometFromY) * travel;
+                    float fade = Math.min(1f, Math.min(travel * 8, (1 - travel) * 8));
                     float size = 115 * unit;
-                    float x = i == 0 ? -size + (w + size * 2) * travel
-                            : w + size - (w + size * 2) * travel;
-                    float y = h * (.16f + .45f * pseudoRandom(flight * 7 + i * 19));
-                    canvas.save(); canvas.translate(x, y); canvas.rotate(i == 0 ? -135 : 45);
-                    paint.setAlpha(210);
+                    canvas.save(); canvas.translate(x, y); canvas.rotate(cometAngle);
+                    paint.setAlpha((int)(210 * fade));
                     canvas.drawBitmap(sprite, null, new RectF(-size / 2, -size / 2, size / 2, size / 2), paint);
                     canvas.restore();
                 }
@@ -1542,10 +1548,28 @@ public class MainActivity extends Activity {
             }
             paint.setAlpha(255);
         }
-        private float pseudoRandom(int seed) {
-            int n = seed * 1664525 + 1013904223;
-            n ^= n >>> 16;
-            return (n & 0x7fffffff) / (float)0x7fffffff;
+        private void launchComet(long now, float w, float h, float margin) {
+            int path = cometRandom.nextInt(6);
+            if (path < 2) {
+                cometFromX = path == 0 ? -margin : w + margin;
+                cometToX = path == 0 ? w + margin : -margin;
+                cometFromY = h * (.12f + cometRandom.nextFloat() * .75f);
+                cometToY = Math.max(0, Math.min(h, cometFromY + h * (cometRandom.nextFloat() - .5f) * .45f));
+            } else {
+                boolean fromTop = path == 2 || path == 4;
+                boolean fromLeft = path == 2 || path == 5;
+                float leftX = w * (.04f + cometRandom.nextFloat() * .25f);
+                float rightX = w * (.71f + cometRandom.nextFloat() * .25f);
+                cometFromX = fromLeft ? leftX : rightX;
+                cometToX = fromLeft ? rightX : leftX;
+                cometFromY = fromTop ? -margin : h + margin;
+                cometToY = fromTop ? h + margin : -margin;
+            }
+            float direction = (float)Math.toDegrees(Math.atan2(cometToY - cometFromY, cometToX - cometFromX));
+            cometAngle = direction - 135f; // The generated sprite's bright head points down and left.
+            cometDuration = 600 + cometRandom.nextInt(1150);
+            cometStart = now;
+            cometFlying = true;
         }
         private void drawThemeMotion(Canvas canvas, float w, float h, float time) {
             int theme = themeChoice;
