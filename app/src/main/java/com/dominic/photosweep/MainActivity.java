@@ -37,8 +37,7 @@ import android.util.Size;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.WindowInsets;
-import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -136,10 +135,10 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
-        musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", true);
+        musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
         musicVolume = getPreferences(MODE_PRIVATE).getInt("music_volume", 18);
         applyTheme();
-        hideStatusBar();
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         reviewed = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("reviewed", Collections.emptySet()));
         rewarded = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("rewarded", Collections.emptySet()));
         keptIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("kept_ids", reviewed));
@@ -156,18 +155,12 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        hideStatusBar();
-        updateMusic();
+        if (musicEnabled) updateMusic();
         if (root != null) {
             loadTrashEntries();
             render();
             if (hasAccess() && canManage()) cleanupTrash();
         }
-    }
-
-    @Override public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideStatusBar();
     }
 
     @Override protected void onPause() {
@@ -181,15 +174,6 @@ public class MainActivity extends Activity {
         io.shutdownNow();
         duplicateWorker.shutdownNow();
         super.onDestroy();
-    }
-
-    private void hideStatusBar() {
-        getWindow().setNavigationBarColor(BG);
-        WindowInsetsController controller = getWindow().getInsetsController();
-        if (controller != null) {
-            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-            controller.hide(WindowInsets.Type.statusBars());
-        }
     }
 
     private void applyTheme() {
