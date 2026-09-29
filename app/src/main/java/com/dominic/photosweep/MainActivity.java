@@ -163,7 +163,7 @@ public class MainActivity extends Activity {
     private String selectedMonth;
     private boolean reviewing, loading, duplicateScanning;
     private boolean showingTrash, deletingOld;
-    private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen;
+    private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private int themeChoice, musicVolume;
     private AudioTrack musicTrack;
     private Bitmap spaceBackdrop;
@@ -177,6 +177,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
+        adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
         musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
         musicVolume = getPreferences(MODE_PRIVATE).getInt("music_volume", 18);
@@ -224,7 +225,7 @@ public class MainActivity extends Activity {
 
     private void applyTheme() {
         if (themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
-                (themeChoice >= 3 && xp / 500 + 1 < themeChoice - 1)) themeChoice = 0;
+                (!adminMode && themeChoice >= 3 && xp / 500 + 1 < themeChoice - 1)) themeChoice = 0;
         int[] palette = THEME_COLORS[themeChoice];
         BG = palette[0]; PANEL = palette[1]; GREEN = palette[2]; RED = palette[3]; GOLD = palette[4];
         INK = Color.rgb(237, 248, 249); MUTED = Color.rgb(170, 193, 205);
@@ -478,6 +479,17 @@ public class MainActivity extends Activity {
         heading("Options", "Make each sweep feel like yours");
         ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
+        sectionTitle(list, "TESTING");
+        settingSwitch(list, "Admin mode", "Preview all themes without earning XP or reviewing photos", adminMode, value -> {
+            if (value) getPreferences(MODE_PRIVATE).edit().putInt("theme_before_admin", themeChoice).apply();
+            adminMode = value;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("admin_mode", value).apply();
+            if (!value && themeChoice >= 3 && xp / 500 + 1 < themeChoice - 1) {
+                themeChoice = getPreferences(MODE_PRIVATE).getInt("theme_before_admin", 0);
+                getPreferences(MODE_PRIVATE).edit().putInt("theme", themeChoice).apply();
+            }
+            applyTheme(); render();
+        });
         sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
         for (int i = 0; i < THEME_NAMES.length; i++) {
@@ -487,7 +499,7 @@ public class MainActivity extends Activity {
             else if (i == 18) sectionTitle(list, "WORLDS & ELEMENTS");
             final int choice = i;
             int requiredLevel = i < 3 ? 1 : i - 1;
-            boolean unlocked = level >= requiredLevel;
+            boolean unlocked = adminMode || level >= requiredLevel;
             themeTile(list, i, unlocked, requiredLevel, () -> {
                 if (!unlocked) return;
                 themeChoice = choice; getPreferences(MODE_PRIVATE).edit().putInt("theme", choice).apply();
