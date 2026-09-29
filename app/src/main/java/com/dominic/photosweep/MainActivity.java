@@ -164,6 +164,9 @@ public class MainActivity extends Activity {
         rewarded = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("rewarded", Collections.emptySet()));
         keptIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("kept_ids", reviewed));
         trashedIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("trashed_ids", Collections.emptySet()));
+        for (String id : getPreferences(MODE_PRIVATE).getStringSet("seen_swipe_overlays", Collections.emptySet())) {
+            try { shownSwipeOverlays.add(Long.parseLong(id)); } catch (NumberFormatException ignored) { }
+        }
         xp = getPreferences(MODE_PRIVATE).getInt("xp", 0);
         applyTheme();
         keptCount = keptIds.size();
@@ -629,6 +632,9 @@ public class MainActivity extends Activity {
         overlay.addView(trashAction, new LinearLayout.LayoutParams(0, -2, 1));
         overlay.addView(keepAction, new LinearLayout.LayoutParams(0, -2, 1));
         if (shownSwipeOverlays.add(shown.id)) {
+            HashSet<String> seen = new HashSet<>();
+            for (Long id : shownSwipeOverlays) seen.add(Long.toString(id));
+            getPreferences(MODE_PRIVATE).edit().putStringSet("seen_swipe_overlays", seen).apply();
             overlay.setAlpha(1f);
             uiHandler.postDelayed(() -> overlay.animate().alpha(0f).setDuration(400)
                     .withEndAction(() -> overlay.setVisibility(View.GONE)).start(), 2300);
