@@ -16,6 +16,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ImageDecoder;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -43,7 +44,9 @@ import android.provider.Settings;
 import android.util.LruCache;
 import android.util.Size;
 import android.view.Gravity;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -212,6 +215,8 @@ public class MainActivity extends Activity {
     private SensorManager sensorManager;
     private Sensor gravitySensor;
     private TextureBackdrop activeBackdrop;
+    private FrameLayout zoomOverlay;
+    private Bitmap zoomBitmap;
     private float gravityX = 0, gravityY = 1;
     private final SensorEventListener tiltListener = new SensorEventListener() {
         @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
@@ -293,6 +298,7 @@ public class MainActivity extends Activity {
 
     @Override public void onDestroy() {
         stopMusic();
+        closePhotoZoom();
         for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         for (Bitmap bitmap : themeEffects) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         if (candySprites != null && !candySprites.isRecycled()) candySprites.recycle();
@@ -300,6 +306,11 @@ public class MainActivity extends Activity {
         io.shutdownNow();
         duplicateWorker.shutdownNow();
         super.onDestroy();
+    }
+
+    @Override public void onBackPressed() {
+        if (zoomOverlay != null) closePhotoZoom();
+        else super.onBackPressed();
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -452,6 +463,8 @@ public class MainActivity extends Activity {
 
     private void render() {
         rememberScroll();
+        if (zoomOverlay != null && zoomOverlay.getParent() instanceof android.view.ViewGroup)
+            ((android.view.ViewGroup) zoomOverlay.getParent()).removeView(zoomOverlay);
         FrameLayout previousHost = host;
         boolean transition = animateThemeChange && previousHost != null && previousHost.getParent() != null;
         animateThemeChange = false;
@@ -460,11 +473,11 @@ public class MainActivity extends Activity {
         host = new FrameLayout(this);
         activeBackdrop = new TextureBackdrop();
         host.addView(activeBackdrop, new FrameLayout.LayoutParams(-1, -1));
+        if (themeChoice != 18) host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(20), dp(22), dp(16));
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        if (themeChoice != 18) host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
         if (!hasAccess()) intro();
         else if (loading) heading("Photo Sweep", "Gathering your photos…");
         else if (showingSettings) settingsScreen();
@@ -478,6 +491,10 @@ public class MainActivity extends Activity {
             content.addView(host, new FrameLayout.LayoutParams(-1, -1));
             host.animate().alpha(1f).setDuration(260).withEndAction(() -> content.removeView(previousHost)).start();
         } else setContentView(host);
+        if (zoomOverlay != null) {
+            FrameLayout content = findViewById(android.R.id.content);
+            content.addView(zoomOverlay, new FrameLayout.LayoutParams(-1, -1));
+        }
     }
 
     private void intro() {
@@ -809,12 +826,14 @@ public class MainActivity extends Activity {
         FrameLayout card = new FrameLayout(this);
         card.setBackground(rounded(PANEL, 25)); card.setElevation(dp(8));
         card.setClipToOutline(true);
+        card.setContentDescription("Photo. Tap to inspect full screen, swipe left to Trash or right to Keep");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
         ImageView backdrop = new ImageView(this); backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
         backdrop.setAlpha(.55f);
         if (Build.VERSION.SDK_INT >= 31) backdrop.setRenderEffect(RenderEffect.createBlurEffect(dp(20), dp(20), Shader.TileMode.CLAMP));
         card.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        photo.setContentDescription("Tap to inspect photo full screen");
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
         loadPreview(shown, photo);
         loadPreview(shown, backdrop);
@@ -860,6 +879,7 @@ public class MainActivity extends Activity {
             }
             if (e.getAction() == MotionEvent.ACTION_UP) {
                 float dx = e.getRawX() - touchX;
+                float dy = e.getRawY() - touchY;
                 if (Math.abs(dx) > dp(85) && Math.abs(dx) > Math.abs(e.getRawY() - touchY) * 1.2f) {
                     if (dx < 0 && !canManage()) {
                         card.animate().translationX(0).rotation(0).setDuration(210).start();
@@ -873,6 +893,7 @@ public class MainActivity extends Activity {
                 } else {
                     effect.progress = 0; effect.invalidate();
                     card.animate().translationX(0).rotation(0).setDuration(200).start();
+                    if (Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) showPhotoZoom(shown);
                 }
                 return true;
             }
@@ -893,6 +914,125 @@ public class MainActivity extends Activity {
 
     private void loadPreview(Photo p, ImageView view) {
         loadPreview(p.id, p.uri, view);
+    }
+
+    private void showPhotoZoom(Photo photo) {
+        if (zoomOverlay != null) closePhotoZoom();
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setBackgroundColor(Color.BLACK);
+        overlay.setClickable(true);
+        ZoomPhotoView image = new ZoomPhotoView();
+        overlay.addView(image, new FrameLayout.LayoutParams(-1, -1));
+        Bitmap preview = previews.get(photo.id);
+        if (preview != null) image.setBitmap(preview);
+        TextView loading = new TextView(this);
+        loading.setText("Loading full photo…"); loading.setTextColor(Color.WHITE);
+        loading.setTextSize(15); loading.setGravity(Gravity.CENTER);
+        overlay.addView(loading, new FrameLayout.LayoutParams(-1, -1));
+        TextView close = new TextView(this);
+        close.setText("✕"); close.setTextColor(Color.WHITE); close.setTextSize(30);
+        close.setGravity(Gravity.CENTER); close.setContentDescription("Close full-screen photo");
+        close.setBackground(themeButton(0xFF253342, 18));
+        FrameLayout.LayoutParams closeLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.TOP | Gravity.END);
+        closeLp.setMargins(0, dp(18), dp(18), 0); overlay.addView(close, closeLp);
+        close.setOnClickListener(v -> closePhotoZoom());
+        TextView hint = new TextView(this);
+        hint.setText("Pinch to zoom  ·  Drag to inspect  ·  Double tap");
+        hint.setTextColor(0xFFD2E2EF); hint.setTextSize(13); hint.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams hintLp = new FrameLayout.LayoutParams(-1, dp(48), Gravity.BOTTOM);
+        overlay.addView(hint, hintLp);
+        zoomOverlay = overlay;
+        FrameLayout content = findViewById(android.R.id.content);
+        content.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+        io.execute(() -> {
+            Bitmap full = null;
+            try {
+                ImageDecoder.Source source = ImageDecoder.createSource(getContentResolver(), photo.uri);
+                full = ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
+                    int longest = Math.max(info.getSize().getWidth(), info.getSize().getHeight());
+                    int sample = 1;
+                    while (longest / sample > 4096) sample *= 2;
+                    decoder.setTargetSampleSize(sample);
+                    decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                });
+            } catch (Exception ignored) { }
+            Bitmap decoded = full;
+            runOnUiThread(() -> {
+                if (decoded != null && zoomOverlay == overlay && !isDestroyed()) {
+                    zoomBitmap = decoded;
+                    image.setBitmap(decoded);
+                    loading.setVisibility(View.GONE);
+                } else {
+                    if (decoded != null) decoded.recycle();
+                    if (zoomOverlay == overlay) loading.setText("Could not open this photo");
+                }
+            });
+        });
+    }
+
+    private void closePhotoZoom() {
+        if (zoomOverlay != null && zoomOverlay.getParent() instanceof android.view.ViewGroup)
+            ((android.view.ViewGroup) zoomOverlay.getParent()).removeView(zoomOverlay);
+        zoomOverlay = null;
+        if (zoomBitmap != null) { zoomBitmap.recycle(); zoomBitmap = null; }
+    }
+
+    private class ZoomPhotoView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private Bitmap bitmap;
+        private float zoom = 1f, panX, panY, lastX, lastY;
+        private final ScaleGestureDetector scaler = new ScaleGestureDetector(MainActivity.this,
+                new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    @Override public boolean onScale(ScaleGestureDetector detector) {
+                        zoomAt(detector.getScaleFactor(), detector.getFocusX(), detector.getFocusY());
+                        return true;
+                    }
+                });
+        private final GestureDetector taps = new GestureDetector(MainActivity.this,
+                new GestureDetector.SimpleOnGestureListener() {
+                    @Override public boolean onDoubleTap(MotionEvent event) {
+                        zoomAt(zoom > 1.1f ? 1f / zoom : 2.5f, event.getX(), event.getY());
+                        return true;
+                    }
+                });
+        ZoomPhotoView() { super(MainActivity.this); }
+        void setBitmap(Bitmap value) { bitmap = value; zoom = 1f; panX = panY = 0; invalidate(); }
+        private void zoomAt(float factor, float x, float y) {
+            float old = zoom;
+            zoom = Math.max(1f, Math.min(6f, zoom * factor));
+            float ratio = zoom / old;
+            panX = ratio * panX + (1 - ratio) * (x - getWidth() / 2f);
+            panY = ratio * panY + (1 - ratio) * (y - getHeight() / 2f);
+            constrainPan(); invalidate();
+        }
+        private void constrainPan() {
+            if (bitmap == null || getWidth() == 0 || getHeight() == 0) return;
+            float base = Math.min(getWidth() / (float) bitmap.getWidth(), getHeight() / (float) bitmap.getHeight());
+            float maxX = Math.max(0, (bitmap.getWidth() * base * zoom - getWidth()) / 2f);
+            float maxY = Math.max(0, (bitmap.getHeight() * base * zoom - getHeight()) / 2f);
+            panX = Math.max(-maxX, Math.min(maxX, panX));
+            panY = Math.max(-maxY, Math.min(maxY, panY));
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            if (bitmap == null || bitmap.isRecycled()) return;
+            constrainPan();
+            float base = Math.min(getWidth() / (float) bitmap.getWidth(), getHeight() / (float) bitmap.getHeight());
+            float width = bitmap.getWidth() * base * zoom, height = bitmap.getHeight() * base * zoom;
+            float left = (getWidth() - width) / 2f + panX, top = (getHeight() - height) / 2f + panY;
+            canvas.drawBitmap(bitmap, null, new RectF(left, top, left + width, top + height), paint);
+        }
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            taps.onTouchEvent(event);
+            scaler.onTouchEvent(event);
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN || event.getActionMasked() == MotionEvent.ACTION_POINTER_UP) {
+                lastX = event.getX(); lastY = event.getY();
+            } else if (event.getActionMasked() == MotionEvent.ACTION_MOVE && event.getPointerCount() == 1 && !scaler.isInProgress()) {
+                panX += event.getX() - lastX; panY += event.getY() - lastY;
+                lastX = event.getX(); lastY = event.getY();
+                constrainPan(); invalidate();
+            }
+            return true;
+        }
     }
 
     private void loadPreview(long id, Uri uri, ImageView view) {
