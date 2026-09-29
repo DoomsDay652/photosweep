@@ -25,6 +25,11 @@ import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioTrack;
@@ -93,7 +98,7 @@ public class MainActivity extends Activity {
     };
     private static final int[][] THEME_COLORS = {
             {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
-            {0xFF092730, 0xFF18464B, 0xFF5DE5C2, 0xFFFF8484, 0xFFFFD382},
+            {0xFF07343D, 0xFF14545D, 0xFF64EBD8, 0xFFFF9882, 0xFFFFE3A5},
             {0xFF231B33, 0xFF41314E, 0xFFB29BFF, 0xFFFF8492, 0xFFFFCB81},
             {0xFF142B55, 0xFF244672, 0xFFFA6570, 0xFFFFB277, 0xFF84BCFF},
             {0xFF421B29, 0xFF693144, 0xFFFFCD66, 0xFFFF8586, 0xFF8DE5DF},
@@ -105,11 +110,11 @@ public class MainActivity extends Activity {
             {0xFF202831, 0xFF34434A, 0xFFB5EE74, 0xFFFF9490, 0xFFE8D88A},
             {0xFF202548, 0xFF353D69, 0xFF9CE1FF, 0xFFFF8FB4, 0xFFCCB2FF},
             {0xFF33253A, 0xFF55445D, 0xFFFFBE74, 0xFFFF8F91, 0xFF88DDF5},
-            {0xFF382538, 0xFF60405A, 0xFFFFA7AC, 0xFFFFD2A2, 0xFFFFDEB4},
-            {0xFF152D28, 0xFF315143, 0xFF94E1AC, 0xFFFFA4A0, 0xFFE3D39A},
+            {0xFF442636, 0xFF724158, 0xFFFFA0A7, 0xFFFFD2A2, 0xFFFFE1C1},
+            {0xFF142E24, 0xFF345642, 0xFF84DCA4, 0xFFFFB89A, 0xFFE5D1A4},
             {0xFF172A50, 0xFF2D4672, 0xFFFFCE75, 0xFFFF9B9B, 0xFF98C5FF},
-            {0xFF33243C, 0xFF5D365D, 0xFFFF91BF, 0xFFFFA199, 0xFFD7B0F2},
-            {0xFF372B25, 0xFF65503C, 0xFFFFB46B, 0xFFFF8F8E, 0xFFCEF087},
+            {0xFF382038, 0xFF663052, 0xFFFF75B5, 0xFFFFA199, 0xFFD7B0F2},
+            {0xFF3D2918, 0xFF714B25, 0xFFFFA63E, 0xFFFF8F8E, 0xFFBDE85A},
             {0xFF392D4E, 0xFF6B527A, 0xFFFFBAE5, 0xFFFF91BB, 0xFFFFDC93},
             {0xFF172E29, 0xFF315746, 0xFFAEF76A, 0xFFFFA482, 0xFFD7F67A},
             {0xFF101B3B, 0xFF263458, 0xFFA8C8FF, 0xFFFF96D7, 0xFFACFFF1},
@@ -118,6 +123,15 @@ public class MainActivity extends Activity {
             {0xFF1D3345, 0xFF39596D, 0xFFB4EFFF, 0xFFFFA8AD, 0xFFE4F9FF},
             {0xFF2D3024, 0xFF535D3C, 0xFFC0DF86, 0xFFFFA789, 0xFFE8D596},
             {0xFF1A2143, 0xFF333B6D, 0xFFB9B8FF, 0xFFFFA3B6, 0xFFFFDF8A}
+    };
+    private static final int[] THEME_BACKDROP_IDS = {
+            R.drawable.theme_00, R.drawable.theme_01, R.drawable.theme_02, R.drawable.theme_03,
+            R.drawable.theme_04, R.drawable.theme_05, R.drawable.theme_06, R.drawable.theme_07,
+            R.drawable.theme_08, R.drawable.theme_09, R.drawable.theme_10, R.drawable.theme_11,
+            R.drawable.theme_12, R.drawable.theme_13, R.drawable.theme_14, R.drawable.theme_15,
+            R.drawable.theme_16, R.drawable.theme_17, R.drawable.theme_18, R.drawable.theme_19,
+            R.drawable.space_nebula, R.drawable.theme_21, R.drawable.theme_22, R.drawable.theme_23,
+            R.drawable.theme_24, R.drawable.theme_25
     };
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
@@ -152,6 +166,7 @@ public class MainActivity extends Activity {
     private final ArrayList<Photo> photos = new ArrayList<>();
     private final HashSet<Long> duplicates = new HashSet<>();
     private final ArrayList<TrashEntry> trashEntries = new ArrayList<>();
+    private final ArrayList<TrashEntry> evictionQueue = new ArrayList<>();
     private Set<String> reviewed = new HashSet<>();
     private Set<String> rewarded = new HashSet<>();
     private Set<String> keptIds = new HashSet<>();
@@ -167,6 +182,25 @@ public class MainActivity extends Activity {
     private int themeChoice, musicVolume;
     private AudioTrack musicTrack;
     private Bitmap spaceBackdrop;
+    private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
+    private Bitmap candySprites;
+    private SensorManager sensorManager;
+    private Sensor gravitySensor;
+    private TextureBackdrop activeBackdrop;
+    private float gravityX = 0, gravityY = 1;
+    private final SensorEventListener tiltListener = new SensorEventListener() {
+        @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
+        @Override public void onSensorChanged(SensorEvent event) {
+            if (activeBackdrop == null || themeChoice != 18) return;
+            int rotation = getWindowManager().getDefaultDisplay().getRotation();
+            float x = event.values[0], y = event.values[1];
+            if (rotation == android.view.Surface.ROTATION_90) { float t = x; x = -y; y = t; }
+            else if (rotation == android.view.Surface.ROTATION_270) { float t = x; x = y; y = -t; }
+            else if (rotation == android.view.Surface.ROTATION_180) { x = -x; y = -y; }
+            gravityX = Math.max(-1, Math.min(1, x / 7f));
+            gravityY = Math.max(-1, Math.min(1, -y / 7f));
+        }
+    };
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private long pendingTrash = -1;
     private long pendingRestore = -1;
@@ -176,6 +210,8 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        if (sensorManager != null) gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
         adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
@@ -202,6 +238,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (gravitySensor != null) sensorManager.registerListener(tiltListener, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
         if (musicEnabled) updateMusic();
         if (root != null) {
             loadTrashEntries();
@@ -211,12 +248,15 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        if (sensorManager != null) sensorManager.unregisterListener(tiltListener);
         stopMusic();
         super.onPause();
     }
 
     @Override public void onDestroy() {
         stopMusic();
+        for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+        if (candySprites != null && !candySprites.isRecycled()) candySprites.recycle();
         generation++;
         io.shutdownNow();
         duplicateWorker.shutdownNow();
@@ -226,6 +266,9 @@ public class MainActivity extends Activity {
     private void applyTheme() {
         if (themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
                 (!adminMode && themeChoice >= 3 && xp / 500 + 1 < themeChoice - 1)) themeChoice = 0;
+        for (int i = 0; i < themeBackdrops.length; i++) if (i != themeChoice && themeBackdrops[i] != null) {
+            themeBackdrops[i].recycle(); themeBackdrops[i] = null;
+        }
         int[] palette = THEME_COLORS[themeChoice];
         BG = palette[0]; PANEL = palette[1]; GREEN = palette[2]; RED = palette[3]; GOLD = palette[4];
         INK = Color.rgb(237, 248, 249); MUTED = Color.rgb(170, 193, 205);
@@ -342,7 +385,8 @@ public class MainActivity extends Activity {
 
     private void render() {
         host = new FrameLayout(this);
-        host.addView(new TextureBackdrop(), new FrameLayout.LayoutParams(-1, -1));
+        activeBackdrop = new TextureBackdrop();
+        host.addView(activeBackdrop, new FrameLayout.LayoutParams(-1, -1));
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(20), dp(22), dp(16));
@@ -390,7 +434,7 @@ public class MainActivity extends Activity {
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         TextView gear = new TextView(this); gear.setText("⚙"); gear.setTextSize(28); gear.setTextColor(INK);
         gear.setGravity(Gravity.CENTER); gear.setContentDescription("Options and sound settings");
-        gear.setBackground(rounded(PANEL, 16)); top.addView(gear, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        gear.setBackground(themeButton(PANEL, 16)); top.addView(gear, new LinearLayout.LayoutParams(dp(52), dp(52)));
         gear.setOnClickListener(v -> { showingSettings = true; render(); });
         label("Your photos", 28, INK, true); spacer(13);
         LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
@@ -437,7 +481,7 @@ public class MainActivity extends Activity {
             int year = entry.getKey(); int[] count = entry.getValue();
             tile(list, Integer.toString(year), count[0] + " photos  •  " + count[1] + " to review", () -> { selectedYear = year; render(); });
         }
-        button(root, "Recently trashed  ·  " + trashEntries.size() + "/20", Color.rgb(62, 72, 91), Color.rgb(255, 240, 213), () -> { showingTrash = true; render(); });
+        button(root, "Recently trashed  ·  " + trashEntries.size() + "/20", PANEL, GOLD, () -> { showingTrash = true; render(); });
     }
 
     private void levelPanel() {
@@ -460,7 +504,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams pointsLp = new LinearLayout.LayoutParams(-1, -2); pointsLp.topMargin = dp(12); box.addView(points, pointsLp);
         FrameLayout bar = new FrameLayout(this);
         LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, dp(12)); barLp.topMargin = dp(11); box.addView(bar, barLp);
-        View track = new View(this); track.setBackground(rounded(Color.rgb(18, 39, 56), 8)); bar.addView(track, new FrameLayout.LayoutParams(-1, -1));
+        View track = new View(this); track.setBackground(rounded(BG, 8)); bar.addView(track, new FrameLayout.LayoutParams(-1, -1));
         View fill = new View(this); fill.setBackground(rounded(GREEN, 8)); bar.addView(fill, new FrameLayout.LayoutParams(0, -1));
         bar.post(() -> { FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) fill.getLayoutParams();
             lp.width = Math.max(dp(3), bar.getWidth() * (xp % 500) / 500); fill.setLayoutParams(lp); });
@@ -615,7 +659,7 @@ public class MainActivity extends Activity {
             row.setPadding(dp(10), dp(10), dp(10), dp(10)); row.setBackground(rounded(PANEL, 20));
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(100)); rowLp.bottomMargin = dp(10); list.addView(row, rowLp);
             ImageView thumbnail = new ImageView(this); thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            thumbnail.setBackground(rounded(Color.rgb(51, 96, 107), 12)); row.addView(thumbnail, new LinearLayout.LayoutParams(dp(80), dp(80)));
+            thumbnail.setBackground(rounded(PANEL, 12)); row.addView(thumbnail, new LinearLayout.LayoutParams(dp(80), dp(80)));
             loadPreview(entry.id, entry.uri, thumbnail);
             LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL);
             info.setPadding(dp(12), 0, dp(4), 0); row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
@@ -626,7 +670,7 @@ public class MainActivity extends Activity {
             days.setText(Math.max(1, (timeLeft + 86_399_999) / 86_400_000) + " days left");
             days.setTextColor(MUTED); days.setTextSize(12); info.addView(days);
             Button restore = new Button(this); restore.setText("Restore"); restore.setAllCaps(false);
-            restore.setTextColor(GREEN); restore.setTextSize(13); restore.setBackground(rounded(Color.rgb(42, 91, 94), 12));
+            restore.setTextColor(INK); restore.setTextSize(13); restore.setBackground(themeButton(PANEL, 12));
             restore.setOnClickListener(v -> restore(entry)); row.addView(restore, new LinearLayout.LayoutParams(dp(90), dp(46)));
         }
     }
@@ -638,7 +682,7 @@ public class MainActivity extends Activity {
         for (Photo p : month) if (!reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
         String monthName = new SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(new Date(selectedYear - 1900, Integer.parseInt(selectedMonth.substring(5)) - 1, 1));
         heading(monthName, remaining + " of " + month.size() + " left to review");
-        View track = new View(this); track.setBackground(rounded(Color.rgb(35, 56, 77), 4));
+        View track = new View(this); track.setBackground(rounded(PANEL, 4));
         root.addView(track, new LinearLayout.LayoutParams(-1, dp(5)));
         View fill = new View(this); fill.setBackground(rounded(GREEN, 4));
         FrameLayout progress = new FrameLayout(this);
@@ -671,7 +715,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, 0, 1);
         cardParams.bottomMargin = dp(20); root.addView(stage, cardParams);
         FrameLayout card = new FrameLayout(this);
-        card.setBackground(rounded(Color.rgb(29, 50, 68), 25)); card.setElevation(dp(8));
+        card.setBackground(rounded(PANEL, 25)); card.setElevation(dp(8));
         card.setClipToOutline(true);
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
         ImageView backdrop = new ImageView(this); backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -894,25 +938,56 @@ public class MainActivity extends Activity {
 
     private void loadTrashEntries() {
         trashEntries.clear();
+        evictionQueue.clear();
         try {
             JSONArray array = new JSONArray(getPreferences(MODE_PRIVATE).getString("trash_entries", "[]"));
             for (int i = 0; i < array.length(); i++) {
                 JSONObject item = array.getJSONObject(i);
                 trashEntries.add(new TrashEntry(item.getLong("id"), item.getLong("at"), item.getLong("date")));
             }
+            JSONArray evicted = new JSONArray(getPreferences(MODE_PRIVATE).getString("trash_evictions", "[]"));
+            for (int i = 0; i < evicted.length(); i++) {
+                JSONObject item = evicted.getJSONObject(i);
+                evictionQueue.add(new TrashEntry(item.getLong("id"), item.getLong("at"), item.getLong("date")));
+            }
         } catch (Exception ignored) { }
+        trimRecoveryWindow();
+        saveTrashEntries();
+    }
+
+    private void trimRecoveryWindow() {
+        trashEntries.sort((a, b) -> Long.compare(b.trashedAt, a.trashedAt));
+        HashSet<Long> seen = new HashSet<>();
+        for (int i = 0; i < trashEntries.size();) {
+            if (!seen.add(trashEntries.get(i).id)) trashEntries.remove(i); else i++;
+        }
+        long now = System.currentTimeMillis();
+        for (int i = trashEntries.size() - 1; i >= 0; i--) {
+            TrashEntry entry = trashEntries.get(i);
+            if (i >= TRASH_LIMIT || now - entry.trashedAt >= SEVEN_DAYS) {
+                if (evictionQueue.stream().noneMatch(e -> e.id == entry.id)) evictionQueue.add(entry);
+                trashEntries.remove(i);
+            }
+        }
     }
 
     private void saveTrashEntries() {
         JSONArray array = new JSONArray();
+        JSONArray evicted = new JSONArray();
         try {
             for (TrashEntry entry : trashEntries) {
                 JSONObject item = new JSONObject();
                 item.put("id", entry.id); item.put("at", entry.trashedAt); item.put("date", entry.timestamp);
                 array.put(item);
             }
+            for (TrashEntry entry : evictionQueue) {
+                JSONObject item = new JSONObject();
+                item.put("id", entry.id); item.put("at", entry.trashedAt); item.put("date", entry.timestamp);
+                evicted.put(item);
+            }
         } catch (Exception ignored) { }
-        getPreferences(MODE_PRIVATE).edit().putString("trash_entries", array.toString()).commit();
+        getPreferences(MODE_PRIVATE).edit().putString("trash_entries", array.toString())
+                .putString("trash_evictions", evicted.toString()).commit();
     }
 
     private void scheduleCleanup() {
@@ -925,12 +1000,8 @@ public class MainActivity extends Activity {
 
     private void cleanupTrash() {
         if (deletingOld || pendingTrash != -1 || pendingRestore != -1 || !canManage()) return;
-        long now = System.currentTimeMillis();
-        ArrayList<TrashEntry> expired = new ArrayList<>();
-        for (int i = 0; i < trashEntries.size(); i++) {
-            TrashEntry entry = trashEntries.get(i);
-            if (now - entry.trashedAt >= SEVEN_DAYS || i >= TRASH_LIMIT) expired.add(entry);
-        }
+        trimRecoveryWindow(); saveTrashEntries();
+        ArrayList<TrashEntry> expired = new ArrayList<>(evictionQueue);
         if (expired.isEmpty()) return;
         deletingOld = true;
         io.execute(() -> {
@@ -943,7 +1014,7 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 deletingOld = false;
                 if (deleted.isEmpty() || isDestroyed()) return;
-                trashEntries.removeIf(entry -> deleted.contains(entry.id));
+                evictionQueue.removeIf(entry -> deleted.contains(entry.id));
                 for (Long id : deleted) previews.remove(id);
                 saveTrashEntries(); render();
             });
@@ -962,6 +1033,7 @@ public class MainActivity extends Activity {
                 for (Photo p : photos) if (p.id == id) { moved = p; break; }
                 if (moved != null) {
                     trashEntries.add(0, new TrashEntry(id, System.currentTimeMillis(), moved.timestamp));
+                    trimRecoveryWindow();
                     saveTrashEntries();
                 }
                 photos.removeIf(p -> p.id == id);
@@ -992,19 +1064,24 @@ public class MainActivity extends Activity {
                     android.content.SharedPreferences prefs = getSharedPreferences("MainActivity", MODE_PRIVATE);
                     try {
                         JSONArray array = new JSONArray(prefs.getString("trash_entries", "[]"));
+                        JSONArray queued = new JSONArray(prefs.getString("trash_evictions", "[]"));
                         JSONArray remaining = new JSONArray();
+                        JSONArray retry = new JSONArray();
                         long now = System.currentTimeMillis();
                         for (int i = 0; i < array.length(); i++) {
                             JSONObject item = array.getJSONObject(i);
                             boolean expired = now - item.getLong("at") >= SEVEN_DAYS || i >= TRASH_LIMIT;
-                            if (expired) {
-                                Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, item.getLong("id"));
-                                try {
-                                    if (getContentResolver().delete(uri, null, null) <= 0) remaining.put(item);
-                                } catch (Exception e) { remaining.put(item); }
-                            } else remaining.put(item);
+                            if (expired) queued.put(item); else remaining.put(item);
                         }
-                        prefs.edit().putString("trash_entries", remaining.toString()).commit();
+                        for (int i = 0; i < queued.length(); i++) {
+                            JSONObject item = queued.getJSONObject(i);
+                            Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, item.getLong("id"));
+                            try {
+                                if (getContentResolver().delete(uri, null, null) <= 0) retry.put(item);
+                            } catch (Exception e) { retry.put(item); }
+                        }
+                        prefs.edit().putString("trash_entries", remaining.toString())
+                                .putString("trash_evictions", retry.toString()).commit();
                     } catch (Exception ignored) { }
                 }
                 jobFinished(params, false);
@@ -1103,71 +1180,132 @@ public class MainActivity extends Activity {
     private void saveReviewed() { getPreferences(MODE_PRIVATE).edit().putStringSet("reviewed", new HashSet<>(reviewed)).apply(); }
     private class TextureBackdrop extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float[] sweetX = new float[18], sweetY = new float[18];
+        private final float[] speedX = new float[18], speedY = new float[18];
+        private final float[] spin = new float[18];
+        private long lastFrame;
+        private boolean initialized;
         TextureBackdrop() { super(MainActivity.this); }
         @Override protected void onDraw(Canvas canvas) {
             float w = getWidth(), h = getHeight();
-            paint.setShader(new LinearGradient(0, 0, w, h,
-                    new int[]{BG, PANEL, BG},
-                    null, Shader.TileMode.CLAMP));
-            canvas.drawRect(0, 0, w, h, paint); paint.setShader(null);
-            if (themeChoice == 20) {
-                if (spaceBackdrop == null) spaceBackdrop = BitmapFactory.decodeResource(getResources(), R.drawable.space_nebula);
-                if (spaceBackdrop != null) {
-                    paint.setAlpha(185);
-                    canvas.drawBitmap(spaceBackdrop, new Rect(0, 0, spaceBackdrop.getWidth(), spaceBackdrop.getHeight()),
-                            new RectF(0, 0, w, h), paint);
-                    paint.setAlpha(255);
-                }
-                return;
+            if (w <= 0 || h <= 0) return;
+            paint.setColor(BG); canvas.drawColor(BG);
+            if (themeBackdrops[themeChoice] == null) {
+                BitmapFactory.Options opts = new BitmapFactory.Options(); opts.inScaled = false;
+                themeBackdrops[themeChoice] = BitmapFactory.decodeResource(getResources(), THEME_BACKDROP_IDS[themeChoice], opts);
             }
-            int style = themeChoice < 18 ? themeChoice % 5 : themeChoice - 17;
+            Bitmap art = themeBackdrops[themeChoice];
+            if (art != null) {
+                float scale = Math.max(w / art.getWidth(), h / art.getHeight());
+                float dw = art.getWidth() * scale, dh = art.getHeight() * scale;
+                canvas.drawBitmap(art, null, new RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), paint);
+            }
+            canvas.drawColor(0x38000000);
             if (themeChoice == 18) {
-                paint.setStrokeWidth(dp(13));
-                for (int i = -6; i < 16; i++) {
-                    paint.setColor(i % 2 == 0 ? 0x23FFB8D9 : 0x2699E5F2);
-                    canvas.drawLine(i * dp(90), 0, i * dp(90) + h * .37f, h, paint);
+                canvas.drawColor(0x500D0922);
+                drawCandies(canvas, w, h);
+            } else {
+                // A gentle shimmer keeps still artwork alive without distracting from photos.
+                long tick = android.os.SystemClock.uptimeMillis();
+                paint.setColor(Color.argb(22, Color.red(GREEN), Color.green(GREEN), Color.blue(GREEN)));
+                for (int i = 0; i < 12; i++) {
+                    float x = ((i * 173) % 997) / 997f * w;
+                    float y = (((i * 311) % 991) / 991f * h + tick * (i % 3 + 1) * .004f) % h;
+                    canvas.drawCircle(x, y, dp(1 + i % 3), paint);
                 }
-            } else if (themeChoice == 19) {
-                paint.setColor(0x2841FF84);
-                for (int i = 0; i < 8; i++) {
-                    float x = w * ((i * 37 % 83) / 83f);
-                    canvas.drawCircle(x, h * ((i * 29 % 101) / 101f), dp(22 + i * 6), paint);
-                }
-            } else if (themeChoice == 22) {
-                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2));
-                for (int i = 0; i < 14; i++) {
-                    paint.setColor(0x2A9CEBFF);
-                    Path wave = new Path(); float y = h * i / 13f;
-                    wave.moveTo(0, y);
-                    for (int j = 0; j < 6; j++) wave.quadTo(w * (j + .5f) / 6f, y - dp(18), w * (j + 1f) / 6f, y);
-                    canvas.drawPath(wave, paint);
-                }
-                paint.setStyle(Paint.Style.FILL);
+                if (isAttachedToWindow()) postInvalidateDelayed(65);
             }
-            int count = themeChoice >= 18 ? 74 : 128;
-            for (int i = 0; i < count; i++) {
-                float x = ((i * 137L + 73) % 1000) / 1000f * w;
-                float y = ((i * 263L + 117) % 1000) / 1000f * h;
-                float size = dp(2 + i % 4);
-                paint.setColor(Color.argb(35 + i % 4 * 12, Color.red(GREEN), Color.green(GREEN), Color.blue(GREEN)));
-                if (style == 5 || style == 1) canvas.drawCircle(x, y, size * 1.4f, paint);
-                else if (style == 6) {
-                    Path crystal = new Path(); crystal.moveTo(x, y - size * 2); crystal.lineTo(x + size, y);
-                    crystal.lineTo(x, y + size * 2); crystal.lineTo(x - size, y); crystal.close(); canvas.drawPath(crystal, paint);
-                } else if (style == 8) {
-                    canvas.drawLine(x, y, x + size, y + size * 3, paint);
-                } else if (style == 7) {
-                    canvas.drawOval(x - size, y - size * 2, x + size, y + size * 2, paint);
-                } else if (style == 4) {
-                    canvas.drawOval(x - size, y - size * 2, x + size, y + size, paint);
-                } else canvas.drawCircle(x, y, dp(0.9f + i % 3 * .4f), paint);
+        }
+        private void drawCandies(Canvas canvas, float w, float h) {
+            if (candySprites == null) candySprites = BitmapFactory.decodeResource(getResources(), R.drawable.candy_sprites);
+            if (candySprites == null) return;
+            if (!initialized) {
+                for (int i = 0; i < sweetX.length; i++) {
+                    sweetX[i] = w * (.1f + ((i * 47) % 83) / 100f);
+                    sweetY[i] = h * (((i * 31) % 97) / 100f);
+                    spin[i] = i * 27;
+                }
+                initialized = true;
             }
+            long now = android.os.SystemClock.uptimeMillis();
+            float dt = lastFrame == 0 ? .016f : Math.min(.04f, (now - lastFrame) / 1000f);
+            lastFrame = now;
+            float gx = gravityX, gy = gravityY;
+            if (Math.abs(gx) + Math.abs(gy) < .12f) gy = .35f;
+            float radius = dp(23);
+            for (int i = 0; i < sweetX.length; i++) {
+                speedX[i] = (speedX[i] + gx * dp(540) * dt) * .992f;
+                speedY[i] = (speedY[i] + gy * dp(540) * dt) * .992f;
+                sweetX[i] += speedX[i] * dt;
+                sweetY[i] += speedY[i] * dt;
+                if (sweetX[i] < radius) { sweetX[i] = radius; speedX[i] *= -.28f; }
+                if (sweetX[i] > w - radius) { sweetX[i] = w - radius; speedX[i] *= -.28f; }
+                if (sweetY[i] < radius) { sweetY[i] = radius; speedY[i] *= -.28f; }
+                if (sweetY[i] > h - radius) { sweetY[i] = h - radius; speedY[i] *= -.28f; }
+                for (int j = 0; j < i; j++) {
+                    float dx = sweetX[i] - sweetX[j], dy = sweetY[i] - sweetY[j];
+                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 1 && dist < radius * 1.65f) {
+                        float shift = (radius * 1.65f - dist) * .5f;
+                        sweetX[i] += dx / dist * shift; sweetY[i] += dy / dist * shift;
+                        sweetX[j] -= dx / dist * shift; sweetY[j] -= dy / dist * shift;
+                        speedX[i] *= .85f; speedY[i] *= .85f;
+                    }
+                }
+                spin[i] += speedX[i] * dt * .08f;
+                int sprite = i % 8, tileW = candySprites.getWidth() / 4, tileH = candySprites.getHeight() / 2;
+                Rect source = new Rect(sprite % 4 * tileW, sprite / 4 * tileH,
+                        (sprite % 4 + 1) * tileW, (sprite / 4 + 1) * tileH);
+                canvas.save(); canvas.rotate(spin[i], sweetX[i], sweetY[i]);
+                paint.setAlpha(210);
+                canvas.drawBitmap(candySprites, source, new RectF(sweetX[i] - radius, sweetY[i] - radius,
+                        sweetX[i] + radius, sweetY[i] + radius), paint);
+                paint.setAlpha(255); canvas.restore();
+            }
+            if (isAttachedToWindow()) postInvalidateDelayed(32);
         }
     }
     private int dp(float n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
     private GradientDrawable rounded(int color, int radius) {
-        GradientDrawable bg = new GradientDrawable(); bg.setColor(color); bg.setCornerRadius(dp(radius));
-        bg.setStroke(dp(1), Color.argb(38, 139, 200, 207)); return bg;
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{blend(color, Color.WHITE, .09f), color, blend(color, BG, .14f)});
+        bg.setCornerRadius(dp(radius));
+        bg.setStroke(dp(1), blend(GOLD, color, .68f)); return bg;
+    }
+    private int blend(int a, int b, float amount) {
+        return Color.rgb((int)(Color.red(a) * (1 - amount) + Color.red(b) * amount),
+                (int)(Color.green(a) * (1 - amount) + Color.green(b) * amount),
+                (int)(Color.blue(a) * (1 - amount) + Color.blue(b) * amount));
+    }
+    private Drawable themeButton(int color, int radius) {
+        final int selected = themeChoice;
+        return new Drawable() {
+            final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            @Override public void draw(Canvas canvas) {
+                android.graphics.Rect bounds = getBounds();
+                RectF box = new RectF(bounds);
+                Path clip = new Path(); clip.addRoundRect(box, dp(radius), dp(radius), Path.Direction.CW);
+                canvas.save(); canvas.clipPath(clip);
+                p.setColor(color); canvas.drawRect(box, p);
+                p.setShader(new LinearGradient(box.left, box.top, box.right, box.bottom,
+                        new int[]{blend(color, Color.WHITE, .20f), color, blend(color, BG, .16f)},
+                        null, Shader.TileMode.CLAMP));
+                canvas.drawRect(box, p); p.setShader(null);
+                Bitmap art = themeBackdrops[selected];
+                if (art != null) {
+                    int left = art.getWidth() / 5, top = art.getHeight() / 3;
+                    p.setAlpha(54);
+                    canvas.drawBitmap(art, new Rect(left, top, art.getWidth() - left, top + art.getHeight() / 3), box, p);
+                    p.setAlpha(255);
+                }
+                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(1.3f));
+                p.setColor(blend(GOLD, color, .45f)); canvas.drawRoundRect(box, dp(radius), dp(radius), p);
+                p.setStyle(Paint.Style.FILL); canvas.restore();
+            }
+            @Override public void setAlpha(int alpha) { p.setAlpha(alpha); invalidateSelf(); }
+            @Override public void setColorFilter(android.graphics.ColorFilter filter) { p.setColorFilter(filter); invalidateSelf(); }
+            @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        };
     }
     private void spacer(int height) { View gap = new View(this); root.addView(gap, new LinearLayout.LayoutParams(1, dp(height))); }
     private TextView label(String value, int size, int color, boolean bold) {
@@ -1187,7 +1325,7 @@ public class MainActivity extends Activity {
     }
     private Button button(LinearLayout parent, String value, int bg, int color, Runnable action) {
         Button button = new Button(this); button.setText(value); button.setAllCaps(false); button.setTextSize(16);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(rounded(bg, 18));
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(themeButton(bg, 18));
         button.setOnClickListener(v -> action.run());
         parent.addView(button, new LinearLayout.LayoutParams(-1, dp(55))); return button;
     }
@@ -1196,7 +1334,7 @@ public class MainActivity extends Activity {
         back.setGravity(Gravity.CENTER_VERTICAL);
         back.setPadding(dp(18), 0, dp(18), 0);
         back.setMinWidth(dp(150)); back.setHeight(dp(56));
-        back.setBackground(rounded(Color.rgb(41, 64, 84), 18));
+        back.setBackground(themeButton(PANEL, 18));
         back.setOnClickListener(v -> action.run());
         spacer(15);
     }
