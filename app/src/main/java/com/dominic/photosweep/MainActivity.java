@@ -385,8 +385,9 @@ public class MainActivity extends Activity {
         progress.addView(fill, progressFill);
         LinearLayout.LayoutParams progressLayout = new LinearLayout.LayoutParams(-1, dp(5));
         progressLayout.bottomMargin = dp(17); root.addView(progress, progressLayout);
+        final int remainingCount = remaining;
         progress.post(() -> { FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) fill.getLayoutParams();
-            lp.width = (int) (progress.getWidth() * (month.size() == 0 ? 0 : (month.size() - remaining) / (float) month.size()));
+            lp.width = (int) (progress.getWidth() * (month.size() == 0 ? 0 : (month.size() - remainingCount) / (float) month.size()));
             fill.setLayoutParams(lp); });
         if (current == null) {
             spacer(65); label("All caught up ✨", 28, INK, true); spacer(12);
