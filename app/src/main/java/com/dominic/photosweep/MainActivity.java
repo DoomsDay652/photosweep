@@ -206,9 +206,9 @@ public class MainActivity extends Activity {
             if (rotation == android.view.Surface.ROTATION_90) { float t = x; x = -y; y = t; }
             else if (rotation == android.view.Surface.ROTATION_270) { float t = x; x = y; y = -t; }
             else if (rotation == android.view.Surface.ROTATION_180) { x = -x; y = -y; }
-            // Sensor acceleration points opposite the direction a loose object falls.
+            // The sensor's Y axis points up the device; Canvas Y increases down.
             gravityX = Math.max(-1, Math.min(1, -x / 7f));
-            gravityY = Math.max(-1, Math.min(1, y / 7f));
+            gravityY = Math.max(-1, Math.min(1, .35f - y / 7f));
         }
     };
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
@@ -401,6 +401,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(20), dp(22), dp(16));
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        if (themeChoice >= 19) host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
         setContentView(host);
         if (!hasAccess()) { intro(); return; }
         if (loading) { heading("Photo Sweep", "Gathering your photos…"); return; }
@@ -1213,11 +1214,13 @@ public class MainActivity extends Activity {
             if (themeChoice == 18) {
                 canvas.drawColor(0x500D0922);
                 drawCandies(canvas, w, h);
-            } else {
+            } else if (themeChoice < 19) {
                 drawThemeMotion(canvas, w, h, android.os.SystemClock.uptimeMillis() / 1000f);
                 if (isAttachedToWindow()) postInvalidateDelayed(65);
             }
         }
+        // Drawn above the cards, so the world effects remain visible in every screen.
+        // This View does not consume touches; swipes and buttons still reach the content.
         private float loop(float value, float span) {
             return (value % span + span) % span;
         }
@@ -1230,8 +1233,8 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < 15; i++) {
                     float x = w * (.07f + ((i * 67) % 89) / 100f);
                     float y = h - loop(time * (18 + i % 4 * 9) * unit + i * h / 13, h + 80 * unit);
-                    paint.setColor(0x668BFF51); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(1.6f * unit);
-                    canvas.drawCircle(x + (float)Math.sin(time + i) * 9 * unit, y, (5 + i % 5 * 3) * unit, paint);
+                    paint.setColor(0xB38BFF51); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2.5f * unit);
+                    canvas.drawCircle(x + (float)Math.sin(time + i) * 9 * unit, y, (8 + i % 5 * 4) * unit, paint);
                 }
                 paint.setStyle(Paint.Style.FILL); paint.setColor(0x88ABFC4E);
                 for (int i = 0; i < 4; i++) canvas.drawRoundRect(new RectF(w * (i + 1) / 5, 0,
@@ -1239,8 +1242,8 @@ public class MainActivity extends Activity {
             } else if (theme == 20) { // Space: star twinkle and occasional shooting stars.
                 for (int i = 0; i < 30; i++) {
                     float x = ((i * 173) % 991) / 991f * w, y = ((i * 311) % 997) / 997f * h;
-                    paint.setColor(Color.argb(30 + (int)(65 * (.5 + .5 * Math.sin(time * 2 + i))), 195, 228, 255));
-                    canvas.drawCircle(x, y, (i % 5 == 0 ? 2.2f : 1f) * unit, paint);
+                    paint.setColor(Color.argb(75 + (int)(115 * (.5 + .5 * Math.sin(time * 2 + i))), 195, 228, 255));
+                    canvas.drawCircle(x, y, (i % 5 == 0 ? 3.5f : 1.8f) * unit, paint);
                 }
                 float flight = loop(time * 125 * unit, w + h);
                 paint.setColor(0x9CB9E7FF); paint.setStrokeWidth(2 * unit);
@@ -1249,24 +1252,24 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < 24; i++) {
                     float x = w * ((i * 59 % 97) / 97f) + (float)Math.sin(time * 2 + i) * 11 * unit;
                     float y = h - loop(time * (22 + i % 6 * 9) * unit + i * h / 19, h + 30 * unit);
-                    paint.setColor(i % 3 == 0 ? 0x99FFDC62 : 0x88FF7950);
-                    canvas.drawCircle(x, y, (1.5f + i % 4) * unit, paint);
+                    paint.setColor(i % 3 == 0 ? 0xCCFFDC62 : 0xBBFF7950);
+                    canvas.drawCircle(x, y, (3 + i % 5) * unit, paint);
                 }
             } else if (theme == 22) { // Water: spreading ripples and slow currents.
-                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(1.5f * unit);
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3 * unit);
                 for (int i = 0; i < 9; i++) {
                     float x = w * ((i * 37 % 93) / 93f), y = h * ((i * 29 % 89) / 89f);
                     float ripple = loop(time * 22 * unit + i * 17 * unit, 75 * unit);
-                    paint.setColor(Color.argb((int)(85 * (1 - ripple / (75 * unit))), 138, 231, 255));
+                    paint.setColor(Color.argb((int)(180 * (1 - ripple / (75 * unit))), 138, 231, 255));
                     canvas.drawOval(x - ripple, y - ripple * .32f, x + ripple, y + ripple * .32f, paint);
                 }
                 paint.setStyle(Paint.Style.FILL);
             } else if (theme == 23) { // Ice: gently falling six armed snow crystals.
-                paint.setColor(0x99DDF6FF); paint.setStrokeWidth(1.4f * unit);
+                paint.setColor(0xDDDDF6FF); paint.setStrokeWidth(2.4f * unit);
                 for (int i = 0; i < 16; i++) {
                     float x = w * ((i * 47 % 97) / 97f) + (float)Math.sin(time + i) * 9 * unit;
                     float y = loop(time * (13 + i % 4 * 5) * unit + i * h / 14, h + 30 * unit) - 15 * unit;
-                    float r = (3 + i % 4) * unit;
+                    float r = (6 + i % 5) * unit;
                     for (int a = 0; a < 3; a++) {
                         double angle = a * Math.PI / 3;
                         float dx = (float)Math.cos(angle) * r, dy = (float)Math.sin(angle) * r;
@@ -1278,15 +1281,15 @@ public class MainActivity extends Activity {
                     float x = loop(i * w / 12 + time * (10 + i % 3 * 6) * unit, w + 30 * unit) - 15 * unit;
                     float y = loop(i * h / 14 + time * 13 * unit, h + 30 * unit) - 15 * unit;
                     canvas.save(); canvas.rotate((float)Math.sin(time + i) * 45, x, y);
-                    paint.setColor(i % 2 == 0 ? 0x8898CD65 : 0x99D8BB77);
-                    canvas.drawOval(x - 5 * unit, y - 2 * unit, x + 5 * unit, y + 2 * unit, paint);
+                    paint.setColor(i % 2 == 0 ? 0xCC98CD65 : 0xCCD8BB77);
+                    canvas.drawOval(x - 10 * unit, y - 4 * unit, x + 10 * unit, y + 4 * unit, paint);
                     canvas.restore();
                 }
             } else if (theme == 25) { // Lightning: brief branching flashes, then darkness.
-                float flash = loop(time, 4.2f);
-                if (flash < .16f || (flash > .28f && flash < .36f)) {
-                    float x = w * (.3f + (int)(time / 4.2f) % 4 * .13f);
-                    paint.setColor(0xBBD7E6FF); paint.setStrokeWidth(2 * unit);
+                float flash = loop(time, 2.6f);
+                if (flash < .25f || (flash > .38f && flash < .52f)) {
+                    float x = w * (.3f + (int)(time / 2.6f) % 4 * .13f);
+                    paint.setColor(0xEED7E6FF); paint.setStrokeWidth(3 * unit);
                     for (int i = 0; i < 6; i++) {
                         float y = h * (i + 1) / 8;
                         float next = x + (i % 2 == 0 ? 24 : -34) * unit;
@@ -1398,6 +1401,15 @@ public class MainActivity extends Activity {
                 paint.setAlpha(255); canvas.restore();
             }
             if (isAttachedToWindow()) postInvalidateDelayed(32);
+        }
+    }
+    private class ThemeMotionOverlay extends View {
+        ThemeMotionOverlay() { super(MainActivity.this); setClickable(false); setFocusable(false); }
+        @Override protected void onDraw(Canvas canvas) {
+            if (activeBackdrop != null && themeChoice >= 19) {
+                activeBackdrop.drawThemeMotion(canvas, getWidth(), getHeight(), android.os.SystemClock.uptimeMillis() / 1000f);
+                if (isAttachedToWindow()) postInvalidateDelayed(50);
+            }
         }
     }
     private int dp(float n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
