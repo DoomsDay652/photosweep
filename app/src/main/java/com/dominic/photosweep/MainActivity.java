@@ -142,6 +142,17 @@ public class MainActivity extends Activity {
             R.drawable.space_nebula, R.drawable.theme_21, R.drawable.theme_22, R.drawable.theme_23,
             R.drawable.theme_24, R.drawable.theme_25
     };
+    private static final int[] THEME_FX_IDS = {
+            R.drawable.fx_nebula, R.drawable.fx_water, R.drawable.fx_cosmic,
+            R.drawable.fx_web_spider, R.drawable.fx_gold, R.drawable.fx_thunder,
+            R.drawable.fx_gamma, R.drawable.fx_shield, R.drawable.fx_cosmic,
+            R.drawable.fx_petal, R.drawable.fx_stealth, R.drawable.fx_nebula,
+            R.drawable.fx_solar, R.drawable.fx_petal, R.drawable.fx_leaf,
+            R.drawable.fx_gold, R.drawable.fx_petal, R.drawable.fx_solar,
+            R.drawable.fx_candy, R.drawable.fx_toxic, R.drawable.fx_shooting_star,
+            R.drawable.fx_flame, R.drawable.fx_water, R.drawable.fx_ice,
+            R.drawable.fx_leaf, R.drawable.fx_lightning
+    };
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
     private int BG = Color.rgb(15, 28, 47);
@@ -192,6 +203,10 @@ public class MainActivity extends Activity {
     private AudioTrack musicTrack;
     private Bitmap spaceBackdrop;
     private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
+    private final Bitmap[] themeEffects = new Bitmap[THEME_NAMES.length];
+    private final HashMap<String, Integer> scrollPositions = new HashMap<>();
+    private ScrollView activeScroll;
+    private String activeScrollPage;
     private Bitmap candySprites;
     private SensorManager sensorManager;
     private Sensor gravitySensor;
@@ -236,6 +251,17 @@ public class MainActivity extends Activity {
                 !getPreferences(MODE_PRIVATE).getStringSet("seen_swipe_overlays", Collections.emptySet()).isEmpty());
         statsExpanded = getPreferences(MODE_PRIVATE).getBoolean("stats_expanded", false);
         xp = getPreferences(MODE_PRIVATE).getInt("xp", 0);
+        if (state != null) {
+            selectedYear = state.getInt("selectedYear", -1);
+            selectedMonth = state.getString("selectedMonth");
+            reviewing = state.getBoolean("reviewing");
+            showingSettings = state.getBoolean("showingSettings");
+            showingTrash = state.getBoolean("showingTrash");
+            lastKept = state.getLong("lastKept", -1);
+            Bundle savedScroll = state.getBundle("scrollPositions");
+            if (savedScroll != null) for (String key : savedScroll.keySet())
+                scrollPositions.put(key, savedScroll.getInt(key));
+        }
         applyTheme();
         keptCount = keptIds.size();
         trashedCount = trashedIds.size();
@@ -266,11 +292,40 @@ public class MainActivity extends Activity {
     @Override public void onDestroy() {
         stopMusic();
         for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+        for (Bitmap bitmap : themeEffects) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         if (candySprites != null && !candySprites.isRecycled()) candySprites.recycle();
         generation++;
         io.shutdownNow();
         duplicateWorker.shutdownNow();
         super.onDestroy();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        rememberScroll();
+        state.putInt("selectedYear", selectedYear);
+        state.putString("selectedMonth", selectedMonth);
+        state.putBoolean("reviewing", reviewing);
+        state.putBoolean("showingSettings", showingSettings);
+        state.putBoolean("showingTrash", showingTrash);
+        state.putLong("lastKept", lastKept);
+        Bundle savedScroll = new Bundle();
+        for (Map.Entry<String, Integer> entry : scrollPositions.entrySet())
+            savedScroll.putInt(entry.getKey(), entry.getValue());
+        state.putBundle("scrollPositions", savedScroll);
+        super.onSaveInstanceState(state);
+    }
+
+    private void rememberScroll() {
+        if (activeScroll != null && activeScrollPage != null)
+            scrollPositions.put(activeScrollPage, activeScroll.getScrollY());
+    }
+
+    private void trackScroll(ScrollView scroll, String page) {
+        activeScroll = scroll;
+        activeScrollPage = page;
+        int position = scrollPositions.getOrDefault(page, 0);
+        scroll.post(() -> { if (activeScroll == scroll) scroll.scrollTo(0, position); });
+        scroll.setOnScrollChangeListener((view, x, y, oldX, oldY) -> scrollPositions.put(page, y));
     }
 
     private void applyTheme() {
@@ -394,6 +449,9 @@ public class MainActivity extends Activity {
     }
 
     private void render() {
+        rememberScroll();
+        activeScroll = null;
+        activeScrollPage = null;
         host = new FrameLayout(this);
         activeBackdrop = new TextureBackdrop();
         host.addView(activeBackdrop, new FrameLayout.LayoutParams(-1, -1));
@@ -401,7 +459,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(20), dp(22), dp(16));
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        if (themeChoice >= 19) host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
+        if (themeChoice != 18) host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
         setContentView(host);
         if (!hasAccess()) { intro(); return; }
         if (loading) { heading("Photo Sweep", "Gathering your photos…"); return; }
@@ -487,6 +545,7 @@ public class MainActivity extends Activity {
         if (years.isEmpty()) { label("No photos are available. Check your photo access.", 17, MUTED, false); }
         ScrollView scroll = new ScrollView(this);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        trackScroll(scroll, "years");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         for (Map.Entry<Integer, int[]> entry : years.entrySet()) {
             int year = entry.getKey(); int[] count = entry.getValue();
@@ -533,6 +592,7 @@ public class MainActivity extends Activity {
         back("Photo Sweep", () -> { showingSettings = false; render(); });
         heading("Options", "Make each sweep feel like yours");
         ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        trackScroll(scroll, "settings");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         sectionTitle(list, "TESTING");
         settingSwitch(list, "Admin mode", "Preview all themes without earning XP or reviewing photos", adminMode, value -> {
@@ -640,6 +700,7 @@ public class MainActivity extends Activity {
             counts[0]++; if (!reviewed.contains(Long.toString(p.id))) counts[1]++;
         }
         ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        trackScroll(scroll, "months:" + selectedYear);
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         for (Map.Entry<String, int[]> entry : months.entrySet()) {
             String month = entry.getKey(); int[] count = entry.getValue();
@@ -663,6 +724,7 @@ public class MainActivity extends Activity {
         }
         ScrollView scroll = new ScrollView(this);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        trackScroll(scroll, "trash");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         for (TrashEntry entry : new ArrayList<>(trashEntries)) {
             LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
@@ -1214,15 +1276,59 @@ public class MainActivity extends Activity {
             if (themeChoice == 18) {
                 canvas.drawColor(0x500D0922);
                 drawCandies(canvas, w, h);
-            } else if (themeChoice < 19) {
-                drawThemeMotion(canvas, w, h, android.os.SystemClock.uptimeMillis() / 1000f);
-                if (isAttachedToWindow()) postInvalidateDelayed(65);
             }
         }
         // Drawn above the cards, so the world effects remain visible in every screen.
         // This View does not consume touches; swipes and buttons still reach the content.
         private float loop(float value, float span) {
             return (value % span + span) % span;
+        }
+        private void drawGeneratedEffect(Canvas canvas, float w, float h, float time) {
+            int theme = themeChoice;
+            if (theme == 18) return; // Candy Land has its own eight-piece physics sprites.
+            if (themeEffects[theme] == null) {
+                BitmapFactory.Options opts = new BitmapFactory.Options(); opts.inScaled = false;
+                themeEffects[theme] = BitmapFactory.decodeResource(getResources(), THEME_FX_IDS[theme], opts);
+            }
+            Bitmap sprite = themeEffects[theme];
+            if (sprite == null) return;
+            float unit = dp(1);
+            if (theme == 3) {
+                // The transparent strand remains attached to the top as the spider lowers and climbs.
+                float phase = (float)(.5 - .5 * Math.cos(time * .65));
+                float height = Math.min(h * .58f, 265 * unit);
+                float width = height * sprite.getWidth() / sprite.getHeight();
+                float x = w * .77f + (float)Math.sin(time * .9f) * 7 * unit;
+                float top = -height + 42 * unit + phase * (height + h * .18f);
+                paint.setColor(0x887FC9FF); paint.setStrokeWidth(1.4f * unit);
+                canvas.drawLine(x, 0, x, Math.max(0, top + 9 * unit), paint);
+                paint.setAlpha(200);
+                canvas.drawBitmap(sprite, null, new RectF(x - width / 2, top,
+                        x + width / 2, top + height), paint);
+                paint.setAlpha(255);
+                return;
+            }
+            if (theme == 25) {
+                float flash = loop(time, 2.6f);
+                if (flash > .55f) return;
+            }
+            int count = theme == 21 || theme == 22 || theme == 23 || theme == 24 ? 8 : 5;
+            for (int i = 0; i < count; i++) {
+                float span = (theme == 20 || theme == 21 || theme == 22 || theme == 23 || theme == 24) ? 1.8f : 1.2f;
+                float x = w * (.08f + ((i * 67) % 85) / 100f)
+                        + (float)Math.sin(time * .65f + i * 2.1f) * 20 * unit;
+                float y = h * loop(i * .23f + time * (theme == 21 ? -.075f : .045f), span) - h * .2f;
+                float size = (theme == 25 ? 86 : 33 + i % 3 * 12) * unit;
+                if (theme == 20) size = (42 + i % 3 * 17) * unit;
+                float width = size * sprite.getWidth() / sprite.getHeight();
+                canvas.save();
+                canvas.rotate(theme == 24 || theme == 9 ? (float)Math.sin(time + i) * 25 : 0, x, y);
+                paint.setAlpha(theme == 25 ? 175 : theme >= 19 ? 135 : 95);
+                canvas.drawBitmap(sprite, null, new RectF(x - width / 2, y - size / 2,
+                        x + width / 2, y + size / 2), paint);
+                canvas.restore();
+            }
+            paint.setAlpha(255);
         }
         private void drawThemeMotion(Canvas canvas, float w, float h, float time) {
             int theme = themeChoice;
@@ -1406,8 +1512,10 @@ public class MainActivity extends Activity {
     private class ThemeMotionOverlay extends View {
         ThemeMotionOverlay() { super(MainActivity.this); setClickable(false); setFocusable(false); }
         @Override protected void onDraw(Canvas canvas) {
-            if (activeBackdrop != null && themeChoice >= 19) {
-                activeBackdrop.drawThemeMotion(canvas, getWidth(), getHeight(), android.os.SystemClock.uptimeMillis() / 1000f);
+            if (activeBackdrop != null && themeChoice != 18) {
+                float time = android.os.SystemClock.uptimeMillis() / 1000f;
+                activeBackdrop.drawThemeMotion(canvas, getWidth(), getHeight(), time);
+                activeBackdrop.drawGeneratedEffect(canvas, getWidth(), getHeight(), time);
                 if (isAttachedToWindow()) postInvalidateDelayed(50);
             }
         }
