@@ -18,6 +18,7 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -67,11 +68,13 @@ public class MainActivity extends Activity {
     private static final int CLEANUP_REQUEST = 34;
     private static final long SEVEN_DAYS = 7L * 24 * 60 * 60 * 1000;
     private static final int TRASH_LIMIT = 20;
-    private static final int INK = Color.rgb(31, 43, 55);
-    private static final int MUTED = Color.rgb(105, 118, 130);
-    private static final int BG = Color.rgb(247, 249, 250);
-    private static final int GREEN = Color.rgb(37, 142, 111);
-    private static final int RED = Color.rgb(209, 85, 97);
+    private static final int INK = Color.rgb(237, 248, 249);
+    private static final int MUTED = Color.rgb(170, 193, 205);
+    private static final int BG = Color.rgb(15, 28, 47);
+    private static final int PANEL = Color.rgb(35, 56, 77);
+    private static final int GREEN = Color.rgb(64, 210, 188);
+    private static final int RED = Color.rgb(255, 117, 128);
+    private static final int GOLD = Color.rgb(247, 204, 128);
 
     private static class Photo {
         long id, timestamp, size;
@@ -98,7 +101,12 @@ public class MainActivity extends Activity {
     private final HashSet<Long> duplicates = new HashSet<>();
     private final ArrayList<TrashEntry> trashEntries = new ArrayList<>();
     private Set<String> reviewed = new HashSet<>();
+    private Set<String> rewarded = new HashSet<>();
+    private Set<String> keptIds = new HashSet<>();
+    private Set<String> trashedIds = new HashSet<>();
     private LinearLayout root;
+    private FrameLayout host;
+    private int xp, keptCount, trashedCount, restoredCount;
     private int selectedYear = -1;
     private String selectedMonth;
     private boolean reviewing, loading, duplicateScanning;
@@ -114,8 +122,15 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        getWindow().getDecorView().setSystemUiVisibility(0);
         reviewed = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("reviewed", Collections.emptySet()));
+        rewarded = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("rewarded", Collections.emptySet()));
+        keptIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("kept_ids", reviewed));
+        trashedIds = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("trashed_ids", Collections.emptySet()));
+        xp = getPreferences(MODE_PRIVATE).getInt("xp", 0);
+        keptCount = keptIds.size();
+        trashedCount = trashedIds.size();
+        restoredCount = getPreferences(MODE_PRIVATE).getInt("restored_count", 0);
         loadTrashEntries();
         scheduleCleanup();
         render();
@@ -247,11 +262,13 @@ public class MainActivity extends Activity {
     }
 
     private void render() {
+        host = new FrameLayout(this);
+        host.addView(new TextureBackdrop(), new FrameLayout.LayoutParams(-1, -1));
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(22), dp(22), dp(22), dp(16));
-        root.setBackgroundColor(BG);
-        setContentView(root);
+        root.setPadding(dp(22), dp(20), dp(22), dp(16));
+        host.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(host);
         if (!hasAccess()) { intro(); return; }
         if (loading) { heading("Photo Sweep", "Gathering your photos…"); return; }
         if (showingTrash) { trashScreen(); return; }
@@ -286,8 +303,18 @@ public class MainActivity extends Activity {
     }
 
     private void yearsScreen() {
-        heading("Photo Sweep", "Pick a year to tidy up");
-        button(root, "Recently trashed  ·  " + trashEntries.size() + "/20", Color.rgb(231, 241, 238), GREEN, () -> { showingTrash = true; render(); });
+        heading("Your photo journey", "A little progress, one photo at a time");
+        levelPanel();
+        spacer(19);
+        label("Your stats", 21, INK, true);
+        spacer(11);
+        LinearLayout stats = new LinearLayout(this);
+        root.addView(stats, new LinearLayout.LayoutParams(-1, dp(88)));
+        statTile(stats, Integer.toString(keptCount), "Kept", GREEN);
+        statTile(stats, Integer.toString(trashedCount), "Trashed", RED);
+        statTile(stats, Integer.toString(restoredCount), "Restored", GOLD);
+        spacer(20);
+        label("Browse by year", 21, INK, true);
         spacer(12);
         if (!canManage()) {
             label("Enable one-time media access to swipe to Trash without repeated prompts.", 14, MUTED, false);
@@ -309,7 +336,33 @@ public class MainActivity extends Activity {
             int year = entry.getKey(); int[] count = entry.getValue();
             tile(list, Integer.toString(year), count[0] + " photos  •  " + count[1] + " to review", () -> { selectedYear = year; render(); });
         }
-        button(root, "Change access", Color.WHITE, INK, this::requestAccess);
+        button(root, "Recently trashed  ·  " + trashEntries.size() + "/20", Color.rgb(62, 72, 91), Color.rgb(255, 240, 213), () -> { showingTrash = true; render(); });
+    }
+
+    private void levelPanel() {
+        int level = xp / 500 + 1;
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(19), dp(18), dp(19), dp(17)); box.setBackground(rounded(PANEL, 24));
+        root.addView(box, new LinearLayout.LayoutParams(-1, dp(145)));
+        TextView name = new TextView(this); name.setText("LEVEL " + level + "   ·   " + (level < 3 ? "Photo Explorer" : level < 7 ? "Photo Pathfinder" : "Gallery Guardian"));
+        name.setTextColor(GREEN); name.setTextSize(18); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); box.addView(name);
+        TextView points = new TextView(this); points.setText((xp % 500) + " / 500 XP to next level");
+        points.setTextColor(INK); points.setTextSize(15);
+        LinearLayout.LayoutParams pointsLp = new LinearLayout.LayoutParams(-1, -2); pointsLp.topMargin = dp(17); box.addView(points, pointsLp);
+        FrameLayout bar = new FrameLayout(this);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, dp(12)); barLp.topMargin = dp(11); box.addView(bar, barLp);
+        View track = new View(this); track.setBackground(rounded(Color.rgb(18, 39, 56), 8)); bar.addView(track, new FrameLayout.LayoutParams(-1, -1));
+        View fill = new View(this); fill.setBackground(rounded(GREEN, 8)); bar.addView(fill, new FrameLayout.LayoutParams(0, -1));
+        bar.post(() -> { FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) fill.getLayoutParams();
+            lp.width = Math.max(dp(3), bar.getWidth() * (xp % 500) / 500); fill.setLayoutParams(lp); });
+    }
+
+    private void statTile(LinearLayout parent, String count, String title, int accent) {
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(12), dp(10), dp(6), dp(8)); box.setBackground(rounded(PANEL, 18));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1); lp.rightMargin = dp(7); parent.addView(box, lp);
+        TextView number = new TextView(this); number.setText(count); number.setTextColor(accent); number.setTextSize(25); number.setTypeface(Typeface.DEFAULT, Typeface.BOLD); box.addView(number);
+        TextView label = new TextView(this); label.setText(title); label.setTextColor(MUTED); label.setTextSize(13); box.addView(label);
     }
 
     private void monthsScreen() {
@@ -338,6 +391,9 @@ public class MainActivity extends Activity {
     private void trashScreen() {
         back("Photo Sweep", () -> { showingTrash = false; render(); });
         heading("Recently trashed", "Restore within 7 days  •  last 20 photos");
+        TextView recovery = label(trashEntries.size() + " photos can be restored", 17, Color.rgb(255, 235, 205), true);
+        recovery.setPadding(dp(18), dp(17), dp(18), dp(17)); recovery.setBackground(rounded(Color.rgb(67, 57, 72), 20));
+        spacer(16);
         if (trashEntries.isEmpty()) {
             spacer(36); label("Nothing in your Trash yet.", 21, INK, true);
             spacer(8); label("Swipe left on a photo to place it here.", 15, MUTED, false);
@@ -348,10 +404,10 @@ public class MainActivity extends Activity {
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         for (TrashEntry entry : new ArrayList<>(trashEntries)) {
             LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), dp(10), dp(10), dp(10)); row.setBackground(rounded(Color.WHITE, 20));
+            row.setPadding(dp(10), dp(10), dp(10), dp(10)); row.setBackground(rounded(PANEL, 20));
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(100)); rowLp.bottomMargin = dp(10); list.addView(row, rowLp);
             ImageView thumbnail = new ImageView(this); thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            thumbnail.setBackground(rounded(BG, 12)); row.addView(thumbnail, new LinearLayout.LayoutParams(dp(80), dp(80)));
+            thumbnail.setBackground(rounded(Color.rgb(51, 96, 107), 12)); row.addView(thumbnail, new LinearLayout.LayoutParams(dp(80), dp(80)));
             loadPreview(entry.id, entry.uri, thumbnail);
             LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL);
             info.setPadding(dp(12), 0, dp(4), 0); row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
@@ -362,7 +418,7 @@ public class MainActivity extends Activity {
             days.setText(Math.max(1, (timeLeft + 86_399_999) / 86_400_000) + " days left");
             days.setTextColor(MUTED); days.setTextSize(12); info.addView(days);
             Button restore = new Button(this); restore.setText("Restore"); restore.setAllCaps(false);
-            restore.setTextColor(GREEN); restore.setTextSize(13); restore.setBackground(rounded(Color.rgb(231, 241, 238), 12));
+            restore.setTextColor(GREEN); restore.setTextSize(13); restore.setBackground(rounded(Color.rgb(42, 91, 94), 12));
             restore.setOnClickListener(v -> restore(entry)); row.addView(restore, new LinearLayout.LayoutParams(dp(90), dp(46)));
         }
         spacer(8);
@@ -376,7 +432,7 @@ public class MainActivity extends Activity {
         for (Photo p : month) if (!reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
         String monthName = new SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(new Date(selectedYear - 1900, Integer.parseInt(selectedMonth.substring(5)) - 1, 1));
         heading(monthName, remaining + " of " + month.size() + " left to review");
-        View track = new View(this); track.setBackground(rounded(Color.rgb(225, 232, 232), 4));
+        View track = new View(this); track.setBackground(rounded(Color.rgb(35, 56, 77), 4));
         root.addView(track, new LinearLayout.LayoutParams(-1, dp(5)));
         View fill = new View(this); fill.setBackground(rounded(GREEN, 4));
         FrameLayout progress = new FrameLayout(this);
@@ -394,7 +450,7 @@ public class MainActivity extends Activity {
             label("This month is clear. Kept photos are still in your gallery.", 16, MUTED, false);
             if (lastKept != -1) {
                 spacer(20);
-                button(root, "Undo last keep", Color.WHITE, GREEN, () -> {
+                button(root, "Undo last keep", PANEL, GREEN, () -> {
                     reviewed.remove(Long.toString(lastKept)); lastKept = -1; saveReviewed(); render();
                 });
             }
@@ -409,19 +465,25 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, 0, 1);
         cardParams.bottomMargin = dp(20); root.addView(stage, cardParams);
         FrameLayout card = new FrameLayout(this);
-        card.setBackground(rounded(Color.WHITE, 25)); card.setElevation(dp(8));
+        card.setBackground(rounded(Color.rgb(29, 50, 68), 25)); card.setElevation(dp(8));
+        card.setClipToOutline(true);
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
+        ImageView backdrop = new ImageView(this); backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        backdrop.setAlpha(.55f);
+        if (Build.VERSION.SDK_INT >= 31) backdrop.setRenderEffect(RenderEffect.createBlurEffect(dp(20), dp(20), Shader.TileMode.CLAMP));
+        card.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
         loadPreview(shown, photo);
+        loadPreview(shown, backdrop);
         SwipeEffect effect = new SwipeEffect();
         card.addView(effect, new FrameLayout.LayoutParams(-1, -1));
         if (duplicates.contains(shown.id)) {
-            TextView bubble = pill("✦ Duplicate", Color.rgb(255, 236, 183), Color.rgb(105, 75, 21));
+            TextView bubble = pill("✦ Duplicate", GOLD, Color.rgb(89, 64, 27));
             FrameLayout.LayoutParams badge = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
             badge.setMargins(dp(12), dp(12), dp(12), 0); card.addView(bubble, badge);
         }
-        TextView date = pill(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(shown.timestamp)), Color.WHITE, INK);
+        TextView date = pill(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(shown.timestamp)), Color.rgb(33, 57, 75), INK);
         FrameLayout.LayoutParams dateParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         dateParams.bottomMargin = dp(12); card.addView(date, dateParams);
         card.setOnTouchListener((v, e) -> {
@@ -459,8 +521,8 @@ public class MainActivity extends Activity {
         });
         LinearLayout actions = new LinearLayout(this); actions.setOrientation(LinearLayout.HORIZONTAL);
         root.addView(actions);
-        Button trash = button(actions, "← Trash", Color.WHITE, RED, () -> { if (canManage()) trash(shown); else requestMediaManagement(); });
-        Button keep = button(actions, "Keep →", GREEN, Color.WHITE, () -> keep(shown));
+        Button trash = button(actions, "← Trash", Color.rgb(88, 48, 64), Color.WHITE, () -> { if (canManage()) trash(shown); else requestMediaManagement(); });
+        Button keep = button(actions, "Keep →", GREEN, Color.rgb(12, 46, 52), () -> keep(shown));
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, dp(55), 1);
         half.rightMargin = dp(7); trash.setLayoutParams(half);
         LinearLayout.LayoutParams other = new LinearLayout.LayoutParams(0, dp(55), 1);
@@ -509,13 +571,13 @@ public class MainActivity extends Activity {
                 canvas.drawRect(w - dp(4), 0, w, h, paint);
             } else if (progress < 0) {
                 float edge = w * (1 - amount * .72f);
-                paint.setColor(Color.argb((int)(175 * amount), 247, 249, 250));
+                paint.setColor(Color.argb((int)(175 * amount), 20, 39, 53));
                 canvas.drawRect(edge, 0, w, h, paint);
                 for (int i = 0; i < 27; i++) {
                     float x = edge + (w - edge) * ((i * 37 % 29) / 29f);
                     float y = h * ((i * 13 % 31) / 31f);
                     float size = dp(5 + (i * 7 % 12)) * amount;
-                    paint.setColor(Color.argb((int)(180 * amount), 247, 249, 250));
+                    paint.setColor(Color.argb((int)(180 * amount), 72, 190, 188));
                     Path chip = new Path(); chip.moveTo(x, y); chip.lineTo(x + size, y - size / 2);
                     chip.lineTo(x + size * 1.4f, y + size); chip.close(); canvas.drawPath(chip, paint);
                 }
@@ -526,7 +588,37 @@ public class MainActivity extends Activity {
     private void keep(Photo p) {
         if (pendingTrash != -1) return;
         lastKept = p.id;
+        if (keptIds.add(Long.toString(p.id))) keptCount++;
+        int earned = awardXp(p.id, 10);
+        saveStats();
         reviewed.add(Long.toString(p.id)); saveReviewed(); render();
+        if (earned > 0) floatXp(earned);
+    }
+
+    private int awardXp(long id, int points) {
+        if (!rewarded.add(Long.toString(id))) return 0;
+        xp += points; saveStats(); return points;
+    }
+
+    private void saveStats() {
+        getPreferences(MODE_PRIVATE).edit()
+                .putInt("xp", xp).putInt("restored_count", restoredCount)
+                .putStringSet("rewarded", new HashSet<>(rewarded))
+                .putStringSet("kept_ids", new HashSet<>(keptIds))
+                .putStringSet("trashed_ids", new HashSet<>(trashedIds)).apply();
+    }
+
+    private void floatXp(int gained) {
+        if (host == null) return;
+        final FrameLayout currentHost = host;
+        TextView badge = pill("✦  +" + gained + " XP", GREEN, Color.rgb(11, 47, 52));
+        badge.setElevation(dp(12));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lp.topMargin = dp(145); currentHost.addView(badge, lp);
+        badge.setTranslationY(dp(26)); badge.setAlpha(0);
+        badge.animate().translationY(0).alpha(1).setDuration(260)
+                .withEndAction(() -> badge.animate().translationY(-dp(48)).alpha(0).setStartDelay(750)
+                        .setDuration(500).withEndAction(() -> currentHost.removeView(badge)).start()).start();
     }
 
     private void trash(Photo p) {
@@ -607,6 +699,7 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == TRASH_REQUEST) {
             long id = pendingTrash; pendingTrash = -1;
+            int earned = 0;
             if (resultCode == RESULT_OK) {
                 if (lastKept == id) lastKept = -1;
                 Photo moved = null;
@@ -618,13 +711,18 @@ public class MainActivity extends Activity {
                 photos.removeIf(p -> p.id == id);
                 reviewed.remove(Long.toString(id)); saveReviewed();
                 duplicates.remove(id);
+                if (trashedIds.add(Long.toString(id))) trashedCount++;
+                earned = awardXp(id, 15);
+                saveStats();
             }
             render();
+            if (earned > 0) floatXp(earned);
             if (resultCode == RESULT_OK) cleanupTrash();
         } else if (requestCode == RESTORE_REQUEST) {
             long id = pendingRestore; pendingRestore = -1;
             if (resultCode == RESULT_OK) {
                 trashEntries.removeIf(e -> e.id == id); saveTrashEntries();
+                restoredCount++; saveStats();
                 loadPhotos();
             }
             render();
@@ -669,9 +767,26 @@ public class MainActivity extends Activity {
     }
 
     private void saveReviewed() { getPreferences(MODE_PRIVATE).edit().putStringSet("reviewed", new HashSet<>(reviewed)).apply(); }
+    private class TextureBackdrop extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        TextureBackdrop() { super(MainActivity.this); }
+        @Override protected void onDraw(Canvas canvas) {
+            paint.setShader(new LinearGradient(0, 0, getWidth(), getHeight(),
+                    new int[]{Color.rgb(14, 26, 44), Color.rgb(22, 43, 60), Color.rgb(13, 27, 46)},
+                    null, Shader.TileMode.CLAMP));
+            canvas.drawRect(0, 0, getWidth(), getHeight(), paint); paint.setShader(null);
+            paint.setColor(Color.argb(48, 75, 153, 159));
+            for (int i = 0; i < 175; i++) {
+                float x = ((i * 137L + 73) % 1000) / 1000f * getWidth();
+                float y = ((i * 263L + 117) % 1000) / 1000f * getHeight();
+                canvas.drawCircle(x, y, dp(0.7f), paint);
+            }
+        }
+    }
     private int dp(float n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
     private GradientDrawable rounded(int color, int radius) {
-        GradientDrawable bg = new GradientDrawable(); bg.setColor(color); bg.setCornerRadius(dp(radius)); return bg;
+        GradientDrawable bg = new GradientDrawable(); bg.setColor(color); bg.setCornerRadius(dp(radius));
+        bg.setStroke(dp(1), Color.argb(38, 139, 200, 207)); return bg;
     }
     private void spacer(int height) { View gap = new View(this); root.addView(gap, new LinearLayout.LayoutParams(1, dp(height))); }
     private TextView label(String value, int size, int color, boolean bold) {
@@ -685,17 +800,22 @@ public class MainActivity extends Activity {
     }
     private Button button(LinearLayout parent, String value, int bg, int color, Runnable action) {
         Button button = new Button(this); button.setText(value); button.setAllCaps(false); button.setTextSize(16);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(rounded(bg, 16));
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(rounded(bg, 18));
         button.setOnClickListener(v -> action.run());
         parent.addView(button, new LinearLayout.LayoutParams(-1, dp(55))); return button;
     }
     private void back(String value, Runnable action) {
-        TextView back = label("‹  " + value, 16, GREEN, true);
-        back.setPadding(0, 0, 0, dp(18)); back.setOnClickListener(v -> action.run());
+        TextView back = label("←  " + value, 18, INK, true);
+        back.setGravity(Gravity.CENTER_VERTICAL);
+        back.setPadding(dp(18), 0, dp(18), 0);
+        back.setMinWidth(dp(150)); back.setHeight(dp(56));
+        back.setBackground(rounded(Color.rgb(41, 64, 84), 18));
+        back.setOnClickListener(v -> action.run());
+        spacer(15);
     }
     private void tile(LinearLayout parent, String title, String detail, Runnable action) {
         LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(dp(19), dp(17), dp(19), dp(17)); row.setBackground(rounded(Color.WHITE, 18));
+        row.setPadding(dp(19), dp(17), dp(19), dp(17)); row.setBackground(rounded(PANEL, 18));
         row.setElevation(dp(2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(12); parent.addView(row, lp);
         TextView name = new TextView(this); name.setText(title + "    ›"); name.setTextSize(22); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); name.setTextColor(INK); row.addView(name);
