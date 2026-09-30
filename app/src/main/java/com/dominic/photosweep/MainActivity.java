@@ -101,7 +101,17 @@ public class MainActivity extends Activity {
             "Sakura Academy · twilight blossoms", "Spirit Sky · floating sanctuary",
             "Japan · lantern street", "Mexico · colorful plaza",
             "Sakura Breeze · drifting petals", "Spirit Lights · wandering wisps",
-            "Japan · glowing lanterns", "Mexico · marigold celebration"
+            "Japan · glowing lanterns", "Mexico · marigold celebration",
+            "Web Hero · living webs",
+            "Armored Gold · radiant armor",
+            "Thunder · storm arcs",
+            "Gamma · pulsing energy",
+            "Vibrant Shield · energy waves",
+            "Cosmic · orbiting wisps",
+            "Scarlet Magic · drifting petals",
+            "Stealth · glowing nodes",
+            "Nebula · stardust",
+            "Solar · moving rays"
     };
     private static final int[][] THEME_COLORS = {
             {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
@@ -137,26 +147,40 @@ public class MainActivity extends Activity {
             {0xFF24213F, 0xFF433353, 0xFFFFB5D2, 0xFFFF9C9F, 0xFFE4CEFF},
             {0xFF142B3D, 0xFF29465A, 0xFF8CE9D8, 0xFFFFA5B5, 0xFFFFD783},
             {0xFF191F3B, 0xFF34334D, 0xFFFFBE8C, 0xFFFF9090, 0xFFFFD995},
-            {0xFF123342, 0xFF285369, 0xFF7DE8DB, 0xFFFF9C9A, 0xFFFFCC73}
+            {0xFF123342, 0xFF285369, 0xFF7DE8DB, 0xFFFF9C9A, 0xFFFFCC73},
+            {0xFF142B55, 0xFF244672, 0xFFFA6570, 0xFFFFB277, 0xFF84BCFF},
+            {0xFF421B29, 0xFF693144, 0xFFFFCD66, 0xFFFF8586, 0xFF8DE5DF},
+            {0xFF1D244B, 0xFF333E70, 0xFFC1D7FF, 0xFFFF8B9A, 0xFFFFCB76},
+            {0xFF1D2A27, 0xFF354A3B, 0xFF9EE477, 0xFFFF9AB6, 0xFFCFABF5},
+            {0xFF132D45, 0xFF254961, 0xFF8EC9FF, 0xFFFF8B8C, 0xFFFFCA73},
+            {0xFF241B3B, 0xFF3B305B, 0xFF8CE8E2, 0xFFFF8CA3, 0xFFD7A9FF},
+            {0xFF391D32, 0xFF59314D, 0xFFFF8CB2, 0xFFFFB18E, 0xFFFFD487},
+            {0xFF202831, 0xFF34434A, 0xFFB5EE74, 0xFFFF9490, 0xFFE8D88A},
+            {0xFF202548, 0xFF353D69, 0xFF9CE1FF, 0xFFFF8FB4, 0xFFCCB2FF},
+            {0xFF33253A, 0xFF55445D, 0xFFFFBE74, 0xFFFF8F91, 0xFF88DDF5}
     };
     private static final int[] COLOR_THEMES = {0, 1, 2, 13, 14, 15, 16, 17};
     private static final int[] HERO_THEMES = {3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     private static final int[] ANIMATED_THEMES = {18, 19, 20, 21, 22, 23, 24, 25};
     private static final int[] ANIME_THEMES = {26, 27};
     private static final int[] ANIME_ANIMATED_THEMES = {30, 31};
+    private static final int[] HERO_ANIMATED_THEMES = {34, 35, 36, 37, 38, 39, 40, 41, 42, 43};
+    private static final int[] TIER_UNLOCK_LEVELS = {1, 3, 6};
+    private static int motionStyle(int index) {
+        return index >= 34 && index <= 43 ? index - 31 : index;
+    }
     private static int themeTier(int index) {
         if (isColorTheme(index)) return 1;
         return (index >= 18 && index <= 25) || index >= 30 ? 3 : 2;
     }
     private static boolean hasThemeMotion(int index) {
-        return !isColorTheme(index) && (index < 26 || index >= 30);
+        return themeTier(index) == 3;
     }
     private static boolean isColorTheme(int index) {
         return index < 3 || (index >= 13 && index <= 17);
     }
     private static int requiredThemeLevel(int index) {
-        if (isColorTheme(index)) return 1;
-        return themeTier(index) == 2 ? 5 : 10;
+        return TIER_UNLOCK_LEVELS[themeTier(index) - 1];
     }
     private static final int[] THEME_BACKDROP_IDS = {
             R.drawable.theme_00, R.drawable.theme_01, R.drawable.theme_02, R.drawable.theme_03,
@@ -167,7 +191,17 @@ public class MainActivity extends Activity {
             R.drawable.space_nebula, R.drawable.theme_21, R.drawable.theme_22, R.drawable.theme_23,
             R.drawable.theme_24, R.drawable.theme_25,
             R.drawable.sakura_academy, R.drawable.spirit_sky, R.drawable.japan_lanterns, R.drawable.mexico_plaza,
-            R.drawable.sakura_academy, R.drawable.spirit_sky, R.drawable.japan_lanterns, R.drawable.mexico_plaza
+            R.drawable.sakura_academy, R.drawable.spirit_sky, R.drawable.japan_lanterns, R.drawable.mexico_plaza,
+            R.drawable.theme_03,
+            R.drawable.theme_04,
+            R.drawable.theme_05,
+            R.drawable.theme_06,
+            R.drawable.theme_07,
+            R.drawable.theme_08,
+            R.drawable.theme_09,
+            R.drawable.theme_10,
+            R.drawable.theme_11,
+            R.drawable.theme_12
     };
     private static final int[] THEME_FX_IDS = {
             R.drawable.fx_nebula, R.drawable.fx_water, R.drawable.fx_cosmic,
@@ -180,7 +214,17 @@ public class MainActivity extends Activity {
             R.drawable.fx_flame, R.drawable.fx_water, R.drawable.fx_ice,
             R.drawable.fx_leaf, R.drawable.fx_lightning,
             0, 0, 0, 0,
-            R.drawable.fx_petal, R.drawable.fx_cosmic, R.drawable.fx_japan_lantern, R.drawable.fx_marigold
+            R.drawable.fx_petal, R.drawable.fx_cosmic, R.drawable.fx_japan_lantern, R.drawable.fx_marigold,
+            R.drawable.fx_web_spider,
+            R.drawable.fx_gold,
+            R.drawable.fx_thunder,
+            R.drawable.fx_gamma,
+            R.drawable.fx_shield,
+            R.drawable.fx_cosmic,
+            R.drawable.fx_petal,
+            R.drawable.fx_stealth,
+            R.drawable.fx_nebula,
+            R.drawable.fx_solar
     };
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
@@ -671,16 +715,17 @@ public class MainActivity extends Activity {
         sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
         LinearLayout tier1 = themeGroup(list, "tier1", "TIER 1 · COLORS",
-                "Level 1 · color palettes", isColorTheme(themeChoice));
+                "Level " + TIER_UNLOCK_LEVELS[0] + " · color palettes", isColorTheme(themeChoice));
         addThemeChoices(tier1, COLOR_THEMES, level);
         LinearLayout tier2 = themeGroup(list, "tier2", "TIER 2 · DISTINCTIVE",
-                "Level 5 · heroes, anime and countries", themeTier(themeChoice) == 2);
-        LinearLayout heroes = themeGroup(tier2, "heroes", "HERO & FANTASY", "Distinctive looks and effects", true);
+                "Level " + TIER_UNLOCK_LEVELS[1] + " · still illustrated artwork", themeTier(themeChoice) == 2);
+        LinearLayout heroes = themeGroup(tier2, "heroes", "HERO & FANTASY", "Still hero and fantasy artwork", true);
         addThemeChoices(heroes, HERO_THEMES, level);
         addThemeChoices(themeGroup(tier2, "anime2", "ANIME", "Illustrated anime-inspired settings", themeChoice == 26 || themeChoice == 27), ANIME_THEMES, level);
         addCountryThemes(tier2, false, level);
         LinearLayout tier3 = themeGroup(list, "tier3", "TIER 3 · ANIMATED",
-                "Level 10 · moving worlds and effects", themeTier(themeChoice) == 3);
+                "Level " + TIER_UNLOCK_LEVELS[2] + " · moving worlds and effects", themeTier(themeChoice) == 3);
+        addThemeChoices(themeGroup(tier3, "heroes3", "HERO & FANTASY", "Animated hero powers", themeChoice >= 34), HERO_ANIMATED_THEMES, level);
         LinearLayout worlds = themeGroup(tier3, "worlds", "WORLDS & ELEMENTS", "Animated settings", true);
         addThemeChoices(worlds, ANIMATED_THEMES, level);
         addThemeChoices(themeGroup(tier3, "anime3", "ANIME", "Petal breezes and spirit lights", themeChoice == 30 || themeChoice == 31), ANIME_ANIMATED_THEMES, level);
@@ -722,7 +767,7 @@ public class MainActivity extends Activity {
                 themeChoice = choice; getPreferences(MODE_PRIVATE).edit().putInt("theme", choice).apply();
                 applyTheme(); animateThemeChange = true; render();
             });
-            if (choice == 3) settingSwitch(list, "Arachnophobia mode", "Hide the spider in Web Hero", arachnophobiaMode, value -> {
+            if (choice == 34) settingSwitch(list, "Arachnophobia mode", "Hide the spider in animated Web Hero", arachnophobiaMode, value -> {
                 arachnophobiaMode = value;
                 getPreferences(MODE_PRIVATE).edit().putBoolean("arachnophobia_mode", value).apply();
                 if (activeBackdrop != null) activeBackdrop.resetSpider();
@@ -1141,7 +1186,8 @@ public class MainActivity extends Activity {
             if (amount < .01f || w <= 0) return;
             boolean keep = progress > 0;
             int accent = keep ? GREEN : RED;
-            int style = themeChoice < 18 ? themeChoice % 5 : themeChoice - 17;
+            int selectedStyle = motionStyle(themeChoice);
+            int style = selectedStyle < 18 ? selectedStyle % 5 : selectedStyle - 17;
             float edge = keep ? w * (1 - amount * .78f) : w * amount * .78f;
             float left = keep ? edge : 0, right = keep ? w : edge;
             int haze = Color.argb((int)(110 * amount), Color.red(accent), Color.green(accent), Color.blue(accent));
@@ -1546,7 +1592,7 @@ public class MainActivity extends Activity {
         private void drawGeneratedEffect(Canvas canvas, float w, float h, float time) {
             int theme = themeChoice;
             if (theme == 18 || !hasThemeMotion(theme) || THEME_FX_IDS[theme] == 0) return; // Candy Land has its own physics sprites.
-            if (theme == 3 && arachnophobiaMode) return;
+            if (motionStyle(theme) == 3 && arachnophobiaMode) return;
             if (themeEffects[theme] == null) {
                 BitmapFactory.Options opts = new BitmapFactory.Options(); opts.inScaled = false;
                 themeEffects[theme] = BitmapFactory.decodeResource(getResources(), THEME_FX_IDS[theme], opts);
@@ -1554,10 +1600,11 @@ public class MainActivity extends Activity {
             Bitmap sprite = themeEffects[theme];
             if (sprite == null) return;
             float unit = dp(1);
-            if (theme >= 30) {
+            if (theme >= 30 && theme <= 33) {
                 drawCollectionEffects(canvas, sprite, w, h, time, theme);
                 return;
             }
+            theme = motionStyle(theme);
             if (theme == 3) {
                 long now = android.os.SystemClock.uptimeMillis();
                 if (!spiderStarted || now - spiderStageStart > 30000) beginSpiderDescent(now);
@@ -1676,7 +1723,8 @@ public class MainActivity extends Activity {
         }
 
         private void drawThemeMotion(Canvas canvas, float w, float h, float time) {
-            int theme = themeChoice;
+            if (!hasThemeMotion(themeChoice)) return;
+            int theme = motionStyle(themeChoice);
             float unit = dp(1);
             paint.setShader(null);
             paint.setStyle(Paint.Style.FILL);
