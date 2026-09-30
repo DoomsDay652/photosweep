@@ -1,0 +1,73 @@
+{
+  "generation": "Built-in image generation",
+  "assets": [
+    {
+      "asset": "app/src/main/res/drawable-nodpi/country_us.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep country theme background. United States skyline by a waterfront at blue hour, distant Statue of Liberty at upper-left edge, art deco buildings, subtle red white blue lights and stars at the outer edges; deep navy, ivory, red accents. Polished painted illustration, cohesive with cozy anime game backgrounds, full bleed portrait composition. Reserve a subdued dark low-detail center covering 65 percent for readable photo cards. Landmarks and decorations mainly at top and outer edges. No people, no letters, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/country_spain.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep country theme background. Spanish plaza at dusk with warm Moorish arches, terracotta roofs and richly colored ceramic tile borders at edges, a small red gold folding fan decoration low in one corner; navy, crimson and warm gold. Polished painted illustration, cohesive with cozy anime game backgrounds, full bleed portrait composition. Reserve a subdued dark low-detail center covering 65 percent for readable photo cards. Landmarks and decorations mainly at top and outer edges. No people, no letters, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/country_brazil.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep country theme background. Brazilian Rio-inspired coastal bay at blue dusk, distant Sugarloaf mountain silhouette, lush tropical palms framing edges, subtle green gold festival ribbons; deep teal, green and yellow accents. Polished painted illustration, cohesive with cozy anime game backgrounds, full bleed portrait composition. Reserve a subdued dark low-detail center covering 65 percent for readable photo cards. Landmarks and decorations mainly at top and outer edges. No people, no letters, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/country_france.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep country theme background. French Paris street at twilight, distant Eiffel Tower near upper-left, elegant cafe facades and lavender sprigs at bottom edges; navy, warm ivory, lavender and blue accents. Polished painted illustration, cohesive with cozy anime game backgrounds, full bleed portrait composition. Reserve a subdued dark low-detail center covering 65 percent for readable photo cards. Landmarks and decorations mainly at top and outer edges. No people, no letters, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/country_italy.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep country theme background. Italian Venetian canal at twilight, warm terracotta palazzo facades, a small gondola near lower edge and olive branches framing corners; navy, terracotta, cream and green accents. Polished painted illustration, cohesive with cozy anime game backgrounds, full bleed portrait composition. Reserve a subdued dark low-detail center covering 65 percent for readable photo cards. Landmarks and decorations mainly at top and outer edges. No people, no letters, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/country_korea.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep country theme background. South Korean hanok courtyard at blue twilight, curved dark roof tiles, mountainous distance, softly lit cream paper lanterns and red blue ribbons around outer edges; deep indigo, ivory, peach and teal accents. Polished painted illustration, cohesive with cozy anime game backgrounds, full bleed portrait composition. Reserve a subdued dark low-detail center covering 65 percent for readable photo cards. Landmarks and decorations mainly at top and outer edges. No people, no letters, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/anime_myhero.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep anime theme background. My Hero Academia-inspired heroic city at dusk, distant U.A.-inspired futuristic academy towers and urban skyline across upper third, emerald lightning tracing outer edges, warm gold accents, deep teal and navy shadows; no characters. Clean high-quality cel shaded anime illustration, full bleed portrait composition, quiet dark center occupying 65 percent reserved for legible app controls and photos. Franchise-inspired setting recognizable through environment and props. No captions, no words, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/anime_bleach.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep anime theme background. Bleach-inspired Soul Society courtyard at twilight, white walls and traditional rooftops framing sides, imposing spirit gate in upper third, wisps of cyan spiritual light and subtle orange highlights, indigo black ivory palette; no characters. Clean high-quality cel shaded anime illustration, full bleed portrait composition, quiet dark center occupying 65 percent reserved for legible app controls and photos. Franchise-inspired setting recognizable through environment and props. No captions, no words, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/anime_onepiece.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep anime theme background. One Piece-inspired pirate adventure ocean scene, a colorful lion-bow pirate ship far along the upper horizon, warm wooden rail and straw hat with red band at lower corner, ocean turquoise and navy with gold lights, adventurous calm; no characters. Clean high-quality cel shaded anime illustration, full bleed portrait composition, quiet dark center occupying 65 percent reserved for legible app controls and photos. Franchise-inspired setting recognizable through environment and props. No captions, no words, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/anime_naruto.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep anime theme background. Naruto-inspired Hidden Leaf village rooftops at blue dusk with a distant cliffside carved monument in the upper third, leafy branches and orange-blue accents at edges, a small metal forehead protector resting at lower corner without lettering, forest green navy amber palette; no characters. Clean high-quality cel shaded anime illustration, full bleed portrait composition, quiet dark center occupying 65 percent reserved for legible app controls and photos. Franchise-inspired setting recognizable through environment and props. No captions, no words, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/anime_dragonball.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait Android PhotoSweep anime theme background. DragonBall-inspired capsule-style rounded futuristic buildings and distant green mountains at twilight, small orange glowing Dragon Balls with red stars at bottom outer edge, blue sky and golden aura tracing frame edges, deep navy blue and orange palette; no characters. Clean high-quality cel shaded anime illustration, full bleed portrait composition, quiet dark center occupying 65 percent reserved for legible app controls and photos. Franchise-inspired setting recognizable through environment and props. No captions, no words, no logos, no watermark."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/fx_us_star.png",
+      "prompt": "Use case: stylized-concept. Asset type: isolated country-themed mobile app animation sprite. One polished five-point ivory star ornament edged with narrow red and blue neon glow, front facing. Polished painted cel shaded illustration, centered, compact single object on a real transparent background, generous empty margin. No ground, no cast shadow outside object, no writing, no logos, no extra objects."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/fx_spain_fan.png",
+      "prompt": "Use case: stylized-concept. Asset type: isolated country-themed mobile app animation sprite. One elegant open Spanish folding fan, rich crimson fabric and gold carved spokes, front facing. Polished painted cel shaded illustration, centered, compact single object on a real transparent background, generous empty margin. No ground, no cast shadow outside object, no writing, no logos, no extra objects."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/fx_brazil_leaf.png",
+      "prompt": "Use case: stylized-concept. Asset type: isolated country-themed mobile app animation sprite. One stylized tropical palm frond, emerald green with warm golden highlights, broad graceful leaf silhouette. Polished painted cel shaded illustration, centered, compact single object on a real transparent background, generous empty margin. No ground, no cast shadow outside object, no writing, no logos, no extra objects."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/fx_france_lavender.png",
+      "prompt": "Use case: stylized-concept. Asset type: isolated country-themed mobile app animation sprite. One elegant sprig of French lavender with three violet flower stems and slim muted green leaves. Polished painted cel shaded illustration, centered, compact single object on a real transparent background, generous empty margin. No ground, no cast shadow outside object, no writing, no logos, no extra objects."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/fx_italy_olive.png",
+      "prompt": "Use case: stylized-concept. Asset type: isolated country-themed mobile app animation sprite. One Mediterranean olive branch with six soft green oval leaves and two small dark olives. Polished painted cel shaded illustration, centered, compact single object on a real transparent background, generous empty margin. No ground, no cast shadow outside object, no writing, no logos, no extra objects."
+    },
+    {
+      "asset": "app/src/main/res/drawable-nodpi/fx_korea_lantern.png",
+      "prompt": "Use case: stylized-concept. Asset type: isolated country-themed mobile app animation sprite. One glowing cream Korean hanji paper lantern with delicate wood frame, small blue and red ribbon tassels, no lettering. Polished painted cel shaded illustration, centered, compact single object on a real transparent background, generous empty margin. No ground, no cast shadow outside object, no writing, no logos, no extra objects."
+    }
+  ]
+}

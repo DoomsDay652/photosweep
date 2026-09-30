@@ -111,7 +111,24 @@ public class MainActivity extends Activity {
             "Scarlet Magic · drifting petals",
             "Stealth · glowing nodes",
             "Nebula · stardust",
-            "Solar · moving rays"
+            "Solar · moving rays",
+            "United States · waterfront lights",
+            "Spain · tiled twilight plaza",
+            "Brazil · tropical bay",
+            "France · Paris twilight",
+            "Italy · Venetian evening",
+            "South Korea · hanok courtyard",
+            "United States · drifting stars",
+            "Spain · dancing fans",
+            "Brazil · tropical breeze",
+            "France · lavender breeze",
+            "Italy · olive breeze",
+            "South Korea · floating lanterns",
+            "My Hero Academia · hero city",
+            "Bleach · spirit courtyard",
+            "One Piece · pirate seas",
+            "Naruto · hidden village",
+            "DragonBall · capsule skyline"
     };
     private static final int[][] THEME_COLORS = {
             {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
@@ -157,21 +174,48 @@ public class MainActivity extends Activity {
             {0xFF391D32, 0xFF59314D, 0xFFFF8CB2, 0xFFFFB18E, 0xFFFFD487},
             {0xFF202831, 0xFF34434A, 0xFFB5EE74, 0xFFFF9490, 0xFFE8D88A},
             {0xFF202548, 0xFF353D69, 0xFF9CE1FF, 0xFFFF8FB4, 0xFFCCB2FF},
-            {0xFF33253A, 0xFF55445D, 0xFFFFBE74, 0xFFFF8F91, 0xFF88DDF5}
+            {0xFF33253A, 0xFF55445D, 0xFFFFBE74, 0xFFFF8F91, 0xFF88DDF5},
+            {0xFF14233E, 0xFF293A58, 0xFF8EC9FF, 0xFFFF909C, 0xFFF8E1AA},
+            {0xFF302334, 0xFF513647, 0xFFFFCA79, 0xFFFF959B, 0xFF96DAE6},
+            {0xFF123438, 0xFF245452, 0xFF8DE89D, 0xFFFFB197, 0xFFFFD86E},
+            {0xFF202A46, 0xFF384565, 0xFFBDADFF, 0xFFFFABBC, 0xFFFFDFBA},
+            {0xFF223238, 0xFF43554D, 0xFFACDFBA, 0xFFFFADA0, 0xFFFFD4A1},
+            {0xFF25263F, 0xFF45405B, 0xFFA9DDF0, 0xFFFFABB4, 0xFFFFD8B0},
+            {0xFF14233E, 0xFF293A58, 0xFF8EC9FF, 0xFFFF909C, 0xFFF8E1AA},
+            {0xFF302334, 0xFF513647, 0xFFFFCA79, 0xFFFF959B, 0xFF96DAE6},
+            {0xFF123438, 0xFF245452, 0xFF8DE89D, 0xFFFFB197, 0xFFFFD86E},
+            {0xFF202A46, 0xFF384565, 0xFFBDADFF, 0xFFFFABBC, 0xFFFFDFBA},
+            {0xFF223238, 0xFF43554D, 0xFFACDFBA, 0xFFFFADA0, 0xFFFFD4A1},
+            {0xFF25263F, 0xFF45405B, 0xFFA9DDF0, 0xFFFFABB4, 0xFFFFD8B0},
+            {0xFF102E35, 0xFF254A4C, 0xFF74EBC6, 0xFFFF9297, 0xFFFFD36F},
+            {0xFF192B43, 0xFF31425E, 0xFF9CDFFF, 0xFFFFA183, 0xFFE8EAF6},
+            {0xFF133548, 0xFF28566A, 0xFF83E5F2, 0xFFFF9993, 0xFFFFD270},
+            {0xFF1D3133, 0xFF3A4C45, 0xFFAFE093, 0xFFFFAB7F, 0xFFFFD579},
+            {0xFF172E52, 0xFF304B71, 0xFFFFC46A, 0xFFFF9096, 0xFF90DFFF}
     };
     private static final int[] COLOR_THEMES = {0, 1, 2, 13, 14, 15, 16, 17};
     private static final int[] HERO_THEMES = {3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     private static final int[] ANIMATED_THEMES = {18, 19, 20, 21, 22, 23, 24, 25};
-    private static final int[] ANIME_THEMES = {26, 27};
-    private static final int[] ANIME_ANIMATED_THEMES = {30, 31};
+    private static final int[] ANIME_ANIMATED_THEMES = {26, 27, 30, 31, 56, 57, 58, 59, 60};
     private static final int[] HERO_ANIMATED_THEMES = {34, 35, 36, 37, 38, 39, 40, 41, 42, 43};
+    private static final String[] COUNTRY_NAMES = {"Japan", "Mexico", "United States", "Spain", "Brazil", "France", "Italy", "South Korea"};
+    private static final String[] COUNTRY_KEYS = {"japan", "mexico", "us", "spain", "brazil", "france", "italy", "korea"};
+    private static final String[] COUNTRY_SCENES = {"Lantern streets at dusk", "Colorful twilight plazas", "Waterfront city lights", "Tiled twilight plazas", "Tropical coastal bays", "Paris at twilight", "Venetian evening canals", "Hanok courtyards"};
+    private static final String[] COUNTRY_MOTIONS = {"Floating lantern lights", "Drifting marigolds", "Drifting stars", "Dancing fans", "Tropical leaf breeze", "Lavender breeze", "Olive branch breeze", "Floating paper lanterns"};
+    private static final int[] COUNTRY_STILL_THEMES = {28, 29, 44, 45, 46, 47, 48, 49};
+    private static final int[] COUNTRY_ANIMATED_THEMES = {32, 33, 50, 51, 52, 53, 54, 55};
+    private static final String[] SWIPE_STYLE_NAMES = {"Theme matched", "Sparkles", "Petals", "Bubbles", "Embers", "Lightning", "Comets", "Energy rings", "Country celebration", "Off"};
     private static final int[] TIER_UNLOCK_LEVELS = {1, 3, 6};
     private static int motionStyle(int index) {
+        if (index == 26) return 30;
+        if (index == 27) return 31;
         return index >= 34 && index <= 43 ? index - 31 : index;
     }
     private static int themeTier(int index) {
         if (isColorTheme(index)) return 1;
-        return (index >= 18 && index <= 25) || index >= 30 ? 3 : 2;
+        for (int hero : HERO_THEMES) if (hero == index) return 2;
+        for (int country : COUNTRY_STILL_THEMES) if (country == index) return 2;
+        return 3;
     }
     private static boolean hasThemeMotion(int index) {
         return themeTier(index) == 3;
@@ -201,20 +245,29 @@ public class MainActivity extends Activity {
             R.drawable.theme_09,
             R.drawable.theme_10,
             R.drawable.theme_11,
-            R.drawable.theme_12
+            R.drawable.theme_12,
+            R.drawable.country_us,
+            R.drawable.country_spain,
+            R.drawable.country_brazil,
+            R.drawable.country_france,
+            R.drawable.country_italy,
+            R.drawable.country_korea,
+            R.drawable.country_us,
+            R.drawable.country_spain,
+            R.drawable.country_brazil,
+            R.drawable.country_france,
+            R.drawable.country_italy,
+            R.drawable.country_korea,
+            R.drawable.anime_myhero,
+            R.drawable.anime_bleach,
+            R.drawable.anime_onepiece,
+            R.drawable.anime_naruto,
+            R.drawable.anime_dragonball
     };
     private static final int[] THEME_FX_IDS = {
-            R.drawable.fx_nebula, R.drawable.fx_water, R.drawable.fx_cosmic,
-            R.drawable.fx_web_spider, R.drawable.fx_gold, R.drawable.fx_thunder,
-            R.drawable.fx_gamma, R.drawable.fx_shield, R.drawable.fx_cosmic,
-            R.drawable.fx_petal, R.drawable.fx_stealth, R.drawable.fx_nebula,
-            R.drawable.fx_solar, R.drawable.fx_petal, R.drawable.fx_leaf,
-            R.drawable.fx_gold, R.drawable.fx_petal, R.drawable.fx_solar,
-            R.drawable.fx_candy, R.drawable.fx_toxic, R.drawable.fx_shooting_star,
-            R.drawable.fx_flame, R.drawable.fx_water, R.drawable.fx_ice,
-            R.drawable.fx_leaf, R.drawable.fx_lightning,
-            0, 0, 0, 0,
-            R.drawable.fx_petal, R.drawable.fx_cosmic, R.drawable.fx_japan_lantern, R.drawable.fx_marigold,
+            R.drawable.fx_nebula,
+            R.drawable.fx_water,
+            R.drawable.fx_cosmic,
             R.drawable.fx_web_spider,
             R.drawable.fx_gold,
             R.drawable.fx_thunder,
@@ -224,6 +277,54 @@ public class MainActivity extends Activity {
             R.drawable.fx_petal,
             R.drawable.fx_stealth,
             R.drawable.fx_nebula,
+            R.drawable.fx_solar,
+            R.drawable.fx_petal,
+            R.drawable.fx_leaf,
+            R.drawable.fx_gold,
+            R.drawable.fx_petal,
+            R.drawable.fx_solar,
+            R.drawable.fx_candy,
+            R.drawable.fx_toxic,
+            R.drawable.fx_shooting_star,
+            R.drawable.fx_flame,
+            R.drawable.fx_water,
+            R.drawable.fx_ice,
+            R.drawable.fx_leaf,
+            R.drawable.fx_lightning,
+            R.drawable.fx_petal,
+            R.drawable.fx_cosmic,
+            0,
+            0,
+            R.drawable.fx_petal,
+            R.drawable.fx_cosmic,
+            R.drawable.fx_japan_lantern,
+            R.drawable.fx_marigold,
+            R.drawable.fx_web_spider,
+            R.drawable.fx_gold,
+            R.drawable.fx_thunder,
+            R.drawable.fx_gamma,
+            R.drawable.fx_shield,
+            R.drawable.fx_cosmic,
+            R.drawable.fx_petal,
+            R.drawable.fx_stealth,
+            R.drawable.fx_nebula,
+            R.drawable.fx_solar,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            R.drawable.fx_us_star,
+            R.drawable.fx_spain_fan,
+            R.drawable.fx_brazil_leaf,
+            R.drawable.fx_france_lavender,
+            R.drawable.fx_italy_olive,
+            R.drawable.fx_korea_lantern,
+            R.drawable.fx_gamma,
+            R.drawable.fx_cosmic,
+            R.drawable.fx_water,
+            R.drawable.fx_leaf,
             R.drawable.fx_solar
     };
     private int INK = Color.rgb(237, 248, 249);
@@ -274,6 +375,8 @@ public class MainActivity extends Activity {
     private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private boolean arachnophobiaMode, animateThemeChange;
     private int themeChoice, musicVolume;
+    private int swipeStyle, swipeIntensity = 55, swipeSpeed = 100;
+    private android.animation.ValueAnimator swipePreviewAnimator;
     private AudioTrack musicTrack;
     private Bitmap spaceBackdrop;
     private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
@@ -418,9 +521,11 @@ public class MainActivity extends Activity {
     private void applyTheme() {
         if (themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
                 (!adminMode && xp / 500 + 1 < requiredThemeLevel(themeChoice))) themeChoice = 0;
-        for (int i = 0; i < themeBackdrops.length; i++) if (i != themeChoice && themeBackdrops[i] != null) {
-            themeBackdrops[i].recycle(); themeBackdrops[i] = null;
+        for (int i = 0; i < themeBackdrops.length; i++) if (i != themeChoice) {
+            if (themeBackdrops[i] != null) { themeBackdrops[i].recycle(); themeBackdrops[i] = null; }
+            if (themeEffects[i] != null) { themeEffects[i].recycle(); themeEffects[i] = null; }
         }
+        loadSwipePreferences();
         int[] palette = THEME_COLORS[themeChoice];
         BG = palette[0]; PANEL = palette[1]; GREEN = palette[2]; RED = palette[3]; GOLD = palette[4];
         INK = Color.rgb(237, 248, 249); MUTED = Color.rgb(170, 193, 205);
@@ -536,6 +641,7 @@ public class MainActivity extends Activity {
     }
 
     private void render() {
+        if (swipePreviewAnimator != null) swipePreviewAnimator.cancel();
         rememberScroll();
         if (zoomOverlay != null && zoomOverlay.getParent() instanceof android.view.ViewGroup)
             ((android.view.ViewGroup) zoomOverlay.getParent()).removeView(zoomOverlay);
@@ -721,15 +827,15 @@ public class MainActivity extends Activity {
                 "Level " + TIER_UNLOCK_LEVELS[1] + " · still illustrated artwork", themeTier(themeChoice) == 2);
         LinearLayout heroes = themeGroup(tier2, "heroes", "HERO & FANTASY", "Still hero and fantasy artwork", true);
         addThemeChoices(heroes, HERO_THEMES, level);
-        addThemeChoices(themeGroup(tier2, "anime2", "ANIME", "Illustrated anime-inspired settings", themeChoice == 26 || themeChoice == 27), ANIME_THEMES, level);
         addCountryThemes(tier2, false, level);
         LinearLayout tier3 = themeGroup(list, "tier3", "TIER 3 · ANIMATED",
                 "Level " + TIER_UNLOCK_LEVELS[2] + " · moving worlds and effects", themeTier(themeChoice) == 3);
-        addThemeChoices(themeGroup(tier3, "heroes3", "HERO & FANTASY", "Animated hero powers", themeChoice >= 34), HERO_ANIMATED_THEMES, level);
+        addThemeChoices(themeGroup(tier3, "heroes3", "HERO & FANTASY", "Animated hero powers", themeChoice >= 34 && themeChoice <= 43), HERO_ANIMATED_THEMES, level);
         LinearLayout worlds = themeGroup(tier3, "worlds", "WORLDS & ELEMENTS", "Animated settings", true);
         addThemeChoices(worlds, ANIMATED_THEMES, level);
-        addThemeChoices(themeGroup(tier3, "anime3", "ANIME", "Petal breezes and spirit lights", themeChoice == 30 || themeChoice == 31), ANIME_ANIMATED_THEMES, level);
+        addThemeChoices(themeGroup(tier3, "anime3", "ANIME", "Hero cities, spirit worlds, pirates and ninja villages", isAnimeTheme(themeChoice)), ANIME_ANIMATED_THEMES, level);
         addCountryThemes(tier3, true, level);
+        addSwipeControls(list);
         sectionTitle(list, "AUDIO");
         settingSwitch(list, "Swipe sounds", "Coin chime for Keep, soft sweep for Trash", soundEnabled, value -> {
             soundEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled", value).apply();
@@ -808,15 +914,115 @@ public class MainActivity extends Activity {
         return content;
     }
 
+    private static int countryCollection(int theme) {
+        for (int i = 0; i < COUNTRY_NAMES.length; i++)
+            if (COUNTRY_STILL_THEMES[i] == theme || COUNTRY_ANIMATED_THEMES[i] == theme) return i;
+        return -1;
+    }
+    private static boolean isAnimeTheme(int theme) {
+        for (int anime : ANIME_ANIMATED_THEMES) if (anime == theme) return true;
+        return false;
+    }
+    private void loadSwipePreferences() {
+        String suffix = "_" + themeChoice;
+        swipeStyle = Math.max(0, Math.min(SWIPE_STYLE_NAMES.length - 1, getPreferences(MODE_PRIVATE).getInt("swipe_style" + suffix, 0)));
+        swipeIntensity = Math.max(15, Math.min(100, getPreferences(MODE_PRIVATE).getInt("swipe_intensity" + suffix, 55)));
+        swipeSpeed = Math.max(50, Math.min(200, getPreferences(MODE_PRIVATE).getInt("swipe_speed" + suffix, 100)));
+    }
+    private void saveSwipePreferences() {
+        String suffix = "_" + themeChoice;
+        getPreferences(MODE_PRIVATE).edit().putInt("swipe_style" + suffix, swipeStyle)
+                .putInt("swipe_intensity" + suffix, swipeIntensity).putInt("swipe_speed" + suffix, swipeSpeed).apply();
+    }
+    private Bitmap effectSprite(int selected) {
+        if (selected < 0 || selected >= THEME_FX_IDS.length || THEME_FX_IDS[selected] == 0) return null;
+        if (motionStyle(selected) == 3 && arachnophobiaMode) return null;
+        if (themeEffects[selected] == null) {
+            BitmapFactory.Options options = new BitmapFactory.Options(); options.inScaled = false;
+            themeEffects[selected] = BitmapFactory.decodeResource(getResources(), THEME_FX_IDS[selected], options);
+        }
+        return themeEffects[selected];
+    }
+    private void addSwipeControls(LinearLayout list) {
+        sectionTitle(list, "SWIPE ANIMATIONS");
+        boolean enabled = hasThemeMotion(themeChoice);
+        TextView note = new TextView(this);
+        note.setText(enabled ? "Customize " + THEME_NAMES[themeChoice] + ". Each theme remembers its own swipe settings."
+                : "Choose a Tier 3 theme at level " + TIER_UNLOCK_LEVELS[2] + " to customize swipe effects.");
+        note.setTextColor(MUTED); note.setTextSize(13); note.setPadding(0, 0, 0, dp(8)); list.addView(note);
+        android.widget.Spinner picker = new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<String> choices = new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, SWIPE_STYLE_NAMES) {
+            @Override public View getView(int position, View convertView, android.view.ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                view.setTextColor(INK); view.setTextSize(15); view.setPadding(dp(12), dp(10), dp(12), dp(10)); return view;
+            }
+            @Override public View getDropDownView(int position, View convertView, android.view.ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                view.setTextColor(INK); view.setBackgroundColor(PANEL); view.setTextSize(15);
+                view.setPadding(dp(12), dp(12), dp(12), dp(12)); return view;
+            }
+        };
+        choices.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        picker.setAdapter(choices); picker.setSelection(swipeStyle); picker.setEnabled(enabled);
+        picker.setBackground(rounded(PANEL, 12)); list.addView(picker, new LinearLayout.LayoutParams(-1, dp(52)));
+        picker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (!hasThemeMotion(themeChoice) || position == swipeStyle) return;
+                swipeStyle = position; saveSwipePreferences();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        TextView intensity = new TextView(this); intensity.setText("Intensity · " + swipeIntensity + "%");
+        intensity.setTextColor(INK); intensity.setTextSize(14); list.addView(intensity);
+        SeekBar density = new SeekBar(this); density.setMax(85); density.setProgress(swipeIntensity - 15); density.setEnabled(enabled);
+        density.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN)); list.addView(density, new LinearLayout.LayoutParams(-1, dp(48)));
+        density.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean user) {
+                if (!user) return; swipeIntensity = value + 15; intensity.setText("Intensity · " + swipeIntensity + "%"); saveSwipePreferences();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        TextView speed = new TextView(this); speed.setText("Speed · " + swipeSpeed + "%");
+        speed.setTextColor(INK); speed.setTextSize(14); list.addView(speed);
+        SeekBar tempo = new SeekBar(this); tempo.setMax(150); tempo.setProgress(swipeSpeed - 50); tempo.setEnabled(enabled);
+        tempo.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN)); list.addView(tempo, new LinearLayout.LayoutParams(-1, dp(48)));
+        tempo.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean user) {
+                if (!user) return; swipeSpeed = value + 50; speed.setText("Speed · " + swipeSpeed + "%"); saveSwipePreferences();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        Button preview = new Button(this); preview.setText("Preview swipe"); preview.setTextColor(INK);
+        preview.setBackground(rounded(PANEL, 12)); preview.setEnabled(enabled);
+        list.addView(preview, new LinearLayout.LayoutParams(-1, dp(48)));
+        preview.setOnClickListener(v -> {
+            if (!hasThemeMotion(themeChoice)) return;
+            if (swipePreviewAnimator != null) swipePreviewAnimator.cancel();
+            FrameLayout target = host; SwipeEffect effect = new SwipeEffect();
+            target.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+            android.animation.ValueAnimator animation = android.animation.ValueAnimator.ofFloat(0f, .8f, 0f, -.8f, 0f);
+            animation.setDuration(1800L * 100 / swipeSpeed);
+            animation.addUpdateListener(value -> { effect.progress = (float)value.getAnimatedValue(); effect.invalidate(); });
+            animation.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator value) {
+                    target.removeView(effect); if (swipePreviewAnimator == value) swipePreviewAnimator = null;
+                }
+            });
+            swipePreviewAnimator = animation; animation.start();
+        });
+    }
+
     private void addCountryThemes(LinearLayout parent, boolean animated, int level) {
-        int japan = animated ? 32 : 28, mexico = animated ? 33 : 29;
         String suffix = animated ? "3" : "2";
         LinearLayout countries = themeGroup(parent, "countries" + suffix, "COUNTRIES",
-                "Japan and Mexico collections", themeChoice == japan || themeChoice == mexico);
-        addThemeChoices(themeGroup(countries, "japan" + suffix, "JAPAN",
-                animated ? "Floating lantern lights" : "Lantern streets at dusk", themeChoice == japan), new int[]{japan}, level);
-        addThemeChoices(themeGroup(countries, "mexico" + suffix, "MEXICO",
-                animated ? "Drifting marigolds" : "Colorful twilight plazas", themeChoice == mexico), new int[]{mexico}, level);
+                COUNTRY_NAMES.length + " country collections", countryCollection(themeChoice) >= 0);
+        for (int i = 0; i < COUNTRY_NAMES.length; i++) {
+            int choice = animated ? COUNTRY_ANIMATED_THEMES[i] : COUNTRY_STILL_THEMES[i];
+            addThemeChoices(themeGroup(countries, COUNTRY_KEYS[i] + suffix, COUNTRY_NAMES[i].toUpperCase(Locale.ROOT),
+                    animated ? COUNTRY_MOTIONS[i] : COUNTRY_SCENES[i], themeChoice == choice), new int[]{choice}, level);
+        }
     }
 
     private void themeTile(LinearLayout parent, int index, boolean unlocked, int requiredLevel, Runnable action) {
@@ -1179,62 +1385,71 @@ public class MainActivity extends Activity {
 
     private class SwipeEffect extends View {
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final long started = android.os.SystemClock.uptimeMillis();
         float progress;
-        SwipeEffect() { super(MainActivity.this); setClickable(false); }
+        SwipeEffect() { super(MainActivity.this); setClickable(false); setFocusable(false); }
         @Override protected void onDraw(Canvas canvas) {
             float w = getWidth(), h = getHeight(), amount = Math.abs(progress);
-            if (amount < .01f || w <= 0) return;
+            if (amount < .01f || w <= 0 || h <= 0) return;
             boolean keep = progress > 0;
             int accent = keep ? GREEN : RED;
-            int selectedStyle = motionStyle(themeChoice);
-            int style = selectedStyle < 18 ? selectedStyle % 5 : selectedStyle - 17;
             float edge = keep ? w * (1 - amount * .78f) : w * amount * .78f;
             float left = keep ? edge : 0, right = keep ? w : edge;
             int haze = Color.argb((int)(110 * amount), Color.red(accent), Color.green(accent), Color.blue(accent));
+            paint.setStyle(Paint.Style.FILL);
             paint.setShader(new LinearGradient(left, 0, right + 1, 0,
-                    keep ? new int[]{Color.TRANSPARENT, haze} : new int[]{haze, Color.TRANSPARENT},
-                    null, Shader.TileMode.CLAMP));
+                    keep ? new int[]{Color.TRANSPARENT, haze} : new int[]{haze, Color.TRANSPARENT}, null, Shader.TileMode.CLAMP));
             canvas.drawRect(left, 0, right, h, paint); paint.setShader(null);
             paint.setColor(Color.argb((int)(210 * amount), Color.red(accent), Color.green(accent), Color.blue(accent)));
             canvas.drawRect(edge - dp(2), 0, edge + dp(2), h, paint);
-            if (!hasThemeMotion(themeChoice)) return;
-            for (int i = 0; i < 36; i++) {
-                float x = left + (right - left) * ((i * 37 % 41) / 41f);
-                float y = h * ((i * 23 % 37) / 37f);
-                float size = dp(2 + i % 5) * (.35f + amount);
-                int color = (style == 1 && i % 3 == 0) ? GOLD : (style == 3 && i % 3 == 0) ? Color.WHITE : accent;
-                paint.setColor(Color.argb((int)((90 + i % 4 * 34) * amount),
-                        Color.red(color), Color.green(color), Color.blue(color)));
-                if (style == 1 || style == 5) { // candy drops or water bubbles
-                    paint.setStyle(style == 5 ? Paint.Style.STROKE : Paint.Style.FILL);
-                    paint.setStrokeWidth(dp(1.5f)); canvas.drawCircle(x, y, size * (style == 1 ? 1.8f : 2.2f), paint);
-                    paint.setStyle(Paint.Style.FILL);
-                } else if (style == 2) { // toxic drips
-                    canvas.drawCircle(x, y, size * 1.3f, paint);
-                    canvas.drawRoundRect(x - size * .4f, y, x + size * .4f, y + size * 4, size, size, paint);
-                } else if (style == 3) { // shooting stars
-                    canvas.drawCircle(x, y, size * .7f, paint);
-                    paint.setStrokeWidth(dp(1)); canvas.drawLine(x, y, x + (keep ? -1 : 1) * size * 6, y + size, paint);
-                } else if (style == 4) { // fire sparks
+            if (!hasThemeMotion(themeChoice) || swipeStyle == 9) return;
+            int style = swipeStyle;
+            int country = countryCollection(themeChoice);
+            if (style == 8 && country < 0) style = 1;
+            int[] presetThemes = {-1, 35, 30, 22, 21, 25, 20, -1, -1, -1};
+            Bitmap sprite = style == 0 ? effectSprite(themeChoice)
+                    : style == 8 ? effectSprite(COUNTRY_ANIMATED_THEMES[country])
+                    : presetThemes[style] >= 0 ? effectSprite(presetThemes[style]) : null;
+            float time = (android.os.SystemClock.uptimeMillis() - started) / 1000f * swipeSpeed / 100f;
+            int count = 8 + swipeIntensity * 24 / 100;
+            canvas.save(); canvas.clipRect(left, 0, right, h);
+            for (int i = 0; i < count; i++) {
+                float phase = (i * .173f + time * .12f) % 1f;
+                float x = left + (right - left) * phase;
+                float y = h * ((i * 23 % 37) / 37f) + (float)Math.sin(time + i) * dp(10);
+                float size = dp(3 + i % 4) * (.35f + amount);
+                int tint = i % 3 == 0 ? GOLD : accent;
+                paint.setColor(Color.argb((int)((80 + swipeIntensity) * amount), Color.red(tint), Color.green(tint), Color.blue(tint)));
+                if (sprite != null) {
+                    float halfW = dp(14 + i % 3 * 5) * (.4f + amount), halfH = halfW * sprite.getHeight() / sprite.getWidth();
+                    canvas.save(); canvas.rotate((float)Math.sin(time + i) * 18, x, y);
+                    paint.setAlpha((int)((85 + swipeIntensity) * amount));
+                    canvas.drawBitmap(sprite, null, new RectF(x - halfW, y - halfH, x + halfW, y + halfH), paint);
+                    canvas.restore();
+                } else if (style == 2) {
+                    canvas.save(); canvas.rotate(time * 30 + i * 29, x, y);
+                    canvas.drawOval(x - size, y - size * 2, x + size, y + size * 2, paint); canvas.restore();
+                } else if (style == 3 || style == 7) {
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(style == 7 ? 2 : 1));
+                    canvas.drawCircle(x, y, size * (style == 7 ? 3.5f + (float)Math.sin(time) : 2.2f), paint); paint.setStyle(Paint.Style.FILL);
+                } else if (style == 4) {
                     Path flame = new Path(); flame.moveTo(x, y - size * 3); flame.quadTo(x + size * 2, y, x, y + size);
                     flame.quadTo(x - size * 2, y, x, y - size * 3); canvas.drawPath(flame, paint);
-                } else if (style == 6) { // ice crystals
-                    Path shard = new Path(); shard.moveTo(x, y - size * 3); shard.lineTo(x + size, y);
-                    shard.lineTo(x, y + size * 3); shard.lineTo(x - size, y); shard.close(); canvas.drawPath(shard, paint);
-                } else if (style == 7) { // leaves and earth flecks
-                    canvas.drawOval(x - size, y - size * 2, x + size, y + size * 2, paint);
-                    paint.setStrokeWidth(dp(1)); canvas.drawLine(x, y - size * 2, x, y + size * 2, paint);
-                } else if (style == 8) { // electric bolts
+                } else if (style == 5) {
                     Path bolt = new Path(); bolt.moveTo(x, y - size * 3); bolt.lineTo(x + size, y - size);
                     bolt.lineTo(x - size * .4f, y); bolt.lineTo(x + size * .7f, y + size * 2);
-                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2)); canvas.drawPath(bolt, paint);
-                    paint.setStyle(Paint.Style.FILL);
-                } else { // sparkles for simple palettes
-                    canvas.drawCircle(x, y, size * .5f, paint);
-                    paint.setStrokeWidth(dp(1)); canvas.drawLine(x - size * 2, y, x + size * 2, y, paint);
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2)); canvas.drawPath(bolt, paint); paint.setStyle(Paint.Style.FILL);
+                } else if (style == 6) {
+                    canvas.drawCircle(x, y, size * .7f, paint); paint.setStrokeWidth(dp(1));
+                    canvas.drawLine(x, y, x + (keep ? -1 : 1) * size * 6, y + size, paint);
+                } else {
+                    canvas.drawCircle(x, y, size * .5f, paint); paint.setStrokeWidth(dp(1));
+                    canvas.drawLine(x - size * 2, y, x + size * 2, y, paint);
                     canvas.drawLine(x, y - size * 2, x, y + size * 2, paint);
                 }
             }
+            canvas.restore(); paint.setAlpha(255); paint.setStyle(Paint.Style.FILL);
+            if (isAttachedToWindow()) postInvalidateDelayed(33);
         }
     }
 
@@ -1601,8 +1816,12 @@ public class MainActivity extends Activity {
             Bitmap sprite = themeEffects[theme];
             if (sprite == null) return;
             float unit = dp(1);
-            if (theme >= 30 && theme <= 33) {
-                drawCollectionEffects(canvas, sprite, w, h, time, theme);
+            if (theme >= 50) {
+                drawExpandedCollectionEffects(canvas, sprite, w, h, time, theme);
+                return;
+            }
+            if (motionStyle(theme) >= 30 && motionStyle(theme) <= 33) {
+                drawCollectionEffects(canvas, sprite, w, h, time, motionStyle(theme));
                 return;
             }
             theme = motionStyle(theme);
@@ -1721,6 +1940,35 @@ public class MainActivity extends Activity {
                 canvas.restore();
             }
             paint.setAlpha(255);
+        }
+
+        private void drawExpandedCollectionEffects(Canvas canvas, Bitmap sprite, float w, float h, float time, int theme) {
+            float unit = getResources().getDisplayMetrics().density;
+            boolean lantern = theme == 55, stars = theme == 50;
+            int count = lantern ? 6 : theme == 51 ? 5 : 10;
+            for (int i = 0; i < count; i++) {
+                float x = w * loop(i * .271f + (float)Math.sin(time * .2f + i) * .05f, 1f);
+                float y = stars ? h * (.08f + i * .087f) + (float)Math.sin(time * .3f + i) * 10 * unit
+                        : h * loop(i * .163f + time * (lantern || theme == 57 || theme == 60 ? -.018f : .028f), 1.25f) - h * .12f;
+                float size = (lantern ? 38 : theme == 51 ? 32 : theme == 53 || theme == 54 ? 28 : 20 + i % 3 * 7) * unit;
+                float halfW = size / 2, halfH = halfW * sprite.getHeight() / sprite.getWidth();
+                canvas.save();
+                canvas.rotate(lantern ? (float)Math.sin(time * .5f + i) * 7 : stars ? 0 : time * 7 + i * 29, x, y);
+                paint.setAlpha(stars ? (int)(65 + 65 * (.5f + .5f * Math.sin(time + i))) : 110);
+                canvas.drawBitmap(sprite, null, new RectF(x - halfW, y - halfH, x + halfW, y + halfH), paint);
+                canvas.restore();
+            }
+            paint.setAlpha(255);
+            if (theme == 56 || theme == 57 || theme == 60) {
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2 * unit);
+                paint.setColor(Color.argb(60, Color.red(GREEN), Color.green(GREEN), Color.blue(GREEN)));
+                float pulse = .5f + .5f * (float)Math.sin(time * .8f);
+                for (int edge = 0; edge < 2; edge++) {
+                    float x = edge == 0 ? 0 : w;
+                    canvas.drawCircle(x, h * .45f, (45 + pulse * 50) * unit, paint);
+                }
+                paint.setStyle(Paint.Style.FILL);
+            }
         }
 
         private void drawThemeMotion(Canvas canvas, float w, float h, float time) {
