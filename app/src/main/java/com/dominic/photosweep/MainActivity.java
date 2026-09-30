@@ -1197,6 +1197,7 @@ public class MainActivity extends Activity {
             canvas.drawRect(left, 0, right, h, paint); paint.setShader(null);
             paint.setColor(Color.argb((int)(210 * amount), Color.red(accent), Color.green(accent), Color.blue(accent)));
             canvas.drawRect(edge - dp(2), 0, edge + dp(2), h, paint);
+            if (!hasThemeMotion(themeChoice)) return;
             for (int i = 0; i < 36; i++) {
                 float x = left + (right - left) * ((i * 37 % 41) / 41f);
                 float y = h * ((i * 23 % 37) / 37f);
