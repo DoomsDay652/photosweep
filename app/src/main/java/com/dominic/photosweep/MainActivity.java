@@ -65,7 +65,6 @@ import org.json.JSONObject;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -355,10 +354,12 @@ public class MainActivity extends Activity {
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService duplicateWorker = Executors.newSingleThreadExecutor();
-    private final LruCache<Long, Bitmap> previews = new LruCache<Long, Bitmap>(24) {
-        @Override protected int sizeOf(Long key, Bitmap value) { return Math.max(1, value.getByteCount() / (1024 * 1024)); }
+    private final LruCache<Long, Bitmap> previews = new LruCache<Long, Bitmap>(24 * 1024) {
+        @Override protected int sizeOf(Long key, Bitmap value) { return Math.max(1, (value.getByteCount() + 1023) / 1024); }
     };
     private final ArrayList<Photo> photos = new ArrayList<>();
+    private final HashMap<String, ArrayList<Photo>> photosByMonth = new HashMap<>();
+    private final AppServices services = AppServices.offline();
     private final HashSet<Long> duplicates = new HashSet<>();
     private final ArrayList<TrashEntry> trashEntries = new ArrayList<>();
     private final ArrayList<TrashEntry> evictionQueue = new ArrayList<>();
@@ -371,7 +372,7 @@ public class MainActivity extends Activity {
     private int xp, keptCount, trashedCount, restoredCount;
     private int selectedYear = -1;
     private String selectedMonth;
-    private boolean reviewing, loading, duplicateScanning;
+    private boolean reviewing, loading, duplicateScanning, reloadPhotosPending;
     private boolean showingTrash, deletingOld;
     private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private boolean arachnophobiaMode, animateThemeChange;
@@ -379,7 +380,6 @@ public class MainActivity extends Activity {
     private int swipeStyle, swipeIntensity = 55, swipeSpeed = 100;
     private android.animation.ValueAnimator swipePreviewAnimator;
     private AudioTrack musicTrack;
-    private Bitmap spaceBackdrop;
     private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
     private final Bitmap[] themeEffects = new Bitmap[THEME_NAMES.length];
     private final HashMap<String, Integer> scrollPositions = new HashMap<>();
@@ -416,7 +416,8 @@ public class MainActivity extends Activity {
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private long pendingTrash = -1;
     private long pendingRestore = -1;
-    private long lastKept = -1;
+    private ReviewUndo lastUndo, pendingTrashUndo;
+    private boolean pendingRestoreUndo;
     private int generation;
     private float touchX, touchY;
 
@@ -445,7 +446,11 @@ public class MainActivity extends Activity {
             reviewing = state.getBoolean("reviewing");
             showingSettings = state.getBoolean("showingSettings");
             showingTrash = state.getBoolean("showingTrash");
-            lastKept = state.getLong("lastKept", -1);
+            pendingTrash = state.getLong("pendingTrash", -1);
+            pendingRestore = state.getLong("pendingRestore", -1);
+            pendingRestoreUndo = state.getBoolean("pendingRestoreUndo");
+            lastUndo = readUndoState(state.getBundle("lastUndo"));
+            pendingTrashUndo = readUndoState(state.getBundle("pendingTrashUndo"));
             Bundle savedScroll = state.getBundle("scrollPositions");
             if (savedScroll != null) for (String key : savedScroll.keySet())
                 scrollPositions.put(key, savedScroll.getInt(key));
@@ -474,6 +479,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause() {
         if (sensorManager != null) sensorManager.unregisterListener(tiltListener);
         stopMusic();
+        if (swipePreviewAnimator != null) swipePreviewAnimator.cancel();
         super.onPause();
     }
 
@@ -484,6 +490,7 @@ public class MainActivity extends Activity {
         for (Bitmap bitmap : themeEffects) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         if (candySprites != null && !candySprites.isRecycled()) candySprites.recycle();
         generation++;
+        previews.evictAll();
         io.shutdownNow();
         duplicateWorker.shutdownNow();
         super.onDestroy();
@@ -501,7 +508,11 @@ public class MainActivity extends Activity {
         state.putBoolean("reviewing", reviewing);
         state.putBoolean("showingSettings", showingSettings);
         state.putBoolean("showingTrash", showingTrash);
-        state.putLong("lastKept", lastKept);
+        state.putLong("pendingTrash", pendingTrash);
+        state.putLong("pendingRestore", pendingRestore);
+        state.putBoolean("pendingRestoreUndo", pendingRestoreUndo);
+        if (lastUndo != null) state.putBundle("lastUndo", undoState(lastUndo));
+        if (pendingTrashUndo != null) state.putBundle("pendingTrashUndo", undoState(pendingTrashUndo));
         Bundle savedScroll = new Bundle();
         for (Map.Entry<String, Integer> entry : scrollPositions.entrySet())
             savedScroll.putInt(entry.getKey(), entry.getValue());
@@ -578,8 +589,9 @@ public class MainActivity extends Activity {
     }
 
     private void loadPhotos() {
-        if (!hasAccess() || loading) return;
-        loading = true;
+        if (!hasAccess()) return;
+        if (loading) { reloadPhotosPending = true; return; }
+        loading = true; reloadPhotosPending = false;
         final int token = ++generation;
         render();
         io.execute(() -> {
@@ -596,9 +608,9 @@ public class MainActivity extends Activity {
                         if (p.timestamp <= 0) p.timestamp = cursor.getLong(2) * 1000L;
                         p.size = cursor.getLong(3);
                         p.uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, p.id);
-                        Date date = new Date(p.timestamp);
-                        p.year = Integer.parseInt(new SimpleDateFormat("yyyy", Locale.US).format(date));
-                        p.month = new SimpleDateFormat("yyyy-MM", Locale.US).format(date);
+                        java.time.YearMonth date = java.time.YearMonth.from(java.time.Instant.ofEpochMilli(p.timestamp)
+                                .atZone(java.time.ZoneId.systemDefault()));
+                        p.year = date.getYear(); p.month = date.toString();
                         found.add(p);
                     }
                 }
@@ -606,9 +618,10 @@ public class MainActivity extends Activity {
             found.sort((a, b) -> Long.compare(b.timestamp, a.timestamp));
             runOnUiThread(() -> {
                 if (token != generation || isDestroyed()) return;
-                photos.clear(); photos.addAll(found);
+                photos.clear(); photos.addAll(found); rebuildMonthIndex();
                 duplicates.clear(); loading = false;
                 render();
+                if (reloadPhotosPending) { loadPhotos(); return; }
                 if (canManage()) cleanupTrash();
                 scanDuplicates(new ArrayList<>(found), token);
             });
@@ -633,7 +646,10 @@ public class MainActivity extends Activity {
                         if (stream == null) continue;
                         MessageDigest digest = MessageDigest.getInstance("SHA-256");
                         int count;
-                        while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count);
+                        while ((count = stream.read(buffer)) != -1) {
+                            if (token != generation || Thread.currentThread().isInterrupted()) return;
+                            digest.update(buffer, 0, count);
+                        }
                         String key = Arrays.toString(digest.digest());
                         hashes.computeIfAbsent(key, k -> new ArrayList<>()).add(p.id);
                     } catch (Exception ignored) { }
@@ -719,7 +735,7 @@ public class MainActivity extends Activity {
         brand.setTextColor(GREEN); brand.setTextSize(15); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         TextView trash = new TextView(this); trash.setText("🗑"); trash.setTextSize(25); trash.setTextColor(GOLD);
-        trash.setGravity(Gravity.CENTER); trash.setContentDescription("Recently trashed, " + trashEntries.size() + " photos");
+        trash.setGravity(Gravity.CENTER); trash.setContentDescription("Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()));
         trash.setBackground(themeButton(PANEL, 16));
         LinearLayout.LayoutParams trashLp = new LinearLayout.LayoutParams(dp(52), dp(52)); trashLp.rightMargin = dp(8);
         top.addView(trash, trashLp);
@@ -772,7 +788,7 @@ public class MainActivity extends Activity {
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         for (Map.Entry<Integer, int[]> entry : years.entrySet()) {
             int year = entry.getKey(); int[] count = entry.getValue();
-            tile(list, Integer.toString(year), count[0] + " photos  •  " + count[1] + " to review", () -> { selectedYear = year; render(); });
+            tile(list, Integer.toString(year), ReviewNavigation.photoCount(count[0]) + "  •  " + count[1] + " to review", () -> { selectedYear = year; render(); });
         }
     }
 
@@ -845,6 +861,12 @@ public class MainActivity extends Activity {
         addThemeChoices(themeGroup(tier3, "anime3", "ANIME", "Hero cities, spirit worlds, pirates and ninja villages", isAnimeTheme(themeChoice)), ANIME_ANIMATED_THEMES, level);
         addCountryThemes(tier3, true, level);
         addSwipeControls(list);
+        sectionTitle(list, "ACCOUNT & SUPPORT");
+        TextView account = new TextView(this); account.setText("Account · " + services.account.displayName());
+        account.setTextColor(INK); account.setTextSize(16); list.addView(account);
+        TextView support = new TextView(this);
+        support.setText("Optional accounts, support purchases, and an ad-free upgrade are coming soon. This version has no ads.");
+        support.setTextColor(MUTED); support.setTextSize(14); support.setPadding(0, dp(8), 0, dp(16)); list.addView(support);
         sectionTitle(list, "AUDIO");
         settingSwitch(list, "Swipe sounds", "Coin chime for Keep, soft sweep for Trash", soundEnabled, value -> {
             soundEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled", value).apply();
@@ -1084,20 +1106,94 @@ public class MainActivity extends Activity {
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         for (Map.Entry<String, int[]> entry : months.entrySet()) {
             String month = entry.getKey(); int[] count = entry.getValue();
-            String name = new SimpleDateFormat("MMMM", Locale.getDefault()).format(new Date(selectedYear - 1900, Integer.parseInt(month.substring(5)) - 1, 1));
-            tile(list, name, count[0] + " photos  •  " + count[1] + " to review", () -> { selectedMonth = month; lastKept = -1; reviewing = true; render(); });
+            String name = ReviewNavigation.title(month, false);
+            tile(list, name, ReviewNavigation.photoCount(count[0]) + "  •  " + count[1] + " to review", () -> { openReviewMonth(month); });
         }
     }
 
+    private void rebuildMonthIndex() {
+        photosByMonth.clear();
+        for (Photo photo : photos) photosByMonth.computeIfAbsent(photo.month, key -> new ArrayList<>()).add(photo);
+    }
+
     private List<Photo> monthPhotos() {
-        ArrayList<Photo> result = new ArrayList<>();
-        for (Photo p : photos) if (p.month.equals(selectedMonth)) result.add(p);
-        return result;
+        List<Photo> month = photosByMonth.get(selectedMonth);
+        return month == null ? Collections.emptyList() : month;
+    }
+
+    private void openReviewMonth(String month) {
+        selectedMonth = month; selectedYear = Integer.parseInt(month.substring(0, 4));
+        reviewing = true; showingTrash = false; showingSettings = false; lastUndo = null; render();
+    }
+
+    private void addMonthNavigation() {
+        String previous = ReviewNavigation.adjacent(photosByMonth.keySet(), selectedMonth, false);
+        String next = ReviewNavigation.adjacent(photosByMonth.keySet(), selectedMonth, true);
+        if (previous == null && next == null) return;
+        spacer(14);
+        LinearLayout navigation = new LinearLayout(this);
+        root.addView(navigation, new LinearLayout.LayoutParams(-1, dp(58)));
+        if (previous != null) monthNavigationButton(navigation, previous, false);
+        if (next != null) monthNavigationButton(navigation, next, true);
+    }
+
+    private void monthNavigationButton(LinearLayout row, String month, boolean next) {
+        Button control = button(row, (next ? "Next month →" : "← Previous month") + "\n"
+                + java.time.YearMonth.parse(month).format(java.time.format.DateTimeFormatter.ofPattern("MMM yyyy", Locale.getDefault())),
+                PANEL, INK, () -> openReviewMonth(month));
+        control.setTextSize(14); control.setPadding(dp(5), 0, dp(5), 0); control.setMaxLines(2);
+        control.setContentDescription("Review " + (next ? "next" : "previous") + " month, " + ReviewNavigation.title(month, true));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1);
+        if (next && row.getChildCount() > 1) params.leftMargin = dp(8); control.setLayoutParams(params);
+    }
+
+    private Bundle undoState(ReviewUndo action) {
+        Bundle undo = new Bundle(); undo.putLong("id", action.id); undo.putString("month", action.month);
+        undo.putLong("timestamp", action.timestamp); undo.putBoolean("trashed", action.trashed);
+        undo.putBoolean("reviewed", action.wasReviewed); undo.putBoolean("kept", action.wasKept);
+        undo.putBoolean("wasTrashed", action.wasTrashed); undo.putInt("xp", action.earnedXp); return undo;
+    }
+
+    private ReviewUndo readUndoState(Bundle undo) {
+        if (undo == null || undo.getString("month") == null) return null;
+        ReviewUndo action = new ReviewUndo(undo.getLong("id"), undo.getString("month"), undo.getLong("timestamp"),
+                undo.getBoolean("trashed"), undo.getBoolean("reviewed"), undo.getBoolean("kept"), undo.getBoolean("wasTrashed"));
+        action.earnedXp = undo.getInt("xp"); return action;
+    }
+
+    private ReviewUndo snapshot(Photo photo, boolean trashed) {
+        String id = Long.toString(photo.id);
+        return new ReviewUndo(photo.id, photo.month, photo.timestamp, trashed, reviewed.contains(id), keptIds.contains(id), trashedIds.contains(id));
+    }
+
+    private boolean canUndoLastPhoto() {
+        if (lastUndo == null || !lastUndo.month.equals(selectedMonth)) return false;
+        return lastUndo.trashed ? trashEntries.stream().anyMatch(entry -> entry.id == lastUndo.id)
+                : photos.stream().anyMatch(photo -> photo.id == lastUndo.id);
+    }
+
+    private void undoLastPhoto() {
+        if (!canUndoLastPhoto() || pendingTrash != -1 || pendingRestore != -1) return;
+        if (lastUndo.trashed) {
+            if (!canManage()) { requestMediaManagement(); return; }
+            for (TrashEntry entry : trashEntries) if (entry.id == lastUndo.id) {
+                pendingRestoreUndo = true; restore(entry); return;
+            }
+        } else { finishUndo(); render(); }
+    }
+
+    private void finishUndo() {
+        if (lastUndo == null) return;
+        lastUndo.rollback(reviewed, keptIds, trashedIds, rewarded);
+        xp = lastUndo.restoredXp(xp);
+        keptCount = keptIds.size(); trashedCount = trashedIds.size();
+        lastUndo = null; saveStats(); saveReviewed(); applyTheme();
     }
 
     private void trashScreen() {
         back("Photo Sweep", () -> { showingTrash = false; render(); });
-        heading("Recently trashed", "Last 20 photos · up to 7 days");
+        heading("Recently trashed", "Photos wiped after 7 days");
+        label("The latest 20 photos can be restored. Older photos are wiped when Trash reaches its limit.", 13, MUTED, false);
         if (trashEntries.isEmpty()) {
             spacer(36); label("Trash is empty", 21, INK, true);
             return;
@@ -1119,7 +1215,7 @@ public class MainActivity extends Activity {
             title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD); title.setTextSize(14); info.addView(title);
             TextView days = new TextView(this);
             long timeLeft = Math.max(0, SEVEN_DAYS - (System.currentTimeMillis() - entry.trashedAt));
-            days.setText(Math.max(1, (timeLeft + 86_399_999) / 86_400_000) + " days left");
+            days.setText(ReviewNavigation.expiry(timeLeft));
             days.setTextColor(MUTED); days.setTextSize(12); info.addView(days);
             Button restore = new Button(this); restore.setText("Restore"); restore.setAllCaps(false);
             restore.setTextColor(INK); restore.setTextSize(13); restore.setBackground(themeButton(PANEL, 12));
@@ -1132,7 +1228,7 @@ public class MainActivity extends Activity {
         List<Photo> month = monthPhotos();
         Photo current = null; int remaining = 0;
         for (Photo p : month) if (!reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
-        String monthName = new SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(new Date(selectedYear - 1900, Integer.parseInt(selectedMonth.substring(5)) - 1, 1));
+        String monthName = ReviewNavigation.title(selectedMonth, true);
         heading(monthName, remaining + " of " + month.size() + " left to review");
         View track = new View(this); track.setBackground(rounded(PANEL, 4));
         root.addView(track, new LinearLayout.LayoutParams(-1, dp(5)));
@@ -1150,16 +1246,15 @@ public class MainActivity extends Activity {
         if (current == null) {
             spacer(65); label("All caught up ✨", 28, INK, true); spacer(12);
             label("This month is clear. Kept photos are still in your gallery.", 16, MUTED, false);
-            if (lastKept != -1) {
+            if (canUndoLastPhoto()) {
                 spacer(20);
-                button(root, "Undo last keep", PANEL, GREEN, () -> {
-                    reviewed.remove(Long.toString(lastKept)); lastKept = -1; saveReviewed(); render();
-                });
+                button(root, "Undo last photo", PANEL, GREEN, this::undoLastPhoto);
             }
             spacer(30);
             button(root, "Review this month again", GREEN, Color.WHITE, () -> {
-                for (Photo p : month) reviewed.remove(Long.toString(p.id)); lastKept = -1; saveReviewed(); render();
+                for (Photo p : month) reviewed.remove(Long.toString(p.id)); lastUndo = null; saveReviewed(); render();
             });
+            addMonthNavigation();
             return;
         }
         Photo shown = current;
@@ -1247,11 +1342,12 @@ public class MainActivity extends Activity {
             }
             return true;
         });
-        if (lastKept != -1) {
-            TextView undo = label("Undo last keep", 14, GREEN, true);
+        if (canUndoLastPhoto()) {
+            TextView undo = label("Undo last photo", 14, GREEN, true);
             undo.setPadding(0, dp(9), 0, 0);
-            undo.setOnClickListener(v -> { reviewed.remove(Long.toString(lastKept)); lastKept = -1; saveReviewed(); render(); });
+            undo.setOnClickListener(v -> undoLastPhoto());
         }
+        addMonthNavigation();
         if (duplicateScanning) { spacer(6); label("Checking for exact duplicates…", 12, MUTED, false); }
     }
 
@@ -1381,12 +1477,20 @@ public class MainActivity extends Activity {
     private void loadPreview(long id, Uri uri, ImageView view) {
         Bitmap cached = previews.get(id);
         if (cached != null) { view.setImageBitmap(cached); return; }
+        final FrameLayout requestedHost = host;
         io.execute(() -> {
+            if (isDestroyed() || requestedHost != host) return;
+            Bitmap queued = previews.get(id);
+            if (queued != null) {
+                runOnUiThread(() -> { if (!isDestroyed() && view.isAttachedToWindow()) view.setImageBitmap(queued); });
+                return;
+            }
             try {
-                Bitmap bitmap = getContentResolver().loadThumbnail(uri, new Size(1200, 1200), null);
+                Bitmap bitmap = getContentResolver().loadThumbnail(uri, new Size(900, 900), null);
                 if (bitmap != null) {
+                    if (isDestroyed()) { bitmap.recycle(); return; }
                     previews.put(id, bitmap);
-                    runOnUiThread(() -> { if (!isDestroyed() && view.getParent() != null) view.setImageBitmap(bitmap); });
+                    runOnUiThread(() -> { if (!isDestroyed() && view.isAttachedToWindow()) view.setImageBitmap(bitmap); });
                 }
             } catch (Exception ignored) { }
         });
@@ -1476,11 +1580,11 @@ public class MainActivity extends Activity {
     }
 
     private void keep(Photo p) {
-        if (pendingTrash != -1) return;
+        if (pendingTrash != -1 || pendingRestore != -1) return;
         playEffect(true);
-        lastKept = p.id;
+        lastUndo = snapshot(p, false);
         if (keptIds.add(Long.toString(p.id))) keptCount++;
-        int earned = awardXp(p.id, 10);
+        int earned = awardXp(p.id, 10); lastUndo.earnedXp = earned;
         saveStats();
         reviewed.add(Long.toString(p.id)); saveReviewed(); render();
         if (earned > 0) floatXp(earned);
@@ -1513,13 +1617,13 @@ public class MainActivity extends Activity {
     }
 
     private void trash(Photo p) {
-        if (pendingTrash != -1 || !canManage()) return;
+        if (pendingTrash != -1 || pendingRestore != -1 || !canManage()) return;
         try {
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(p.uri), true);
-            pendingTrash = p.id;
+            pendingTrash = p.id; pendingTrashUndo = snapshot(p, true);
             startIntentSenderForResult(request.getIntentSender(), TRASH_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
-            pendingTrash = -1;
+            pendingTrash = -1; pendingTrashUndo = null;
             Toast.makeText(this, "Could not move photo to Trash", Toast.LENGTH_SHORT).show(); render();
         }
     }
@@ -1531,7 +1635,7 @@ public class MainActivity extends Activity {
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(entry.uri), false);
             startIntentSenderForResult(request.getIntentSender(), RESTORE_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
-            pendingRestore = -1; Toast.makeText(this, "Could not restore photo", Toast.LENGTH_SHORT).show();
+            pendingRestore = -1; pendingRestoreUndo = false; Toast.makeText(this, "Could not restore photo", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1607,7 +1711,8 @@ public class MainActivity extends Activity {
             ArrayList<Long> deleted = new ArrayList<>();
             for (TrashEntry entry : expired) {
                 try {
-                    if (getContentResolver().delete(entry.uri, null, null) > 0) deleted.add(entry.id);
+                    int state = TrashPolicy.state(getContentResolver(), entry.uri);
+                    if (state == 0 || (state == 1 && getContentResolver().delete(entry.uri, null, null) > 0)) deleted.add(entry.id);
                 } catch (Exception ignored) { }
             }
             runOnUiThread(() -> {
@@ -1624,22 +1729,21 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == TRASH_REQUEST) {
             long id = pendingTrash; pendingTrash = -1;
+            ReviewUndo action = pendingTrashUndo; pendingTrashUndo = null;
             int earned = 0;
             if (resultCode == RESULT_OK) {
                 playEffect(false);
-                if (lastKept == id) lastKept = -1;
-                Photo moved = null;
-                for (Photo p : photos) if (p.id == id) { moved = p; break; }
-                if (moved != null) {
-                    trashEntries.add(0, new TrashEntry(id, System.currentTimeMillis(), moved.timestamp));
-                    trimRecoveryWindow();
-                    saveTrashEntries();
+                if (action != null) {
+                    lastUndo = action;
+                    trashEntries.add(0, new TrashEntry(id, System.currentTimeMillis(), action.timestamp));
+                    trimRecoveryWindow(); saveTrashEntries();
                 }
-                photos.removeIf(p -> p.id == id);
+                photos.removeIf(p -> p.id == id); rebuildMonthIndex();
                 reviewed.remove(Long.toString(id)); saveReviewed();
                 duplicates.remove(id);
                 if (trashedIds.add(Long.toString(id))) trashedCount++;
                 earned = awardXp(id, 15);
+                if (lastUndo != null && lastUndo.id == id) lastUndo.earnedXp = earned;
                 saveStats();
             }
             render();
@@ -1647,9 +1751,11 @@ public class MainActivity extends Activity {
             if (resultCode == RESULT_OK) cleanupTrash();
         } else if (requestCode == RESTORE_REQUEST) {
             long id = pendingRestore; pendingRestore = -1;
+            boolean undo = pendingRestoreUndo; pendingRestoreUndo = false;
             if (resultCode == RESULT_OK) {
                 trashEntries.removeIf(e -> e.id == id); saveTrashEntries();
-                restoredCount++; saveStats();
+                if (undo) finishUndo(); else restoredCount++;
+                saveStats();
                 loadPhotos();
             }
             render();
@@ -1676,7 +1782,8 @@ public class MainActivity extends Activity {
                             JSONObject item = queued.getJSONObject(i);
                             Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, item.getLong("id"));
                             try {
-                                if (getContentResolver().delete(uri, null, null) <= 0) retry.put(item);
+                                int state = TrashPolicy.state(getContentResolver(), uri);
+                                if (state < 0 || (state == 1 && getContentResolver().delete(uri, null, null) <= 0)) retry.put(item);
                             } catch (Exception e) { retry.put(item); }
                         }
                         prefs.edit().putString("trash_entries", remaining.toString())

@@ -26,6 +26,11 @@ jobs:
         with:
           gradle-version: '8.12'
 
+      - name: Verify review logic
+        run: |
+          javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java tests/ReviewLogicCheck.java
+          java -cp /tmp/photosweep-check com.dominic.photosweep.ReviewLogicCheck
+
       - name: Restore private signing key
         shell: bash
         env:
