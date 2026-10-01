@@ -390,6 +390,7 @@ public class MainActivity extends Activity {
     private AudioTrack musicTrack;
     private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
     private final Bitmap[] themeEffects = new Bitmap[THEME_NAMES.length];
+    private Bitmap fireBackgroundFrames, fireSparkSprites;
     private final HashMap<String, Integer> scrollPositions = new HashMap<>();
     private ScrollView activeScroll;
     private String activeScrollPage;
@@ -497,6 +498,8 @@ public class MainActivity extends Activity {
         closePhotoZoom();
         for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         for (Bitmap bitmap : themeEffects) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+        if (fireBackgroundFrames != null && !fireBackgroundFrames.isRecycled()) fireBackgroundFrames.recycle();
+        if (fireSparkSprites != null && !fireSparkSprites.isRecycled()) fireSparkSprites.recycle();
         for (Bitmap bitmap : swipeSprites.values()) if (!bitmap.isRecycled()) bitmap.recycle();
         swipeSprites.clear();
         if (candySprites != null && !candySprites.isRecycled()) candySprites.recycle();
@@ -699,7 +702,7 @@ public class MainActivity extends Activity {
         host = new FrameLayout(this);
         activeBackdrop = new TextureBackdrop();
         host.addView(activeBackdrop, new FrameLayout.LayoutParams(-1, -1));
-        if (hasThemeMotion(themeChoice) && themeChoice != 18)
+        if (hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 21)
             host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -1997,6 +2000,13 @@ public class MainActivity extends Activity {
     private void saveReviewed() { getPreferences(MODE_PRIVATE).edit().putStringSet("reviewed", new HashSet<>(reviewed)).apply(); }
     private class TextureBackdrop extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private static final int FIRE_SPARK_COUNT = 28;
+        private final java.util.Random fireRandom = new java.util.Random();
+        private final long[] sparkStart = new long[FIRE_SPARK_COUNT];
+        private final float[] sparkX = new float[FIRE_SPARK_COUNT], sparkSpeed = new float[FIRE_SPARK_COUNT];
+        private final float[] sparkPhase = new float[FIRE_SPARK_COUNT], sparkDrift = new float[FIRE_SPARK_COUNT];
+        private final float[] sparkWiggle = new float[FIRE_SPARK_COUNT];
+        private boolean fireSparksReady;
         private final float[] sweetX = new float[18], sweetY = new float[18];
         private final float[] speedX = new float[18], speedY = new float[18];
         private final float[] spin = new float[18];
@@ -2035,6 +2045,14 @@ public class MainActivity extends Activity {
                 canvas.drawBitmap(art, null, new RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), paint);
             }
             canvas.drawColor(0x38000000);
+            if (themeChoice == 21) {
+                paint.setShader(new LinearGradient(0, h * .76f, 0, h,
+                        0x00141010, 0xF0141010, Shader.TileMode.CLAMP));
+                canvas.drawRect(0, h * .76f, w, h, paint);
+                paint.setShader(null);
+                drawFireBackground(canvas, w, h);
+                if (isAttachedToWindow()) postInvalidateDelayed(50);
+            }
             int country = countryCollection(themeChoice);
             if (country >= 0 && !hasThemeMotion(themeChoice)) {
                 Bitmap symbol = effectSprite(COUNTRY_ANIMATED_THEMES[country]);
@@ -2045,6 +2063,65 @@ public class MainActivity extends Activity {
                 drawCandies(canvas, w, h);
             }
         }
+        private void resetFireSpark(int i, long now, float w, float fireBase, boolean scatter) {
+            sparkX[i] = fireRandom.nextFloat() * w;
+            sparkSpeed[i] = dp(27 + fireRandom.nextInt(58));
+            sparkPhase[i] = fireRandom.nextFloat() * 6.28f;
+            sparkDrift[i] = dp(-8 + fireRandom.nextInt(17));
+            sparkWiggle[i] = dp(7 + fireRandom.nextInt(16));
+            float lifetime = (fireBase + dp(50)) / sparkSpeed[i];
+            sparkStart[i] = now - (scatter ? (long)(fireRandom.nextFloat() * lifetime * 1000) : 0);
+        }
+        private void drawFireBackground(Canvas canvas, float w, float h) {
+            BitmapFactory.Options options = new BitmapFactory.Options(); options.inScaled = false;
+            if (fireBackgroundFrames == null)
+                fireBackgroundFrames = BitmapFactory.decodeResource(getResources(), R.drawable.fire_background_frames, options);
+            if (fireSparkSprites == null)
+                fireSparkSprites = BitmapFactory.decodeResource(getResources(), R.drawable.fire_sparks, options);
+            long now = android.os.SystemClock.uptimeMillis();
+            float fireBase = h * .82f;
+            canvas.save(); canvas.clipRect(0, 0, w, fireBase);
+            if (fireBackgroundFrames != null) {
+                final int cellW = 400, cellH = 208, inset = 8, frameW = 384, frameH = 192;
+                int frame = (int)((now / 100) % 30);
+                int left = (frame % 5) * cellW + inset, top = (frame / 5) * cellH + inset;
+                Rect source = new Rect(left, top, left + frameW, top + frameH);
+                float height = Math.min(h * .46f, dp(330));
+                paint.setAlpha(145);
+                canvas.drawBitmap(fireBackgroundFrames, source,
+                        new RectF(-w * .025f, fireBase - height, w * 1.025f, fireBase), paint);
+            }
+            if (fireSparkSprites != null) {
+                if (!fireSparksReady) {
+                    for (int i = 0; i < FIRE_SPARK_COUNT; i++) resetFireSpark(i, now, w, fireBase, true);
+                    fireSparksReady = true;
+                }
+                int cellW = fireSparkSprites.getWidth() / 4;
+                int cellH = fireSparkSprites.getHeight() / 4;
+                for (int i = 0; i < FIRE_SPARK_COUNT; i++) {
+                    float age = (now - sparkStart[i]) / 1000f;
+                    float y = fireBase + dp(15) - age * sparkSpeed[i];
+                    if (y < -dp(25)) { resetFireSpark(i, now, w, fireBase, false); continue; }
+                    float sway = (float)Math.sin(age * (2.2f + i % 4 * .35f) + sparkPhase[i]) * sparkWiggle[i]
+                            + (float)Math.sin(age * 6.1f + sparkPhase[i] * 1.7f) * sparkWiggle[i] * .38f;
+                    float x = sparkX[i] + sparkDrift[i] * age + sway;
+                    float size = dp(10 + i % 4 * 2);
+                    float fadeIn = Math.min(1f, (fireBase + dp(15) - y) / dp(85f));
+                    float fadeOut = Math.min(1f, (y + dp(25)) / dp(120f));
+                    paint.setAlpha((int)(190 * Math.max(0f, Math.min(fadeIn, fadeOut))));
+                    int variant = i % 16;
+                    int sx = (variant % 4) * cellW, sy = (variant / 4) * cellH;
+                    Rect source = new Rect(sx + cellW / 5, sy + cellH / 7,
+                            sx + cellW * 4 / 5, sy + cellH * 6 / 7);
+                    canvas.save(); canvas.rotate((float)Math.sin(age * 3.2f + sparkPhase[i]) * 25, x, y);
+                    canvas.drawBitmap(fireSparkSprites, source,
+                            new RectF(x - size / 2, y - size, x + size / 2, y + size), paint);
+                    canvas.restore();
+                }
+            }
+            canvas.restore();
+            paint.setAlpha(255);
+        }
         // Drawn above the cards, so the world effects remain visible in every screen.
         // This View does not consume touches; swipes and buttons still reach the content.
         private float loop(float value, float span) {
@@ -2052,7 +2129,7 @@ public class MainActivity extends Activity {
         }
         private void drawGeneratedEffect(Canvas canvas, float w, float h, float time) {
             int theme = themeChoice;
-            if (theme == 18 || !hasThemeMotion(theme) || THEME_FX_IDS[theme] == 0) return; // Candy Land has its own physics sprites.
+            if (theme == 18 || theme == 21 || !hasThemeMotion(theme) || THEME_FX_IDS[theme] == 0) return; // Fire draws behind the UI.
             if (motionStyle(theme) == 3 && arachnophobiaMode) return;
             if (themeEffects[theme] == null) {
                 BitmapFactory.Options opts = new BitmapFactory.Options(); opts.inScaled = false;
@@ -2262,13 +2339,6 @@ public class MainActivity extends Activity {
                     float x = ((i * 173) % 991) / 991f * w, y = ((i * 311) % 997) / 997f * h;
                     paint.setColor(Color.argb(75 + (int)(115 * (.5 + .5 * Math.sin(time * 2 + i))), 195, 228, 255));
                     canvas.drawCircle(x, y, (i % 5 == 0 ? 3.5f : 1.8f) * unit, paint);
-                }
-            } else if (theme == 21) { // Fire: embers rise and flicker.
-                for (int i = 0; i < 24; i++) {
-                    float x = w * ((i * 59 % 97) / 97f) + (float)Math.sin(time * 2 + i) * 11 * unit;
-                    float y = h - loop(time * (22 + i % 6 * 9) * unit + i * h / 19, h + 30 * unit);
-                    paint.setColor(i % 3 == 0 ? 0xCCFFDC62 : 0xBBFF7950);
-                    canvas.drawCircle(x, y, (3 + i % 5) * unit, paint);
                 }
             } else if (theme == 22) { // Water: spreading ripples and slow currents.
                 paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3 * unit);
