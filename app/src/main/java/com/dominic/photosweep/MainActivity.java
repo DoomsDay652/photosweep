@@ -987,7 +987,7 @@ public class MainActivity extends Activity {
         return themeEffects[selected];
     }
     private void showSupportDetails() {
-        new AlertDialog.Builder(this).setTitle("Account & Support")
+        new android.app.AlertDialog.Builder(this).setTitle("Account & Support")
                 .setMessage("ACCOUNT\nGuest · photos stay on your device. Optional Google sign-in needs provider configuration.\n\nSUPPORT DEVELOPMENT\nSmall, medium, and large support purchases are planned. Prices will come from Google Play in your local currency.\n\nREMOVE ADS\nA one-time purchase will remove all ads. There are no ads in this release. Owned purchases will be restorable through Google Play.\n\nSETUP STATUS\nPlay Console products, AdMob placements, sign-in configuration, and purchase verification are not configured yet. No payment is collected by this release.")
                 .setPositiveButton("Done", null).show();
     }
