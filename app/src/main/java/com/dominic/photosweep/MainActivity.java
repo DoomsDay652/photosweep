@@ -437,7 +437,7 @@ public class MainActivity extends Activity {
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         if (sensorManager != null) gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
-        adminMode = BuildConfig.DEBUG && getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
+        adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
         musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
         musicVolume = getPreferences(MODE_PRIVATE).getInt("music_volume", 18);
@@ -884,7 +884,6 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         trackScroll(scroll, "settings");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
-        if (BuildConfig.DEBUG) {
         sectionTitle(list, "TESTING");
         settingSwitch(list, "Admin mode", "Preview all themes without earning XP or reviewing photos", adminMode, value -> {
             if (value) getPreferences(MODE_PRIVATE).edit().putInt("theme_before_admin", themeChoice).apply();
@@ -896,7 +895,6 @@ public class MainActivity extends Activity {
             }
             applyTheme(); animateThemeChange = true; render();
         });
-        }
         sectionTitle(list, "LOCAL PROGRESS");
         Button reset = new Button(this); reset.setText("Reset local progress"); reset.setTextColor(INK);
         reset.setBackground(rounded(PANEL, 12)); list.addView(reset, new LinearLayout.LayoutParams(-1, dp(52)));
