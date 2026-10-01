@@ -1,39 +1,67 @@
-# Photo Sweep: account and support rollout
+# Photo Sweep: guided account and support setup
 
-The current release works locally as Guest and has no ads or purchases. `AppServices` separates optional account identity, purchase ownership/prices and ad availability from photo review. The offline implementation is the only active provider. No accounts, payments, ad IDs or cloud photo uploads are simulated.
+This release remains Guest-only with no active ads or checkout. It includes the Play Billing library for Play Console product setup, stable product IDs, offline provider interfaces, and signed APK/AAB outputs. Firebase sign-in, consent/ad adapters, checkout, purchase verification and entitlement restoration still need integration after the owner config exists. Reset account progress in Settings resets local progression only; it does not delete photos, clear Trash timers or create/delete a cloud account.
 
-## Proposed products
+## 1. Create your developer account and app
 
-| Product | Type | Behavior |
-| --- | --- | --- |
-| Remove ads | One-time, non-consumable | Removes all ad placements; restore ownership through Google Play |
-| Small / medium / large support | Repeatable, consumable support purchases | Optional tips supporting development; no effect on photo access or theme unlocks |
+Open https://play.google.com/console/signup using the Google account that should own Photo Sweep. Complete identity verification and the US$25 one-time registration yourself. Choose the account type matching your actual individual/business identity. Create **Photo Sweep**, language **English (United States)**, type **App**, pricing **Free**. In-app support and ad removal do not make the base app a paid download. Supply your own support contact and complete the declarations shown by Google.
 
-Prices are still undecided. Read prices from Google Play ProductDetails so users see their local currency. Describe support as a tip/support purchase, not a charitable tax-deductible donation.
+Source: https://support.google.com/googleplay/android-developer/answer/6112435?hl=en
 
-## Setup needed from the owner
+## 2. Prepare an internal test release
 
-1. Create and verify Google Play Console; register `com.dominic.photosweep`, set up a payments profile, and use an internal testing track. Preserve the app's signing identity and plan Play App Signing before production upload.
-2. Configure the one-time product IDs and prices. Add Play Billing, restore owned purchases on foreground, handle pending/cancelled transactions, verify tokens on a backend, acknowledge Remove Ads, and consume support purchases only after verified fulfillment. Reconcile refunds/revocations. Never unlock Remove Ads using a local settings toggle.
-3. Create AdMob app and placement IDs. Begin with official test ads. Obtain/update consent through UMP before requesting ads and provide privacy options when required. Hide every placement for verified Remove Ads owners. No ads over photo review, full-screen inspection or Trash/Restore controls; start with a home/month-list banner and avoid disruptive interstitials.
-4. Create a Firebase project if Google sign-in is chosen, configure Credential Manager, register signing certificate fingerprints and supply app configuration. Accounts remain optional. Use provider identity rather than storing passwords in the app. Define exactly which progress/preferences can sync before adding cloud storage; photos stay on-device. Implement sign-out and account deletion before launch.
-5. Complete the store listing, privacy disclosures and testing. Test reinstall/device change, purchase restoration, pending/offline/cancelled/refunded purchases, consent failure, sign-out and account deletion.
+Use the supplied **Play Store AAB download** for Play Console; the APK is for direct phone installation. Package name is **com.dominic.photosweep**. The bundle targets API 36 and includes Play Billing 9.1.0. Upload to an internal testing release, follow the App Signing prompts, and complete the dashboard's required setup. Configure your payments profile before selling products.
 
-## Ready in this release
+The current downloaded APKs use our existing signing certificate. Decide the Play App Signing identity before distribution; using a different Google-generated signing key changes the certificate used for Play installs. Keep existing private signing credentials in repository secrets; never paste private keys into chat or commit them. Firebase must also receive the Play app-signing certificate fingerprint shown by Play Console, which can differ from the upload certificate.
 
-- Provider interfaces for account state, localized prices, Remove Ads ownership and consent/configuration gates.
-- Guest-only implementation with unavailable purchases and ads disabled.
-- A settings status describing upcoming optional accounts and support.
-- Regression checks for the ad ownership/consent gates alongside review navigation and undo.
+Sources:
+- https://support.google.com/googleplay/android-developer/answer/9859152?hl=en
+- https://developer.android.com/google/play/billing/getting-ready
+- https://support.google.com/googleplay/android-developer/answer/11926878
 
-## Official implementation references
+## 3. Set up optional Google accounts with Firebase
 
-- Google Play Billing: https://developer.android.com/google/play/billing/integrate
-- AdMob consent: https://developers.google.com/admob/android/privacy
-- Firebase / Credential Manager Google sign-in: https://firebase.google.com/docs/auth/android/google-signin
+Open https://console.firebase.google.com/ and create a Photo Sweep project. Register an Android app with package **com.dominic.photosweep**. Add the release certificate fingerprints below. Enable **Google** in Authentication's sign-in providers, choose your support email, and download the updated **google-services.json** after enabling the provider. That Android client configuration is the file needed for the next integration; do not upload a service-account private key or share passwords.
 
-Live SDK integrations and backend verification are the next stage after these provider accounts and product choices exist.
+Current APK signing certificate:
 
-## Setup status visible in the app
+```text
+SHA-1
+79:BF:AD:12:9D:18:27:22:98:9F:6B:8E:DB:4E:15:75:CE:A6:C7:D0
 
-Settings → Account & Support → Account & support details shows Guest behavior, support purchase plans, the one-time Remove Ads plan, and the missing provider configuration. It does not simulate checkout, ownership, purchase restoration, or sign-in. This APK remains offline with no payment collection or ad requests.
+SHA-256
+43:08:29:8D:1D:E2:AD:22:5C:E9:ED:79:63:48:51:C4:97:65:8C:3A:D9:30:4B:0B:AA:52:69:58:A1:0C:A8:A8
+```
+
+Keep sign-in optional. Photos stay on-device. The next code stage connects Credential Manager to Firebase, adds sign-out and account deletion, and defines which progress/preferences can sync. Add the Play App Signing fingerprints too once the console supplies them.
+
+Source: https://firebase.google.com/docs/auth/android/google-signin
+
+## 4. Create support and Remove Ads products
+
+After the Billing-enabled internal release is registered, open the one-time product section in Play Console and create these IDs. Prices below are suggestions for your choice, not hard-coded or live prices.
+
+| Product ID | Product | Runtime behavior | Suggested US base price |
+| --- | --- | --- | --- |
+| remove_ads | Remove ads | One-time ownership; do not consume; restore via Play | $1.99 |
+| support_small | Small support | Optional repeatable support purchase; consume after verified fulfillment | $0.99 |
+| support_medium | Medium support | Optional repeatable support purchase; consume after verified fulfillment | $2.99 |
+| support_large | Large support | Optional repeatable support purchase; consume after verified fulfillment | $4.99 |
+
+Use support/tip wording. These support app development and do not unlock photo access or bypass theme progression. Display localized prices from ProductDetails. Before live checkout, implement server purchase-token verification, pending/cancelled states, acknowledgement/consumption, refunds/revocations and purchase restoration. Local progress reset must never remove verified paid ownership.
+
+Sources:
+- https://developer.android.com/google/play/billing/getting-ready
+- https://developer.android.com/google/play/billing/integrate
+
+## 5. Configure AdMob
+
+Open https://admob.google.com/ and create the Android Photo Sweep app, initially marking it unpublished if it has no Play listing. Create a banner placement. Record the app ID and banner unit ID for integration. Start with official test ads; real ads remain disabled until consent, placement and verified Remove Ads ownership are connected. In Privacy & messaging, configure the applicable user messages for UMP. Keep review, full-screen inspection and Trash free of ad overlays.
+
+Sources:
+- https://developers.google.com/admob/android/quick-start
+- https://developers.google.com/admob/android/privacy
+
+## Where to start now
+
+Complete step 1 first. The next useful checkpoint is a Play Console app dashboard for Photo Sweep. Then register the Firebase Android app and provide its updated google-services.json. Product prices, AdMob IDs and backend purchase verification can follow. No sign-in/payment/ad request is made by this APK merely because the libraries or setup guide are present.

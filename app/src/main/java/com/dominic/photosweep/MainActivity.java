@@ -22,7 +22,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -378,6 +377,9 @@ public class MainActivity extends Activity {
     private int selectedYear = -1;
     private String selectedMonth;
     private boolean reviewing, loading, duplicateScanning, reloadPhotosPending;
+    private boolean fullScreenReview, reviewActionRunning;
+    private Bitmap reviewBitmap;
+    private long reviewBitmapId = -1;
     private boolean showingTrash, deletingOld;
     private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private boolean arachnophobiaMode, animateThemeChange;
@@ -395,6 +397,7 @@ public class MainActivity extends Activity {
     private SensorManager sensorManager;
     private Sensor gravitySensor;
     private TextureBackdrop activeBackdrop;
+    private android.graphics.Insets safeInsets = android.graphics.Insets.NONE;
     private FrameLayout zoomOverlay;
     private Bitmap zoomBitmap;
     private final java.util.Random cometRandom = new java.util.Random();
@@ -425,7 +428,6 @@ public class MainActivity extends Activity {
     private ReviewUndo lastUndo, pendingTrashUndo;
     private boolean pendingRestoreUndo;
     private int generation;
-    private float touchX, touchY;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -450,6 +452,7 @@ public class MainActivity extends Activity {
             selectedYear = state.getInt("selectedYear", -1);
             selectedMonth = state.getString("selectedMonth");
             reviewing = state.getBoolean("reviewing");
+            fullScreenReview = state.getBoolean("fullScreenReview");
             showingSettings = state.getBoolean("showingSettings");
             showingTrash = state.getBoolean("showingTrash");
             pendingTrash = state.getLong("pendingTrash", -1);
@@ -497,6 +500,7 @@ public class MainActivity extends Activity {
         for (Bitmap bitmap : swipeSprites.values()) if (!bitmap.isRecycled()) bitmap.recycle();
         swipeSprites.clear();
         if (candySprites != null && !candySprites.isRecycled()) candySprites.recycle();
+        reviewBitmap = null; reviewBitmapId = -1;
         generation++;
         previews.evictAll();
         io.shutdownNow();
@@ -505,7 +509,9 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (reviewActionRunning) return;
         if (zoomOverlay != null) closePhotoZoom();
+        else if (fullScreenReview) { fullScreenReview = false; render(); }
         else super.onBackPressed();
     }
 
@@ -514,6 +520,7 @@ public class MainActivity extends Activity {
         state.putInt("selectedYear", selectedYear);
         state.putString("selectedMonth", selectedMonth);
         state.putBoolean("reviewing", reviewing);
+        state.putBoolean("fullScreenReview", fullScreenReview);
         state.putBoolean("showingSettings", showingSettings);
         state.putBoolean("showingTrash", showingTrash);
         state.putLong("pendingTrash", pendingTrash);
@@ -673,6 +680,12 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void applyContentInsets() {
+        if (root == null) return;
+        boolean full = reviewing && fullScreenReview && !showingSettings && !showingTrash;
+        root.setPadding(safeInsets.left + (full ? 0 : dp(22)), safeInsets.top + (full ? 0 : dp(20)),
+                safeInsets.right + (full ? 0 : dp(22)), safeInsets.bottom + (full ? 0 : dp(16)));
+    }
     private void render() {
         clearSwipePreview();
         rememberScroll();
@@ -691,6 +704,14 @@ public class MainActivity extends Activity {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(20), dp(22), dp(16));
+        applyContentInsets();
+        host.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (view == host) {
+                safeInsets = insets.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
+                applyContentInsets();
+            }
+            return insets;
+        });
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
         if (!hasAccess()) intro();
         else if (loading) heading("Photo Sweep", "Gathering your photos…");
@@ -705,6 +726,7 @@ public class MainActivity extends Activity {
             content.addView(host, new FrameLayout.LayoutParams(-1, -1));
             host.animate().alpha(1f).setDuration(260).withEndAction(() -> content.removeView(previousHost)).start();
         } else setContentView(host);
+        host.requestApplyInsets();
         if (zoomOverlay != null) {
             FrameLayout content = findViewById(android.R.id.content);
             content.addView(zoomOverlay, new FrameLayout.LayoutParams(-1, -1));
@@ -851,6 +873,9 @@ public class MainActivity extends Activity {
             }
             applyTheme(); animateThemeChange = true; render();
         });
+        Button reset = new Button(this); reset.setText("Reset account progress"); reset.setTextColor(INK);
+        reset.setBackground(rounded(PANEL, 12)); list.addView(reset, new LinearLayout.LayoutParams(-1, dp(52)));
+        reset.setOnClickListener(v -> confirmProgressReset());
         sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
         LinearLayout tier1 = themeGroup(list, "tier1", "TIER 1 · COLORS",
@@ -986,6 +1011,25 @@ public class MainActivity extends Activity {
         }
         return themeEffects[selected];
     }
+    private void confirmProgressReset() {
+        new android.app.AlertDialog.Builder(this).setTitle("Reset account progress?")
+                .setMessage("Start again at level 1 with 0 XP, clear review history and statistics, and turn off Admin mode. Themes and swipe preferences return to defaults. Your photos and existing Trash recovery timers stay unchanged. This resets progress on this device only.")
+                .setNegativeButton("Cancel", null).setPositiveButton("Reset progress", (dialog, which) -> {
+                    if (pendingTrash != -1 || pendingRestore != -1 || reviewActionRunning) {
+                        Toast.makeText(this, "Finish the current photo action first", Toast.LENGTH_SHORT).show(); return;
+                    }
+                    android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+                    android.content.SharedPreferences.Editor editor = prefs.edit();
+                    for (String key : prefs.getAll().keySet()) if (ResetPolicy.clears(key)) editor.remove(key);
+                    editor.apply();
+                    reviewed.clear(); rewarded.clear(); keptIds.clear(); trashedIds.clear();
+                    xp = 0; keptCount = 0; trashedCount = 0; restoredCount = 0;
+                    lastUndo = null; pendingTrashUndo = null; adminMode = false; themeChoice = 0;
+                    statsExpanded = false; swipeHintSeen = false; fullScreenReview = false;
+                    scrollPositions.clear(); activeScrollPage = null; closePhotoZoom(); applyTheme(); render();
+                    Toast.makeText(this, "Progress reset · level 1", Toast.LENGTH_SHORT).show();
+                }).show();
+    }
     private void showSupportDetails() {
         new android.app.AlertDialog.Builder(this).setTitle("Account & Support")
                 .setMessage("ACCOUNT\nGuest · photos stay on your device. Optional Google sign-in needs provider configuration.\n\nSUPPORT DEVELOPMENT\nSmall, medium, and large support purchases are planned. Prices will come from Google Play in your local currency.\n\nREMOVE ADS\nA one-time purchase will remove all ads. There are no ads in this release. Owned purchases will be restorable through Google Play.\n\nSETUP STATUS\nPlay Console products, AdMob placements, sign-in configuration, and purchase verification are not configured yet. No payment is collected by this release.")
@@ -996,7 +1040,7 @@ public class MainActivity extends Activity {
         sectionTitle(list, "SWIPE ANIMATIONS");
         boolean enabled = canCustomizeSwipe();
         TextView note = new TextView(this);
-        note.setText(enabled ? "Customize " + THEME_NAMES[themeChoice] + ". Each theme remembers its own swipe settings."
+        note.setText(enabled ? "Customize " + THEME_NAMES[themeChoice] + ". " + SwipeTheme.description(SwipeTheme.forTheme(themeChoice)) + ". Each theme remembers its own swipe settings."
                 : "Choose a country, Yin Yang, or Tier 3 theme at level " + TIER_UNLOCK_LEVELS[2] + " to customize swipe effects.");
         note.setTextColor(MUTED); note.setTextSize(13); note.setPadding(0, 0, 0, dp(8)); list.addView(note);
         android.widget.Spinner picker = new android.widget.Spinner(this);
@@ -1257,10 +1301,12 @@ public class MainActivity extends Activity {
     }
 
     private void reviewScreen() {
-        back("Months", () -> { reviewing = false; render(); });
         List<Photo> month = monthPhotos();
         Photo current = null; int remaining = 0;
         for (Photo p : month) if (!reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
+        if (fullScreenReview && current != null) { fullScreenReviewScreen(current, remaining, month.size()); return; }
+        if (fullScreenReview) { fullScreenReview = false; applyContentInsets(); }
+        back("Months", () -> { reviewing = false; fullScreenReview = false; render(); });
         String monthName = ReviewNavigation.title(selectedMonth, true);
         heading(monthName, remaining + " of " + month.size() + " left to review");
         View track = new View(this); track.setBackground(rounded(PANEL, 4));
@@ -1297,19 +1343,14 @@ public class MainActivity extends Activity {
         FrameLayout card = new FrameLayout(this);
         card.setBackground(rounded(PANEL, 25)); card.setElevation(dp(8));
         card.setClipToOutline(true);
-        card.setContentDescription("Photo. Tap to inspect full screen, swipe left to Trash or right to Keep");
+        card.setContentDescription("Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
-        ImageView backdrop = new ImageView(this); backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backdrop.setAlpha(.55f);
-        if (Build.VERSION.SDK_INT >= 31) backdrop.setRenderEffect(RenderEffect.createBlurEffect(dp(20), dp(20), Shader.TileMode.CLAMP));
-        card.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        photo.setContentDescription("Tap to inspect photo full screen");
+        photo.setContentDescription("Tap for full-screen photo review");
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
-        loadPreview(shown, photo);
-        loadPreview(shown, backdrop);
+        loadReviewPhoto(shown, photo);
         SwipeEffect effect = new SwipeEffect();
-        stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+        effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
         if (duplicates.contains(shown.id)) {
             TextView bubble = pill("✦ Duplicate", GOLD, Color.rgb(89, 64, 27));
             FrameLayout.LayoutParams badge = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
@@ -1334,49 +1375,11 @@ public class MainActivity extends Activity {
             uiHandler.postDelayed(() -> overlay.animate().alpha(0f).setDuration(400)
                     .withEndAction(() -> overlay.setVisibility(View.GONE)).start(), 2300);
         } else overlay.setVisibility(View.GONE);
-        final boolean[] swipeCommitted = {false};
-        card.setOnTouchListener((v, e) -> {
-            if (swipeCommitted[0]) return true;
-            if (e.getAction() == MotionEvent.ACTION_DOWN) {
-                touchX = e.getRawX(); touchY = e.getRawY();
-                return true;
-            }
-            if (e.getAction() == MotionEvent.ACTION_MOVE) {
-                float dx = e.getRawX() - touchX;
-                card.setTranslationX(dx); card.setRotation(Math.max(-13, Math.min(13, dx / dp(28))));
-                effect.progress = Math.max(-1f, Math.min(1f, dx / (card.getWidth() * .62f)));
-                effect.invalidate();
-                trashAction.setAlpha(dx < -dp(12) ? 1f : .45f);
-                keepAction.setAlpha(dx > dp(12) ? 1f : .45f);
-                return true;
-            }
-            if (e.getAction() == MotionEvent.ACTION_UP) {
-                float dx = e.getRawX() - touchX;
-                float dy = e.getRawY() - touchY;
-                if (Math.abs(dx) > dp(85) && Math.abs(dx) > Math.abs(e.getRawY() - touchY) * 1.2f) {
-                    if (dx < 0 && !canManage()) {
-                        card.animate().translationX(0).rotation(0).setDuration(210).start();
-                        effect.progress = 0; effect.invalidate(); requestMediaManagement();
-                    } else {
-                        swipeCommitted[0] = true; effect.release(dx > 0);
-                        card.animate().translationX((dx > 0 ? 1 : -1) * stage.getWidth() * 1.2f)
-                                .rotation(dx > 0 ? 16 : -16).alpha(0).setDuration(SwipeMotion.duration(swipeSpeed))
-                                .withEndAction(() -> { if (dx > 0) keep(shown); else trash(shown); }).start();
-                    }
-                } else {
-                    effect.progress = 0; effect.invalidate();
-                    card.animate().translationX(0).rotation(0).setDuration(200).start();
-                    if (Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) showPhotoZoom(shown);
-                }
-                return true;
-            }
-            if (e.getAction() == MotionEvent.ACTION_CANCEL) {
-                effect.progress = 0; effect.invalidate();
-                card.animate().translationX(0).rotation(0).setDuration(200).start();
-                return true;
-            }
-            return true;
-        });
+        TextView full = pill("⤢ Full screen", INK, PANEL); full.setContentDescription("Full-screen photo review with swiping");
+        FrameLayout.LayoutParams fullLp = new FrameLayout.LayoutParams(-2, dp(44), Gravity.BOTTOM | Gravity.END);
+        fullLp.setMargins(0, 0, dp(12), dp(12)); stage.addView(full, fullLp); full.setElevation(dp(22));
+        full.setOnClickListener(v -> { if (!reviewActionRunning) { fullScreenReview = true; render(); } });
+        attachSwipeGesture(card, stage, effect, shown, () -> { fullScreenReview = true; render(); });
         if (canUndoLastPhoto()) {
             TextView undo = label("Undo last photo", 14, GREEN, true);
             undo.setPadding(0, dp(9), 0, 0);
@@ -1384,6 +1387,108 @@ public class MainActivity extends Activity {
         }
         addMonthNavigation();
         if (duplicateScanning) { spacer(6); label("Checking for exact duplicates…", 12, MUTED, false); }
+    }
+
+    private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect, Photo shown, Runnable tap) {
+        final boolean[] committed = {false}, multitouch = {false}; final float[] start = new float[2]; final int[] position = new int[2];
+        card.setOnTouchListener((view, event) -> {
+            if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                multitouch[0] = false;
+                start[0] = event.getRawX(); start[1] = event.getRawY(); stage.getLocationOnScreen(position);
+                effect.hold(start[0] - position[0], start[1] - position[1]); return true;
+            }
+            float dx = event.getRawX() - start[0], dy = event.getRawY() - start[1];
+            if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
+                multitouch[0] = action == MotionEvent.ACTION_POINTER_DOWN;
+                effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
+            }
+            if (multitouch[0]) {
+                if (action == MotionEvent.ACTION_UP) multitouch[0] = false;
+                return true;
+            }
+            if (action == MotionEvent.ACTION_MOVE) {
+                card.setTranslationX(dx); card.setRotation(Math.max(-13, Math.min(13, dx / dp(28))));
+                effect.progress = Math.max(-1, Math.min(1, dx / Math.max(1, card.getWidth() * .62f)));
+                effect.follow(event.getRawX() - position[0], event.getRawY() - position[1]); return true;
+            }
+            if (action == MotionEvent.ACTION_UP) {
+                if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
+                    if (dx < 0 && !canManage()) {
+                        effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(200).start(); requestMediaManagement();
+                    } else {
+                        committed[0] = true; reviewActionRunning = true; effect.release(dx > 0);
+                        card.animate().translationX((dx > 0 ? 1 : -1) * stage.getWidth() * 1.2f)
+                                .rotation(dx > 0 ? 16 : -16).alpha(0).setDuration(SwipeMotion.duration(swipeSpeed))
+                                .withEndAction(() -> {
+                                    reviewActionRunning = false;
+                                    if (isDestroyed()) return;
+                                    if (dx > 0) keep(shown); else trash(shown);
+                                }).start();
+                    }
+                } else {
+                    effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(200).start();
+                    if (tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
+                }
+                return true;
+            }
+            return true;
+        });
+    }
+    private void fullScreenReviewScreen(Photo shown, int remaining, int total) {
+        FrameLayout stage = new FrameLayout(this); stage.setBackgroundColor(Color.BLACK);
+        root.addView(stage, new LinearLayout.LayoutParams(-1, -1));
+        FrameLayout card = new FrameLayout(this);
+        FrameLayout.LayoutParams photoArea = new FrameLayout.LayoutParams(-1, -1);
+        photoArea.setMargins(0, dp(58), 0, dp(52)); stage.addView(card, photoArea);
+        ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        image.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
+        card.addView(image, new FrameLayout.LayoutParams(-1, -1)); loadReviewPhoto(shown, image);
+        SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+        attachSwipeGesture(card, stage, effect, shown, null);
+        LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6)); toolbar.setBackgroundColor(0xC0141A22); toolbar.setElevation(dp(24));
+        FrameLayout.LayoutParams top = new FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP); stage.addView(toolbar, top);
+        Button exit = new Button(this); exit.setText("Exit full screen"); exit.setTextSize(12); exit.setTextColor(INK); exit.setBackground(rounded(PANEL, 10));
+        toolbar.addView(exit, new LinearLayout.LayoutParams(dp(124), -1));
+        exit.setOnClickListener(v -> { if (!reviewActionRunning) { fullScreenReview = false; render(); } });
+        TextView count = new TextView(this); count.setText(ReviewNavigation.title(selectedMonth, false) + " · " + remaining + "/" + total + " left");
+        count.setTextColor(INK); count.setTextSize(12); count.setGravity(Gravity.CENTER); toolbar.addView(count, new LinearLayout.LayoutParams(0, -1, 1));
+        Button inspect = new Button(this); inspect.setText("Zoom"); inspect.setTextSize(12); inspect.setTextColor(INK); inspect.setBackground(rounded(PANEL, 10));
+        toolbar.addView(inspect, new LinearLayout.LayoutParams(dp(65), -1));
+        inspect.setOnClickListener(v -> { if (!reviewActionRunning) showPhotoZoom(shown); });
+        LinearLayout footer = new LinearLayout(this); footer.setGravity(Gravity.CENTER_VERTICAL); footer.setBackgroundColor(0xB0141A22); footer.setElevation(dp(24));
+        FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(52), Gravity.BOTTOM); stage.addView(footer, bottom);
+        TextView hint = new TextView(this); hint.setText("← Trash     Keep →"); hint.setTextColor(INK); hint.setTextSize(13); hint.setGravity(Gravity.CENTER);
+        footer.addView(hint, new LinearLayout.LayoutParams(0, -1, 1));
+        if (canUndoLastPhoto()) {
+            Button undo = new Button(this); undo.setText("Undo last photo"); undo.setTextSize(12); undo.setTextColor(INK); undo.setBackground(rounded(PANEL, 10));
+            footer.addView(undo, new LinearLayout.LayoutParams(dp(144), dp(44))); undo.setOnClickListener(v -> { if (!reviewActionRunning) undoLastPhoto(); });
+        }
+    }
+    private void loadReviewPhoto(Photo photo, ImageView view) {
+        if (reviewBitmapId == photo.id && reviewBitmap != null && !reviewBitmap.isRecycled()) { view.setImageBitmap(reviewBitmap); return; }
+        Bitmap preview = previews.get(photo.id); if (preview != null) view.setImageBitmap(preview);
+        final FrameLayout requestedHost = host;
+        io.execute(() -> {
+            if (isDestroyed() || requestedHost != host) return;
+            Bitmap full = null;
+            try {
+                full = ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(), photo.uri), (decoder, info, source) -> {
+                    int w = info.getSize().getWidth(), h = info.getSize().getHeight();
+                    float scale = PhotoFit.scale(w, h);
+                    decoder.setTargetSize(Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
+                    decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                });
+            } catch (Exception ignored) { }
+            final Bitmap decoded = full;
+            runOnUiThread(() -> {
+                if (decoded == null) return;
+                if (isDestroyed() || requestedHost != host || !view.isAttachedToWindow()) { decoded.recycle(); return; }
+                reviewBitmap = decoded; reviewBitmapId = photo.id; view.setImageBitmap(decoded);
+            });
+        });
     }
 
     private void loadPreview(Photo p, ImageView view) {
@@ -1408,13 +1513,13 @@ public class MainActivity extends Activity {
         close.setGravity(Gravity.CENTER); close.setContentDescription("Close full-screen photo");
         close.setBackground(themeButton(0xFF253342, 18));
         FrameLayout.LayoutParams closeLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.TOP | Gravity.END);
-        closeLp.setMargins(0, dp(18), dp(18), 0); overlay.addView(close, closeLp);
+        closeLp.setMargins(0, safeInsets.top + dp(18), safeInsets.right + dp(18), 0); overlay.addView(close, closeLp);
         close.setOnClickListener(v -> closePhotoZoom());
         TextView hint = new TextView(this);
         hint.setText("Pinch to zoom  ·  Drag to inspect  ·  Double tap");
         hint.setTextColor(0xFFD2E2EF); hint.setTextSize(13); hint.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams hintLp = new FrameLayout.LayoutParams(-1, dp(48), Gravity.BOTTOM);
-        overlay.addView(hint, hintLp);
+        hintLp.bottomMargin = safeInsets.bottom; overlay.addView(hint, hintLp);
         zoomOverlay = overlay;
         FrameLayout content = findViewById(android.R.id.content);
         content.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
@@ -1568,12 +1673,19 @@ public class MainActivity extends Activity {
                 R.drawable.fx_shooting_star, R.drawable.fx_ring, R.drawable.fx_sparkle, 0};
         return resources[style] == 0 ? null : swipeAsset(resources[style]);
     }
+    private SwipeTheme.Kind selectedSwipeProfile() {
+        if (swipeStyle == 0 && canCustomizeSwipe()) return SwipeTheme.forTheme(themeChoice);
+        SwipeTheme.Kind[] kinds = {SwipeTheme.Kind.SPARKLE, SwipeTheme.Kind.SPARKLE, SwipeTheme.Kind.SAKURA,
+                SwipeTheme.Kind.WATER, SwipeTheme.Kind.FIRE, SwipeTheme.Kind.LIGHTNING, SwipeTheme.Kind.SPACE,
+                SwipeTheme.Kind.SHIELD, countryCollection(themeChoice) >= 0 ? SwipeTheme.forTheme(themeChoice) : SwipeTheme.Kind.SPARKLE, SwipeTheme.Kind.SPARKLE};
+        return kinds[swipeStyle];
+    }
     private class SwipeEffect extends SwipeVfxView {
         SwipeEffect() {
             super(MainActivity.this, MainActivity.this::selectedSwipeSprite,
                     countryCollection(themeChoice) >= 0 && (swipeStyle == 0 || swipeStyle == 8)
                             ? COUNTRY_FLAGS[countryCollection(themeChoice)] : null,
-                    themeChoice == 18 || swipeStyle == 2,
+                    selectedSwipeProfile(),
                     !canCustomizeSwipe() || swipeStyle != 9, GREEN, RED, swipeIntensity, swipeSpeed);
         }
     }

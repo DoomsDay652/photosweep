@@ -16,3 +16,12 @@ Generated project assets live in `app/src/main/res/drawable-nodpi/`: `fx_*.png`,
 `SwipeVfxView` handles mirrored directional ribbons, theme sprites, country flags, drag easing, action labels, and release bursts on a fixed stage above the departing photo. `SwipeMotion` owns tested direction/timing math. Keep and Trash have separate previews. Theme preferences persist independently. Tier 2 Yin Yang has still art and interactive swipe effects; ambient animation remains Tier 3.
 
 Runtime validation should include portrait/landscape, rapid alternating swipes, cancelled drags, both preview buttons, Off, density/speed extremes, permission-cancelled Trash, and candy tilt. Build and pure logic checks do not replace device testing.
+
+
+## Theme-specific review interactions
+
+All 34 selectable Tier 3 themes now map to distinct `SwipeTheme` profiles, with themed hold loops and release bursts in both directions. Fire maintains rising flames while held and erupts on release; water runs in waves and splashes; ice grows frost and releases shards; lightning crackles before striking; country themes carry their own flags and motifs. The same generated raster assets are reused with distinct motion, rather than regenerating identical art.
+
+Normal and full-screen review use one shared gesture handler. The VFX layer has explicit elevation above the photo. Full-screen review shows the whole original aspect ratio with compact controls outside the image area. High-quality display decoding preserves aspect ratio with a 3072px / 4-megapixel memory bound. A separate Zoom inspection tool supports pinch and pan without committing photos.
+
+Settings → Testing → Reset account progress resets local XP, review history, statistics, theme preferences and Admin mode. It never restores/deletes photos or clears `trash_entries` / `trash_evictions`; their recovery and cleanup timers continue. This is a local progress reset, not deletion of a future cloud account.

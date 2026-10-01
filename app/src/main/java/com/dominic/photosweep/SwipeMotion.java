@@ -6,5 +6,6 @@ final class SwipeMotion {
     static float ease(float value) { float t = clamp(value); return t * t * (3f - 2f * t); }
     static int duration(int speed) { return Math.max(220, Math.min(620, 36000 / Math.max(50, speed))); }
     static float travel(float phase, boolean keep) { return (keep ? 1f : -1f) * ease(phase); }
+    static boolean shouldCommit(float dx, float dy, float threshold) { return Math.abs(dx)>threshold && Math.abs(dx)>Math.abs(dy)*1.2f; }
     static float falling(float seconds) { return 32f * seconds * seconds; }
 }

@@ -2,11 +2,11 @@ plugins { id 'com.android.application' }
 
 android {
     namespace 'com.dominic.photosweep'
-    compileSdk 35
+    compileSdk 36
     defaultConfig {
         applicationId 'com.dominic.photosweep'
         minSdk 30
-        targetSdk 35
+        targetSdk 36
         versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
         versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '1'}"
     }
@@ -27,4 +27,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+// Present in the setup bundle so Play Console can enable product configuration.
+// Guest/offline AppServices remains active until products and verification are configured.
+dependencies {
+    implementation 'com.android.billingclient:billing:9.1.0'
 }

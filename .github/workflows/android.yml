@@ -28,7 +28,7 @@ jobs:
 
       - name: Verify review logic
         run: |
-          javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java tests/ReviewLogicCheck.java
+          javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java app/src/main/java/com/dominic/photosweep/SwipeTheme.java app/src/main/java/com/dominic/photosweep/PhotoFit.java app/src/main/java/com/dominic/photosweep/ResetPolicy.java tests/ReviewLogicCheck.java
           java -cp /tmp/photosweep-check com.dominic.photosweep.ReviewLogicCheck
 
       - name: Restore private signing key
@@ -48,11 +48,18 @@ jobs:
         env:
           PHOTO_SWEEP_KEYSTORE_PATH: ${{ github.workspace }}/app/photosweep-signing.p12
           PHOTO_SWEEP_STORE_PASSWORD: ${{ secrets.PHOTO_SWEEP_STORE_PASSWORD }}
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+        run: gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
 
       - name: Save APK for download
         uses: actions/upload-artifact@v4
         with:
           name: PhotoSweep-installable-apk
           path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Save Play Store bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoSweep-play-store-bundle
+          path: app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
