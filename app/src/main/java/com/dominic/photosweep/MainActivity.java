@@ -196,12 +196,13 @@ public class MainActivity extends Activity {
     private static final int[] COLOR_THEMES = {0, 1, 2, 13, 14, 15, 16, 17};
     private static final int[] HERO_THEMES = {3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     private static final int[] ANIMATED_THEMES = {18, 19, 20, 21, 22, 23, 24, 25};
-    private static final int[] ANIME_ANIMATED_THEMES = {26, 27, 30, 31, 56, 57, 58, 59, 60};
+    private static final int[] ANIME_ANIMATED_THEMES = {27, 30, 31, 56, 57, 58, 59, 60};
     private static final int[] HERO_ANIMATED_THEMES = {34, 35, 36, 37, 38, 39, 40, 41, 42, 43};
     private static final String[] COUNTRY_NAMES = {"Japan", "Mexico", "United States", "Spain", "Brazil", "France", "Italy", "South Korea"};
+    private static final String[] COUNTRY_FLAGS = {"🇯🇵", "🇲🇽", "🇺🇸", "🇪🇸", "🇧🇷", "🇫🇷", "🇮🇹", "🇰🇷"};
     private static final String[] COUNTRY_KEYS = {"japan", "mexico", "us", "spain", "brazil", "france", "italy", "korea"};
     private static final String[] COUNTRY_SCENES = {"Lantern streets at dusk", "Colorful twilight plazas", "Waterfront city lights", "Tiled twilight plazas", "Tropical coastal bays", "Paris at twilight", "Venetian evening canals", "Hanok courtyards"};
-    private static final String[] COUNTRY_MOTIONS = {"Floating lantern lights", "Drifting marigolds", "Drifting stars", "Dancing fans", "Tropical leaf breeze", "Lavender breeze", "Olive branch breeze", "Floating paper lanterns"};
+    private static final String[] COUNTRY_MOTIONS = {"Flags and lanterns", "Flags and marigolds", "Flags and stars", "Flags and fans", "Flags and tropical leaves", "Flags and lavender", "Flags and olive branches", "Flags and paper lanterns"};
     private static final int[] COUNTRY_STILL_THEMES = {28, 29, 44, 45, 46, 47, 48, 49};
     private static final int[] COUNTRY_ANIMATED_THEMES = {32, 33, 50, 51, 52, 53, 54, 55};
     private static final String[] SWIPE_STYLE_NAMES = {"Theme matched", "Sparkles", "Petals", "Bubbles", "Embers", "Lightning", "Comets", "Energy rings", "Country celebration", "Off"};
@@ -404,11 +405,14 @@ public class MainActivity extends Activity {
             if (rotation == android.view.Surface.ROTATION_90) { float t = x; x = -y; y = t; }
             else if (rotation == android.view.Surface.ROTATION_270) { float t = x; x = y; y = -t; }
             else if (rotation == android.view.Surface.ROTATION_180) { x = -x; y = -y; }
-            // The sensor's Y axis points up the device; Canvas Y increases down.
+            // Upright sensor Y is positive. Keep screen gravity downward even when inverted.
             gravityX = Math.max(-1, Math.min(1, -x / 7f));
-            gravityY = Math.max(-1, Math.min(1, .35f - y / 7f));
+            gravityY = candyGravityY(y);
         }
     };
+    private static float candyGravityY(float screenY) {
+        return Math.max(.35f, Math.min(1f, .35f + screenY / 7f));
+    }
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private long pendingTrash = -1;
     private long pendingRestore = -1;
@@ -519,6 +523,11 @@ public class MainActivity extends Activity {
     }
 
     private void applyTheme() {
+        // Retired Sakura Academy shares its artwork with Sakura Breeze; preserve old selections.
+        if (themeChoice == 26) {
+            themeChoice = 30;
+            getPreferences(MODE_PRIVATE).edit().putInt("theme", themeChoice).apply();
+        }
         if (themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
                 (!adminMode && xp / 500 + 1 < requiredThemeLevel(themeChoice))) themeChoice = 0;
         for (int i = 0; i < themeBackdrops.length; i++) if (i != themeChoice) {
@@ -1383,6 +1392,17 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void drawCountryFlag(Canvas canvas, Paint paint, int country, float x, float y, float size) {
+        int color = paint.getColor(), alpha = paint.getAlpha();
+        float oldSize = paint.getTextSize(); Paint.Align align = paint.getTextAlign();
+        android.graphics.Typeface face = paint.getTypeface();
+        paint.setColor(Color.WHITE); paint.setAlpha(alpha); paint.setTypeface(android.graphics.Typeface.DEFAULT);
+        paint.setTextSize(size); paint.setTextAlign(Paint.Align.CENTER);
+        Paint.FontMetrics metrics = paint.getFontMetrics();
+        canvas.drawText(COUNTRY_FLAGS[country], x, y - (metrics.ascent + metrics.descent) / 2, paint);
+        paint.setColor(color); paint.setAlpha(alpha); paint.setTypeface(face); paint.setTextSize(oldSize); paint.setTextAlign(align);
+    }
+
     private class SwipeEffect extends View {
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         final long started = android.os.SystemClock.uptimeMillis();
@@ -1420,7 +1440,9 @@ public class MainActivity extends Activity {
                 float size = dp(3 + i % 4) * (.35f + amount);
                 int tint = i % 3 == 0 ? GOLD : accent;
                 paint.setColor(Color.argb((int)((80 + swipeIntensity) * amount), Color.red(tint), Color.green(tint), Color.blue(tint)));
-                if (sprite != null) {
+                if (country >= 0 && (style == 0 || style == 8) && i % 2 == 0) {
+                    drawCountryFlag(canvas, paint, country, x, y, dp(27) * (.4f + amount));
+                } else if (sprite != null) {
                     float halfW = dp(14 + i % 3 * 5) * (.4f + amount), halfH = halfW * sprite.getHeight() / sprite.getWidth();
                     canvas.save(); canvas.rotate((float)Math.sin(time + i) * 18, x, y);
                     paint.setAlpha((int)((85 + swipeIntensity) * amount));
@@ -1795,6 +1817,11 @@ public class MainActivity extends Activity {
                 canvas.drawBitmap(art, null, new RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), paint);
             }
             canvas.drawColor(0x38000000);
+            int country = countryCollection(themeChoice);
+            if (country >= 0 && !hasThemeMotion(themeChoice)) {
+                Bitmap symbol = effectSprite(COUNTRY_ANIMATED_THEMES[country]);
+                if (symbol != null) drawCountryEffects(canvas, symbol, w, h, 0f, country);
+            }
             if (themeChoice == 18) {
                 canvas.drawColor(0x500D0922);
                 drawCandies(canvas, w, h);
@@ -1816,6 +1843,11 @@ public class MainActivity extends Activity {
             Bitmap sprite = themeEffects[theme];
             if (sprite == null) return;
             float unit = dp(1);
+            int country = countryCollection(theme);
+            if (country >= 0) {
+                drawCountryEffects(canvas, sprite, w, h, time, country);
+                return;
+            }
             if (theme >= 50) {
                 drawExpandedCollectionEffects(canvas, sprite, w, h, time, theme);
                 return;
@@ -1937,6 +1969,25 @@ public class MainActivity extends Activity {
                 paint.setAlpha(theme == 31 ? (int)(80 + 45 * Math.sin(time * .8f + i)) : theme == 32 ? 140 : 125);
                 float halfWidth = size * .5f, halfHeight = halfWidth * sprite.getHeight() / sprite.getWidth();
                 canvas.drawBitmap(sprite, null, new RectF(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight), paint);
+                canvas.restore();
+            }
+            paint.setAlpha(255);
+        }
+
+        private void drawCountryEffects(Canvas canvas, Bitmap sprite, float w, float h, float time, int country) {
+            float unit = getResources().getDisplayMetrics().density;
+            for (int i = 0; i < 12; i++) {
+                boolean flag = i % 2 == 0;
+                float x = w * loop(i * .271f + (float)Math.sin(time * .2f + i) * .05f, 1f);
+                float y = h * loop(i * .113f + time * .023f, 1.25f) - h * .12f;
+                float size = (flag ? 30 : country == 0 || country == 7 ? 38 : 32) * unit;
+                canvas.save(); canvas.rotate((float)Math.sin(time * .55f + i) * 12, x, y);
+                paint.setAlpha(150);
+                if (flag) drawCountryFlag(canvas, paint, country, x, y, size);
+                else {
+                    float halfW = size / 2, halfH = halfW * sprite.getHeight() / sprite.getWidth();
+                    canvas.drawBitmap(sprite, null, new RectF(x-halfW, y-halfH, x+halfW, y+halfH), paint);
+                }
                 canvas.restore();
             }
             paint.setAlpha(255);
