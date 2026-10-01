@@ -1372,7 +1372,8 @@ public class MainActivity extends Activity {
         cardParams.bottomMargin = dp(20); root.addView(stage, cardParams);
         FrameLayout card = new FrameLayout(this);
         card.setBackground(rounded(PANEL, 25)); card.setElevation(dp(8));
-        card.setClipToOutline(true);
+        card.setClipToOutline(themeChoice != 21);
+        if (themeChoice == 21) card.setClipChildren(false);
         card.setContentDescription("Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -1764,17 +1765,20 @@ public class MainActivity extends Activity {
                     (frame % 6 + 1) * 256, (frame / 6 + 1) * 512);
             android.graphics.drawable.Drawable drawable = photo.getDrawable();
             if (drawable == null || drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0) {
-                destination.set(0, 0, getWidth(), getHeight());
                 postInvalidateDelayed(250);
+                return;
             } else {
                 float scale = Math.min(photo.getWidth() / (float)drawable.getIntrinsicWidth(),
                         photo.getHeight() / (float)drawable.getIntrinsicHeight());
                 float pw = drawable.getIntrinsicWidth() * scale, ph = drawable.getIntrinsicHeight() * scale;
                 float cx = photo.getLeft() + photo.getWidth() / 2f;
                 float cy = photo.getTop() + photo.getHeight() / 2f;
-                float spill = dp(10);
-                destination.set(cx - pw / 2 - spill, cy - ph / 2 - spill,
-                        cx + pw / 2 + spill, cy + ph / 2 + spill);
+                // The artwork's clear opening occupies x=54..232 and y=101..422
+                // in each 256x512 frame. Align that opening to the actual FIT_CENTER
+                // photo; mapping the whole sheet to the photo inset the flames.
+                float sx = pw / 178f, sy = ph / 321f;
+                destination.set(cx - pw / 2 - 54f * sx, cy - ph / 2 - 101f * sy,
+                        cx + pw / 2 + 24f * sx, cy + ph / 2 + 90f * sy);
             }
             canvas.drawBitmap(sheet, source, destination, flamePaint);
             if (phase != IDLE && isAttachedToWindow()) postInvalidateOnAnimation();
