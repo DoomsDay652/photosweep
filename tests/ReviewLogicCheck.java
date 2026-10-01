@@ -4,6 +4,11 @@ import java.util.*;
 public class ReviewLogicCheck {
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     public static void main(String[] args) {
+        check(SwipeMotion.travel(.7f,true)>0 && SwipeMotion.travel(.7f,false)<0,"directional VFX follow gesture");
+        check(Math.abs(SwipeMotion.travel(.7f,true)+SwipeMotion.travel(.7f,false))<.0001,"mirrored trajectories");
+        check(SwipeMotion.ease(-1)==0 && SwipeMotion.ease(2)==1,"clamped drag progression");
+        check(SwipeMotion.falling(.8f)>SwipeMotion.falling(.2f),"candy and petals fall down");
+        check(SwipeMotion.duration(200)<SwipeMotion.duration(50),"speed changes completion time");
         List<String> months = Arrays.asList("2026-10", "2025-12", "2026-01", "2026-04");
         check("2025-12".equals(ReviewNavigation.adjacent(months,"2026-01",false)), "previous year");
         check("2026-01".equals(ReviewNavigation.adjacent(months,"2025-12",true)), "next year");

@@ -33,3 +33,7 @@ Prices are still undecided. Read prices from Google Play ProductDetails so users
 - Firebase / Credential Manager Google sign-in: https://firebase.google.com/docs/auth/android/google-signin
 
 Live SDK integrations and backend verification are the next stage after these provider accounts and product choices exist.
+
+## Setup status visible in the app
+
+Settings → Account & Support → Account & support details shows Guest behavior, support purchase plans, the one-time Remove Ads plan, and the missing provider configuration. It does not simulate checkout, ownership, purchase restoration, or sign-in. This APK remains offline with no payment collection or ad requests.
