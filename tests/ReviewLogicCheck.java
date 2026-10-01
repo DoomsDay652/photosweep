@@ -27,6 +27,12 @@ public class ReviewLogicCheck {
             check(!ResetPolicy.clears(key),"reset preserves photos, cleanup timers, permissions and entitlements");
         for(String key:new String[]{"xp","reviewed","rewarded","theme","admin_mode","kept_ids","swipe_style_21"})
             check(ResetPolicy.clears(key),"reset restarts early progression");
+        for (int i : new int[]{3,4,5,6,7,8,9,10,34,35,36,37,38,39,40,41,56,57,58,59,60}) check(!PlayPolicy.themeAllowed(i), "franchise theme excluded");
+        for (int i : new int[]{0,18,21,22,30,32,42,43,55,61}) check(PlayPolicy.themeAllowed(i), "original theme available");
+        check(!PlayPolicy.accountReady("", "", "", "", ""), "unconfigured account requests blocked");
+        check(!PlayPolicy.accountReady("key","app","project","https://example.com/privacy","https://localhost/delete"), "placeholder endpoints blocked");
+        check(PlayPolicy.accountReady("key","app","project","https://photosweep.test/privacy","https://photosweep.test/delete"), "configured account gate");
+        check(!PlayPolicy.validUrl("http://photosweep.test/delete"), "cleartext endpoints blocked");
         List<String> months = Arrays.asList("2026-10", "2025-12", "2026-01", "2026-04");
         check("2025-12".equals(ReviewNavigation.adjacent(months,"2026-01",false)), "previous year");
         check("2026-01".equals(ReviewNavigation.adjacent(months,"2025-12",true)), "next year");
@@ -35,8 +41,8 @@ public class ReviewLogicCheck {
         check(ReviewNavigation.adjacent(months,"2025-12",false)==null, "earliest endpoint");
         check("2026-04".equals(ReviewNavigation.adjacent(months,"2026-09",false)), "all photos trashed in current month");
         check("1 photo".equals(ReviewNavigation.photoCount(1))&&"0 photos".equals(ReviewNavigation.photoCount(0)), "photo count grammar");
-        check("Wiped in 1 day".equals(ReviewNavigation.expiry(1)), "singular");
-        check("Wiped in 2 days".equals(ReviewNavigation.expiry(86400001)), "plural");
+        check("Recovery window: 1 day".equals(ReviewNavigation.expiry(1)), "singular");
+        check("Recovery window: 2 days".equals(ReviewNavigation.expiry(86400001)), "plural");
         check("Waiting for cleanup".equals(ReviewNavigation.expiry(0)), "expired wording");
         for (boolean trash : new boolean[]{false,true}) {
             Set<String> reviewed=new HashSet<>(), kept=new HashSet<>(), trashed=new HashSet<>(), rewarded=new HashSet<>();
@@ -59,6 +65,6 @@ public class ReviewLogicCheck {
             check(services.canShowAds(false,false)==(consent&&!owns),"consent and entitlement gates");
             check(!services.canShowAds(true,false)&&!services.canShowAds(false,true),"no ads over review or Trash");
         }
-        System.out.println("PASS: 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
+        System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }

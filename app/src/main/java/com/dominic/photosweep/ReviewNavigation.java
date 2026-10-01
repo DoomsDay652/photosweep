@@ -29,6 +29,6 @@ final class ReviewNavigation {
     static String expiry(long timeLeftMillis) {
         if (timeLeftMillis <= 0) return "Waiting for cleanup";
         long days = (timeLeftMillis + 86_399_999L) / 86_400_000L;
-        return "Wiped in " + days + (days == 1 ? " day" : " days");
+        return "Recovery window: " + days + (days == 1 ? " day" : " days");
     }
 }

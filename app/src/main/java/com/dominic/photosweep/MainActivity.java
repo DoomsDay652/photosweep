@@ -229,23 +229,23 @@ public class MainActivity extends Activity {
         return TIER_UNLOCK_LEVELS[themeTier(index) - 1];
     }
     private static final int[] THEME_BACKDROP_IDS = {
-            R.drawable.theme_00, R.drawable.theme_01, R.drawable.theme_02, R.drawable.theme_03,
-            R.drawable.theme_04, R.drawable.theme_05, R.drawable.theme_06, R.drawable.theme_07,
-            R.drawable.theme_08, R.drawable.theme_09, R.drawable.theme_10, R.drawable.theme_11,
+            R.drawable.theme_00, R.drawable.theme_01, R.drawable.theme_02, 0,
+            0, 0, 0, 0,
+            0, 0, 0, R.drawable.theme_11,
             R.drawable.theme_12, R.drawable.theme_13, R.drawable.theme_14, R.drawable.theme_15,
             R.drawable.theme_16, R.drawable.theme_17, R.drawable.theme_18, R.drawable.theme_19,
             R.drawable.space_nebula, R.drawable.theme_21, R.drawable.theme_22, R.drawable.theme_23,
             R.drawable.theme_24, R.drawable.theme_25,
             R.drawable.sakura_academy, R.drawable.spirit_sky, R.drawable.japan_lanterns, R.drawable.mexico_plaza,
             R.drawable.sakura_academy, R.drawable.spirit_sky, R.drawable.japan_lanterns, R.drawable.mexico_plaza,
-            R.drawable.theme_03,
-            R.drawable.theme_04,
-            R.drawable.theme_05,
-            R.drawable.theme_06,
-            R.drawable.theme_07,
-            R.drawable.theme_08,
-            R.drawable.theme_09,
-            R.drawable.theme_10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             R.drawable.theme_11,
             R.drawable.theme_12,
             R.drawable.country_us,
@@ -260,11 +260,11 @@ public class MainActivity extends Activity {
             R.drawable.country_france,
             R.drawable.country_italy,
             R.drawable.country_korea,
-            R.drawable.anime_myhero,
-            R.drawable.anime_bleach,
-            R.drawable.anime_onepiece,
-            R.drawable.anime_naruto,
-            R.drawable.anime_dragonball,
+            0,
+            0,
+            0,
+            0,
+            0,
             R.drawable.theme_yin_yang
     };
     private static final int[] THEME_FX_IDS = {
@@ -364,6 +364,7 @@ public class MainActivity extends Activity {
     private final ArrayList<Photo> photos = new ArrayList<>();
     private final HashMap<String, ArrayList<Photo>> photosByMonth = new HashMap<>();
     private final AppServices services = AppServices.offline();
+    private AccountController accounts;
     private final HashSet<Long> duplicates = new HashSet<>();
     private final ArrayList<TrashEntry> trashEntries = new ArrayList<>();
     private final ArrayList<TrashEntry> evictionQueue = new ArrayList<>();
@@ -432,10 +433,11 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        accounts = new AccountController(this, () -> { if (!isDestroyed() && root != null) render(); });
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         if (sensorManager != null) gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
-        adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
+        adminMode = BuildConfig.DEBUG && getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
         musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
         musicVolume = getPreferences(MODE_PRIVATE).getInt("music_volume", 18);
@@ -482,7 +484,9 @@ public class MainActivity extends Activity {
         if (root != null) {
             loadTrashEntries();
             render();
-            if (hasAccess() && canManage()) cleanupTrash();
+            if (hasAccess() && pendingTrash == -1 && pendingRestore == -1 && !reviewActionRunning) {
+                previews.evictAll(); reviewBitmap = null; reviewBitmapId = -1; loadPhotos();
+            }
         }
     }
 
@@ -494,6 +498,7 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onDestroy() {
+        if (accounts != null) accounts.close();
         stopMusic();
         closePhotoZoom();
         for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
@@ -557,7 +562,7 @@ public class MainActivity extends Activity {
             themeChoice = 30;
             getPreferences(MODE_PRIVATE).edit().putInt("theme", themeChoice).apply();
         }
-        if (themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
+        if (!PlayPolicy.themeAllowed(themeChoice) || themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
                 (!adminMode && xp / 500 + 1 < requiredThemeLevel(themeChoice))) themeChoice = 0;
         for (int i = 0; i < themeBackdrops.length; i++) if (i != themeChoice) {
             if (themeBackdrops[i] != null) { themeBackdrops[i].recycle(); themeBackdrops[i] = null; }
@@ -585,15 +590,23 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Prompt-free Trash needs Android 12 or newer", Toast.LENGTH_LONG).show(); return;
         }
         try {
-            Intent intent = new Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA);
-            intent.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(intent);
+            new android.app.AlertDialog.Builder(this).setTitle("Optional media management")
+                .setMessage("This allows Photo Sweep to move or restore photos without a confirmation for each photo and remove expired Trash entries automatically. You can decline and still review photos using Android confirmations. Change this anytime in Android Settings.")
+                .setNegativeButton("Keep confirmations", null).setPositiveButton("Open Android Settings", (d,w) -> {
+                    Intent intent = new Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.parse("package:" + getPackageName())); startActivity(intent);
+                }).show();
         } catch (Exception e) {
             Toast.makeText(this, "Open Settings → Apps → Special access → Manage media", Toast.LENGTH_LONG).show();
         }
     }
 
     private void requestAccess() {
+        new android.app.AlertDialog.Builder(this).setTitle("Choose photo access")
+            .setMessage("Photo Sweep reads photos you allow so you can review, keep or move them to Android Trash. Photos are processed on this device and are not uploaded. You can allow selected photos, allow all photos, or decline. Android asks for confirmation before Trash or Restore unless you separately allow Manage media.")
+            .setNegativeButton("Not now", null).setPositiveButton("Continue", (d,w) -> requestPhotoPermission()).show();
+    }
+
+    private void requestPhotoPermission() {
         if (Build.VERSION.SDK_INT >= 34) requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED}, PERMISSION_REQUEST);
         else if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES}, PERMISSION_REQUEST);
         else requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_REQUEST);
@@ -716,9 +729,9 @@ public class MainActivity extends Activity {
             return insets;
         });
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        if (!hasAccess()) intro();
+        if (showingSettings) settingsScreen();
+        else if (!hasAccess()) intro();
         else if (loading) heading("Photo Sweep", "Gathering your photos…");
-        else if (showingSettings) settingsScreen();
         else if (showingTrash) trashScreen();
         else if (reviewing && selectedMonth != null) reviewScreen();
         else if (selectedYear != -1) monthsScreen();
@@ -747,8 +760,14 @@ public class MainActivity extends Activity {
         label("Browse by year and month. Swipe right to keep, left to move to Trash. Exact copies get a Duplicate bubble.", 16, INK, false);
         spacer(32);
         button(root, "Choose photo access", GREEN, Color.WHITE, this::requestAccess);
+        button(root, "Privacy policy", PANEL, INK, () -> accounts.showPrivacy());
         spacer(18);
-        label("To skip a confirmation on every swipe, enable Manage media once after photo access.", 13, MUTED, false);
+        label("Photo access is your choice. Manage media is optional.", 13, MUTED, false);
+        button(root, "Account & settings", PANEL, INK, () -> { showingSettings = true; render(); });
+        LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
+        while (root.getChildCount() > 0) { View child = root.getChildAt(0); root.removeView(child); body.addView(child); }
+        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.addView(body);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void heading(String title, String subtitle) {
@@ -865,6 +884,7 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         trackScroll(scroll, "settings");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
+        if (BuildConfig.DEBUG) {
         sectionTitle(list, "TESTING");
         settingSwitch(list, "Admin mode", "Preview all themes without earning XP or reviewing photos", adminMode, value -> {
             if (value) getPreferences(MODE_PRIVATE).edit().putInt("theme_before_admin", themeChoice).apply();
@@ -876,7 +896,9 @@ public class MainActivity extends Activity {
             }
             applyTheme(); animateThemeChange = true; render();
         });
-        Button reset = new Button(this); reset.setText("Reset account progress"); reset.setTextColor(INK);
+        }
+        sectionTitle(list, "LOCAL PROGRESS");
+        Button reset = new Button(this); reset.setText("Reset local progress"); reset.setTextColor(INK);
         reset.setBackground(rounded(PANEL, 12)); list.addView(reset, new LinearLayout.LayoutParams(-1, dp(52)));
         reset.setOnClickListener(v -> confirmProgressReset());
         sectionTitle(list, "THEMES");
@@ -895,11 +917,13 @@ public class MainActivity extends Activity {
         addThemeChoices(themeGroup(tier3, "heroes3", "HERO & FANTASY", "Animated hero powers", themeChoice >= 34 && themeChoice <= 43), HERO_ANIMATED_THEMES, level);
         LinearLayout worlds = themeGroup(tier3, "worlds", "WORLDS & ELEMENTS", "Animated settings", true);
         addThemeChoices(worlds, ANIMATED_THEMES, level);
-        addThemeChoices(themeGroup(tier3, "anime3", "ANIME", "Hero cities, spirit worlds, pirates and ninja villages", isAnimeTheme(themeChoice)), ANIME_ANIMATED_THEMES, level);
+        addThemeChoices(worlds, new int[]{27, 30, 31}, level);
+
         addCountryThemes(tier3, true, level);
         addSwipeControls(list);
         sectionTitle(list, "ACCOUNT & SUPPORT");
-        TextView account = new TextView(this); account.setText("Account · " + services.account.displayName());
+        accounts.addControls(list);
+        TextView account = new TextView(this); account.setText("Photos and progress stay on this device.");
         account.setTextColor(INK); account.setTextSize(16); list.addView(account);
         TextView support = new TextView(this);
         support.setText("Your photos stay on this device. Accounts are optional. Support purchases and ad removal will become available after store setup; this version has no ads.");
@@ -907,6 +931,11 @@ public class MainActivity extends Activity {
         Button setup = new Button(this); setup.setText("Account & support details"); setup.setTextColor(INK);
         setup.setBackground(rounded(PANEL, 12)); list.addView(setup, new LinearLayout.LayoutParams(-1, dp(52)));
         setup.setOnClickListener(v -> showSupportDetails());
+        sectionTitle(list, "PRIVACY & PERMISSIONS");
+        button(list, "Privacy policy", PANEL, INK, () -> accounts.showPrivacy());
+        button(list, "Change photo access", PANEL, INK, this::requestAccess);
+        button(list, "Android app permissions", PANEL, INK, () -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
+        button(list, "Optional prompt-free Trash", PANEL, INK, this::requestMediaManagement);
         sectionTitle(list, "AUDIO");
         settingSwitch(list, "Swipe sounds", "Coin chime for Keep, soft sweep for Trash", soundEnabled, value -> {
             soundEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled", value).apply();
@@ -937,6 +966,7 @@ public class MainActivity extends Activity {
 
     private void addThemeChoices(LinearLayout list, int[] choices, int level) {
         for (int choice : choices) {
+            if (!PlayPolicy.themeAllowed(choice)) continue;
             int requiredLevel = requiredThemeLevel(choice);
             boolean unlocked = adminMode || level >= requiredLevel;
             themeTile(list, choice, unlocked, requiredLevel, () -> {
@@ -1015,7 +1045,7 @@ public class MainActivity extends Activity {
         return themeEffects[selected];
     }
     private void confirmProgressReset() {
-        new android.app.AlertDialog.Builder(this).setTitle("Reset account progress?")
+        new android.app.AlertDialog.Builder(this).setTitle("Reset local progress?")
                 .setMessage("Start again at level 1 with 0 XP, clear review history and statistics, and turn off Admin mode. Themes and swipe preferences return to defaults. Your photos and existing Trash recovery timers stay unchanged. This resets progress on this device only.")
                 .setNegativeButton("Cancel", null).setPositiveButton("Reset progress", (dialog, which) -> {
                     if (pendingTrash != -1 || pendingRestore != -1 || reviewActionRunning) {
@@ -1255,7 +1285,6 @@ public class MainActivity extends Activity {
     private void undoLastPhoto() {
         if (!canUndoLastPhoto() || pendingTrash != -1 || pendingRestore != -1) return;
         if (lastUndo.trashed) {
-            if (!canManage()) { requestMediaManagement(); return; }
             for (TrashEntry entry : trashEntries) if (entry.id == lastUndo.id) {
                 pendingRestoreUndo = true; restore(entry); return;
             }
@@ -1272,8 +1301,8 @@ public class MainActivity extends Activity {
 
     private void trashScreen() {
         back("Photo Sweep", () -> { showingTrash = false; render(); });
-        heading("Recently trashed", "Photos wiped after 7 days");
-        label("The latest 20 photos can be restored. Older photos are wiped when Trash reaches its limit.", 13, MUTED, false);
+        heading("Recently trashed", "7-day recovery window · Android controls final removal");
+        label("Photo Sweep tracks the latest 20 photos for up to 7 days. With Manage media enabled, expired or older entries can be permanently removed. Without it, Android controls final removal.", 13, MUTED, false);
         if (trashEntries.isEmpty()) {
             spacer(36); label("Trash is empty", 21, INK, true);
             return;
@@ -1418,9 +1447,7 @@ public class MainActivity extends Activity {
             }
             if (action == MotionEvent.ACTION_UP) {
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
-                    if (dx < 0 && !canManage()) {
-                        effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(200).start(); requestMediaManagement();
-                    } else {
+                    {
                         committed[0] = true; reviewActionRunning = true; effect.release(dx > 0);
                         card.animate().translationX((dx > 0 ? 1 : -1) * stage.getWidth() * 1.2f)
                                 .rotation(dx > 0 ? 16 : -16).alpha(0).setDuration(SwipeMotion.duration(swipeSpeed))
@@ -1731,7 +1758,7 @@ public class MainActivity extends Activity {
     }
 
     private void trash(Photo p) {
-        if (pendingTrash != -1 || pendingRestore != -1 || !canManage()) return;
+        if (pendingTrash != -1 || pendingRestore != -1) return;
         try {
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(p.uri), true);
             pendingTrash = p.id; pendingTrashUndo = snapshot(p, true);
@@ -1743,7 +1770,7 @@ public class MainActivity extends Activity {
     }
 
     private void restore(TrashEntry entry) {
-        if (pendingRestore != -1 || !canManage()) { if (!canManage()) requestMediaManagement(); return; }
+        if (pendingRestore != -1 || pendingTrash != -1) return;
         try {
             pendingRestore = entry.id;
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(entry.uri), false);

@@ -65,3 +65,7 @@ Sources:
 ## Where to start now
 
 Complete step 1 first. The next useful checkpoint is a Play Console app dashboard for Photo Sweep. Then register the Firebase Android app and provide its updated google-services.json. Product prices, AdMob IDs and backend purchase verification can follow. No sign-in/payment/ad request is made by this APK merely because the libraries or setup guide are present.
+
+## Updated app preparation
+
+Email/password account flows are now implemented but disabled until configured. See `store/PLAY_RELEASE_READINESS.md` for the current instructions, including Firebase Email/Password, public privacy/deletion pages, CI configuration and release checks. Google sign-in remains a later integration. The account deletion and privacy website source is supplied in `store/public`; it is not deployed yet. Do not publish this internal-testing build as fully configured production.

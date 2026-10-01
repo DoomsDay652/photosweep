@@ -1,11 +1,21 @@
 plugins { id 'com.android.application' }
 
+def cfgFile = file('google-services.json')
+def firebaseConfig = cfgFile.exists() ? new groovy.json.JsonSlurper().parse(cfgFile) : null
+def androidClient = firebaseConfig?.client?.find { it.client_info.android_client_info.package_name == 'com.dominic.photosweep' }
+def publicConfig = ['PRIVACY_URL': providers.gradleProperty('privacyUrl').getOrElse(''), 'DELETION_URL': providers.gradleProperty('deletionUrl').getOrElse('')]
+
 android {
+    buildFeatures { buildConfig true }
     namespace 'com.dominic.photosweep'
     compileSdk 36
     defaultConfig {
         applicationId 'com.dominic.photosweep'
         minSdk 30
+        buildConfigField 'String', 'FIREBASE_API_KEY', groovy.json.JsonOutput.toJson(androidClient?.api_key?.getAt(0)?.current_key ?: '')
+        buildConfigField 'String', 'FIREBASE_APP_ID', groovy.json.JsonOutput.toJson(androidClient?.client_info?.mobilesdk_app_id ?: '')
+        buildConfigField 'String', 'FIREBASE_PROJECT_ID', groovy.json.JsonOutput.toJson(firebaseConfig?.project_info?.project_id ?: '')
+        publicConfig.each { key, value -> buildConfigField 'String', key, groovy.json.JsonOutput.toJson(value) }
         targetSdk 36
         versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
         versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '1'}"
@@ -32,6 +42,22 @@ android {
 // Present in the setup bundle so Play Console can enable product configuration.
 // Guest/offline AppServices remains active until products and verification are configured.
 dependencies {
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:2.2.0')
+    implementation platform('com.google.firebase:firebase-bom:34.19.0')
+    implementation 'com.google.firebase:firebase-auth'
     implementation 'com.android.billingclient:billing:9.1.0'
+}
+
+// Opt-in production gate. Internal builds remain usable without owner configuration.
+tasks.register('verifyPlayProduction') {
+    doLast {
+        if (!androidClient) throw new GradleException('Add the owner Firebase Android google-services.json.')
+        publicConfig.each { key, value ->
+            if (!value.startsWith('https://') || value.contains('example.') || value.contains('localhost'))
+                throw new GradleException("Configure a deployed HTTPS ${key} before production.")
+        }
+    }
+}
+if (providers.gradleProperty('playProduction').getOrElse('false') == 'true') {
+    tasks.matching { it.name == 'preReleaseBuild' }.configureEach { dependsOn 'verifyPlayProduction' }
 }

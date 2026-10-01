@@ -28,8 +28,19 @@ jobs:
 
       - name: Verify review logic
         run: |
-          javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java app/src/main/java/com/dominic/photosweep/SwipeTheme.java app/src/main/java/com/dominic/photosweep/PhotoFit.java app/src/main/java/com/dominic/photosweep/ResetPolicy.java tests/ReviewLogicCheck.java
+          javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java app/src/main/java/com/dominic/photosweep/SwipeTheme.java app/src/main/java/com/dominic/photosweep/PhotoFit.java app/src/main/java/com/dominic/photosweep/ResetPolicy.java app/src/main/java/com/dominic/photosweep/PlayPolicy.java tests/ReviewLogicCheck.java
           java -cp /tmp/photosweep-check com.dominic.photosweep.ReviewLogicCheck
+
+      - name: Verify external account deletion logic
+        run: node --test tests/AccountDeletionWebCheck.cjs
+
+      - name: Restore optional owner account configuration
+        env:
+          FIREBASE_CONFIG: ${{ secrets.PHOTO_SWEEP_FIREBASE_ANDROID_CONFIG }}
+        run: |
+          if [[ -n "$FIREBASE_CONFIG" ]]; then
+            printf '%s' "$FIREBASE_CONFIG" > app/google-services.json
+          fi
 
       - name: Restore private signing key
         shell: bash
@@ -46,9 +57,11 @@ jobs:
 
       - name: Build signed installable APK
         env:
+          ORG_GRADLE_PROJECT_privacyUrl: ${{ vars.PHOTO_SWEEP_PRIVACY_URL }}
+          ORG_GRADLE_PROJECT_deletionUrl: ${{ vars.PHOTO_SWEEP_DELETION_URL }}
           PHOTO_SWEEP_KEYSTORE_PATH: ${{ github.workspace }}/app/photosweep-signing.p12
           PHOTO_SWEEP_STORE_PASSWORD: ${{ secrets.PHOTO_SWEEP_STORE_PASSWORD }}
-        run: gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+        run: gradle :app:lintRelease :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
 
       - name: Save APK for download
         uses: actions/upload-artifact@v4

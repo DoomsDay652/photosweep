@@ -5,3 +5,6 @@ app/build/
 *.jks
 *.keystore
 local.properties
+
+app/google-services.json
+store/public/account-config.json
