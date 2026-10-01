@@ -1381,6 +1381,11 @@ public class MainActivity extends Activity {
         photo.setContentDescription("Tap for full-screen photo review");
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
         loadReviewPhoto(shown, photo);
+        FirePhotoBorderView fireBorder = null;
+        if (themeChoice == 21) {
+            fireBorder = new FirePhotoBorderView(photo);
+            card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
+        }
         SwipeEffect effect = new SwipeEffect();
         effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
         if (duplicates.contains(shown.id)) {
@@ -1411,7 +1416,7 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams fullLp = new FrameLayout.LayoutParams(-2, dp(44), Gravity.BOTTOM | Gravity.END);
         fullLp.setMargins(0, 0, dp(12), dp(12)); stage.addView(full, fullLp); full.setElevation(dp(22));
         full.setOnClickListener(v -> { if (!reviewActionRunning) { fullScreenReview = true; render(); } });
-        attachSwipeGesture(card, stage, effect, shown, () -> { fullScreenReview = true; render(); });
+        attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> { fullScreenReview = true; render(); });
         if (canUndoLastPhoto()) {
             TextView undo = label("Undo last photo", 14, GREEN, true);
             undo.setPadding(0, dp(9), 0, 0);
@@ -1421,7 +1426,8 @@ public class MainActivity extends Activity {
         if (duplicateScanning) { spacer(6); label("Checking for exact duplicates…", 12, MUTED, false); }
     }
 
-    private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect, Photo shown, Runnable tap) {
+    private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect,
+                                    FirePhotoBorderView fireBorder, Photo shown, Runnable tap) {
         final boolean[] committed = {false}, multitouch = {false}; final float[] start = new float[2]; final int[] position = new int[2];
         card.setOnTouchListener((view, event) -> {
             if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
@@ -1429,11 +1435,13 @@ public class MainActivity extends Activity {
             if (action == MotionEvent.ACTION_DOWN) {
                 multitouch[0] = false;
                 start[0] = event.getRawX(); start[1] = event.getRawY(); stage.getLocationOnScreen(position);
+                if (fireBorder != null) fireBorder.ignite();
                 effect.hold(start[0] - position[0], start[1] - position[1]); return true;
             }
             float dx = event.getRawX() - start[0], dy = event.getRawY() - start[1];
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
                 multitouch[0] = action == MotionEvent.ACTION_POINTER_DOWN;
+                if (fireBorder != null) fireBorder.cool();
                 effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
             }
             if (multitouch[0]) {
@@ -1448,7 +1456,9 @@ public class MainActivity extends Activity {
             if (action == MotionEvent.ACTION_UP) {
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
                     {
-                        committed[0] = true; reviewActionRunning = true; effect.release(dx > 0);
+                        committed[0] = true; reviewActionRunning = true;
+                        if (fireBorder != null) fireBorder.flare();
+                        effect.release(dx > 0);
                         card.animate().translationX((dx > 0 ? 1 : -1) * stage.getWidth() * 1.2f)
                                 .rotation(dx > 0 ? 16 : -16).alpha(0).setDuration(SwipeMotion.duration(swipeSpeed))
                                 .withEndAction(() -> {
@@ -1458,6 +1468,7 @@ public class MainActivity extends Activity {
                                 }).start();
                     }
                 } else {
+                    if (fireBorder != null) fireBorder.cool();
                     effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(200).start();
                     if (tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
                 }
@@ -1475,8 +1486,13 @@ public class MainActivity extends Activity {
         ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
         image.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
         card.addView(image, new FrameLayout.LayoutParams(-1, -1)); loadReviewPhoto(shown, image);
+        FirePhotoBorderView fireBorder = null;
+        if (themeChoice == 21) {
+            fireBorder = new FirePhotoBorderView(image);
+            card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
+        }
         SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
-        attachSwipeGesture(card, stage, effect, shown, null);
+        attachSwipeGesture(card, stage, effect, fireBorder, shown, null);
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(8), dp(6), dp(8), dp(6)); toolbar.setBackgroundColor(0xC0141A22); toolbar.setElevation(dp(24));
         FrameLayout.LayoutParams top = new FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP); stage.addView(toolbar, top);
@@ -1710,13 +1726,98 @@ public class MainActivity extends Activity {
                 SwipeTheme.Kind.SHIELD, countryCollection(themeChoice) >= 0 ? SwipeTheme.forTheme(themeChoice) : SwipeTheme.Kind.SPARKLE, SwipeTheme.Kind.SPARKLE};
         return kinds[swipeStyle];
     }
+    /** Fire frames stay inside the photo card, so the border travels with each swipe. */
+    private class FirePhotoBorderView extends View {
+        private static final int IDLE = 0, IGNITING = 1, BURNING = 2, COOLING = 3;
+        private final ImageView photo;
+        private final Paint flamePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final Rect source = new Rect();
+        private final RectF destination = new RectF();
+        private int phase = IDLE;
+        private long phaseStarted;
+
+        FirePhotoBorderView(ImageView photo) {
+            super(MainActivity.this);
+            this.photo = photo;
+            setClickable(false);
+            setFocusable(false);
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+        void ignite() { phase = IGNITING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
+        void flare() { phase = BURNING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
+        void cool() { phase = COOLING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
+
+        @Override protected void onDraw(Canvas canvas) {
+            Bitmap sheet;
+            long age = android.os.SystemClock.uptimeMillis() - phaseStarted;
+            int frame;
+            if (phase == IGNITING && age >= 6 * 95) { phase = BURNING; phaseStarted += 6 * 95; age -= 6 * 95; }
+            if (phase == COOLING && age >= 6 * 105) phase = IDLE;
+            if (phase == BURNING) {
+                sheet = swipeAsset(R.drawable.fire_border_frames);
+                frame = (int)((age / 105) % 12);
+            } else {
+                sheet = swipeAsset(R.drawable.fire_touch_frames);
+                frame = phase == IGNITING ? 6 + (int)Math.min(5, age / 95)
+                        : phase == COOLING ? (int)Math.min(5, age / 105) : 5;
+            }
+            if (sheet == null || sheet.isRecycled()) return;
+            source.set((frame % 6) * 256, (frame / 6) * 512,
+                    (frame % 6 + 1) * 256, (frame / 6 + 1) * 512);
+            android.graphics.drawable.Drawable drawable = photo.getDrawable();
+            if (drawable == null || drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0) {
+                destination.set(0, 0, getWidth(), getHeight());
+                postInvalidateDelayed(250);
+            } else {
+                float scale = Math.min(photo.getWidth() / (float)drawable.getIntrinsicWidth(),
+                        photo.getHeight() / (float)drawable.getIntrinsicHeight());
+                float pw = drawable.getIntrinsicWidth() * scale, ph = drawable.getIntrinsicHeight() * scale;
+                float cx = photo.getLeft() + photo.getWidth() / 2f;
+                float cy = photo.getTop() + photo.getHeight() / 2f;
+                float spill = dp(10);
+                destination.set(cx - pw / 2 - spill, cy - ph / 2 - spill,
+                        cx + pw / 2 + spill, cy + ph / 2 + spill);
+            }
+            canvas.drawBitmap(sheet, source, destination, flamePaint);
+            if (phase != IDLE && isAttachedToWindow()) postInvalidateOnAnimation();
+        }
+    }
     private class SwipeEffect extends SwipeVfxView {
+        private long fireReleased;
+        private boolean fireKeep;
+        private final Paint firePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         SwipeEffect() {
             super(MainActivity.this, MainActivity.this::selectedSwipeSprite,
                     countryCollection(themeChoice) >= 0 && (swipeStyle == 0 || swipeStyle == 8)
                             ? COUNTRY_FLAGS[countryCollection(themeChoice)] : null,
                     selectedSwipeProfile(),
                     !canCustomizeSwipe() || swipeStyle != 9, GREEN, RED, swipeIntensity, swipeSpeed);
+        }
+        @Override void hold(float x, float y) { fireReleased = 0; super.hold(x, y); }
+        @Override void cancel() { fireReleased = 0; super.cancel(); }
+        @Override void release(boolean keep) {
+            if (themeChoice == 21) { fireReleased = android.os.SystemClock.uptimeMillis(); fireKeep = keep; }
+            super.release(keep);
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (themeChoice != 21 || fireReleased == 0) return;
+            float elapsed = (android.os.SystemClock.uptimeMillis() - fireReleased) / 460f;
+            if (elapsed >= 1) { fireReleased = 0; return; }
+            Bitmap burst = swipeAsset(R.drawable.fire_release_burst);
+            if (burst == null || burst.isRecycled()) return;
+            float w = getWidth(), h = getHeight();
+            float side = fireKeep ? 1f : -1f;
+            float centerX = w * (.5f + side * (.18f + elapsed * .29f));
+            float bw = Math.min(w * .68f, dp(260)) * (1 + elapsed * .35f);
+            float bh = Math.min(h * .82f, dp(500)) * (1 + elapsed * .2f);
+            firePaint.setAlpha((int)(215 * (1 - elapsed) * (1 - elapsed)));
+            canvas.save();
+            if (!fireKeep) { canvas.scale(-1, 1, centerX, h / 2); }
+            canvas.drawBitmap(burst, null, new RectF(centerX - bw / 2, h / 2 - bh / 2,
+                    centerX + bw / 2, h / 2 + bh / 2), firePaint);
+            canvas.restore();
+            if (isAttachedToWindow()) postInvalidateOnAnimation();
         }
     }
 
