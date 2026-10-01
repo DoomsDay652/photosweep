@@ -1371,18 +1371,18 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, 0, 1);
         cardParams.bottomMargin = dp(20); root.addView(stage, cardParams);
         FrameLayout card = new FrameLayout(this);
-        card.setBackground(rounded(PANEL, 25)); card.setElevation(dp(8));
-        card.setClipToOutline(themeChoice != 21);
-        if (themeChoice == 21) card.setClipChildren(false);
+        card.setBackgroundColor(Color.TRANSPARENT);
+        card.setClipChildren(false);
         card.setContentDescription("Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         photo.setContentDescription("Tap for full-screen photo review");
+        card.addView(new PhotoShadowView(photo), new FrameLayout.LayoutParams(-1, -1));
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
         loadReviewPhoto(shown, photo);
         FirePhotoBorderView fireBorder = null;
         if (themeChoice == 21) {
-            fireBorder = new FirePhotoBorderView(photo);
+            fireBorder = new FirePhotoBorderView(photo, true);
             card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
         }
         SwipeEffect effect = new SwipeEffect();
@@ -1484,10 +1484,11 @@ public class MainActivity extends Activity {
         photoArea.setMargins(0, dp(58), 0, dp(52)); stage.addView(card, photoArea);
         ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
         image.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
+        card.addView(new PhotoShadowView(image), new FrameLayout.LayoutParams(-1, -1));
         card.addView(image, new FrameLayout.LayoutParams(-1, -1)); loadReviewPhoto(shown, image);
         FirePhotoBorderView fireBorder = null;
         if (themeChoice == 21) {
-            fireBorder = new FirePhotoBorderView(image);
+            fireBorder = new FirePhotoBorderView(image, false);
             card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
         }
         SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
@@ -1725,19 +1726,60 @@ public class MainActivity extends Activity {
                 SwipeTheme.Kind.SHIELD, countryCollection(themeChoice) >= 0 ? SwipeTheme.forTheme(themeChoice) : SwipeTheme.Kind.SPARKLE, SwipeTheme.Kind.SPARKLE};
         return kinds[swipeStyle];
     }
-    /** Fire frames stay inside the photo card, so the border travels with each swipe. */
+    private boolean visiblePhotoBounds(ImageView photo, RectF bounds) {
+        android.graphics.drawable.Drawable drawable = photo.getDrawable();
+        if (drawable == null || drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0
+                || photo.getWidth() <= 0 || photo.getHeight() <= 0) return false;
+        float scale = Math.min(photo.getWidth() / (float) drawable.getIntrinsicWidth(),
+                photo.getHeight() / (float) drawable.getIntrinsicHeight());
+        float width = drawable.getIntrinsicWidth() * scale;
+        float height = drawable.getIntrinsicHeight() * scale;
+        float cx = photo.getLeft() + photo.getWidth() / 2f;
+        float cy = photo.getTop() + photo.getHeight() / 2f;
+        bounds.set(cx - width / 2f, cy - height / 2f, cx + width / 2f, cy + height / 2f);
+        return true;
+    }
+
+    /** Cast a soft shadow from the visible image, leaving letterboxed space transparent. */
+    private class PhotoShadowView extends View {
+        private final ImageView photo;
+        private final RectF bounds = new RectF();
+        private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        PhotoShadowView(ImageView photo) {
+            super(MainActivity.this);
+            this.photo = photo;
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            shadowPaint.setColor(0xFF211B1B);
+            shadowPaint.setShadowLayer(dp(18), 0, dp(7), 0xC0000000);
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            if (!visiblePhotoBounds(photo, bounds)) {
+                postInvalidateDelayed(250);
+                return;
+            }
+            canvas.drawRoundRect(bounds, dp(5), dp(5), shadowPaint);
+        }
+    }
+
+    /** Fire frames stay inside the moving card, so their measured outline follows each swipe. */
     private class FirePhotoBorderView extends View {
         private static final int IDLE = 0, IGNITING = 1, BURNING = 2, COOLING = 3;
         private final ImageView photo;
+        private final boolean cardFrame;
         private final Paint flamePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Rect source = new Rect();
         private final RectF destination = new RectF();
+        private final RectF outline = new RectF();
         private int phase = IDLE;
         private long phaseStarted;
 
-        FirePhotoBorderView(ImageView photo) {
+        FirePhotoBorderView(ImageView photo, boolean cardFrame) {
             super(MainActivity.this);
             this.photo = photo;
+            this.cardFrame = cardFrame;
             setClickable(false);
             setFocusable(false);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -1761,25 +1803,26 @@ public class MainActivity extends Activity {
                         : phase == COOLING ? (int)Math.min(5, age / 105) : 5;
             }
             if (sheet == null || sheet.isRecycled()) return;
-            source.set((frame % 6) * 256, (frame / 6) * 512,
-                    (frame % 6 + 1) * 256, (frame / 6 + 1) * 512);
-            android.graphics.drawable.Drawable drawable = photo.getDrawable();
-            if (drawable == null || drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0) {
+            int frameWidth = sheet.getWidth() / 6, frameHeight = sheet.getHeight() / 2;
+            source.set((frame % 6) * frameWidth, (frame / 6) * frameHeight,
+                    (frame % 6 + 1) * frameWidth, (frame / 6 + 1) * frameHeight);
+            if (cardFrame) {
+                // The red review panel's former outline is the actual laid-out card,
+                // independent of the image's aspect ratio or placeholder drawable.
+                float inset = dp(8);
+                outline.set(inset, inset, getWidth() - inset, getHeight() - inset);
+            } else if (!visiblePhotoBounds(photo, outline)) {
                 postInvalidateDelayed(250);
                 return;
-            } else {
-                float scale = Math.min(photo.getWidth() / (float)drawable.getIntrinsicWidth(),
-                        photo.getHeight() / (float)drawable.getIntrinsicHeight());
-                float pw = drawable.getIntrinsicWidth() * scale, ph = drawable.getIntrinsicHeight() * scale;
-                float cx = photo.getLeft() + photo.getWidth() / 2f;
-                float cy = photo.getTop() + photo.getHeight() / 2f;
-                // The artwork's clear opening occupies x=54..232 and y=101..422
-                // in each 256x512 frame. Align that opening to the actual FIT_CENTER
-                // photo; mapping the whole sheet to the photo inset the flames.
-                float sx = pw / 178f, sy = ph / 321f;
-                destination.set(cx - pw / 2 - 54f * sx, cy - ph / 2 - 101f * sy,
-                        cx + pw / 2 + 24f * sx, cy + ph / 2 + 90f * sy);
             }
+            // Measure the ring inside each sprite frame. Its clear opening is
+            // x=54..232, y=101..422 in the original 256x512 pixel artwork.
+            float left = frameWidth * (54f / 256f), right = frameWidth * (232f / 256f);
+            float top = frameHeight * (101f / 512f), bottom = frameHeight * (422f / 512f);
+            float sx = outline.width() / (right - left), sy = outline.height() / (bottom - top);
+            destination.set(outline.left - left * sx, outline.top - top * sy,
+                    outline.right + (frameWidth - right) * sx,
+                    outline.bottom + (frameHeight - bottom) * sy);
             canvas.drawBitmap(sheet, source, destination, flamePaint);
             if (phase != IDLE && isAttachedToWindow()) postInvalidateOnAnimation();
         }
