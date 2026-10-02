@@ -1,0 +1,63 @@
+name: Publish PhotoSweep support pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'store/public/**'
+      - '.github/workflows/support-pages.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: photosweep-support-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify account deletion logic
+        run: node --test tests/AccountDeletionWebCheck.cjs
+      - uses: actions/configure-pages@v5
+      - name: Prepare public support pages
+        env:
+          FIREBASE_CONFIG: ${{ secrets.PHOTO_SWEEP_FIREBASE_ANDROID_CONFIG }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          source = pathlib.Path('store/public')
+          target = pathlib.Path('_support_site')
+          target.mkdir()
+          config = json.loads(os.environ['FIREBASE_CONFIG'])
+          client = next(c for c in config['client'] if c['client_info']['android_client_info']['package_name'] == 'com.dominic.photosweep')
+          api_key = client['api_key'][0]['current_key']
+          if not api_key:
+              raise SystemExit('Firebase client configuration is missing.')
+          policy = "default-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com; style-src 'self'; script-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'"
+          for name in ['privacy.html', 'delete-account.html', 'delete-account.js', 'style.css']:
+              content = (source / name).read_text()
+              if name.endswith('.html'):
+                  if 'REPLACE_WITH' in content or 'policy — draft' in content:
+                      raise SystemExit('Support-page placeholders must be completed.')
+                  meta = '<meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="' + policy + '">'
+                  content = content.replace('<meta charset="utf-8">', '<meta charset="utf-8">' + meta)
+              (target / name).write_text(content)
+          (target / 'account-config.json').write_text(json.dumps({'apiKey': api_key}))
+          shutil.copyfile(target / 'privacy.html', target / 'index.html')
+          (target / '.nojekyll').touch()
+          PY
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _support_site
+      - name: Publish support pages
+        id: deployment
+        uses: actions/deploy-pages@v4
