@@ -17,6 +17,7 @@ import com.google.firebase.auth.EmailAuthProvider;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.auth.UserProfileChangeRequest;
 
 /** Optional email accounts. No photos, progress or purchase tokens are stored in Firebase. */
 final class AccountController {
@@ -50,7 +51,8 @@ final class AccountController {
     void addControls(LinearLayout parent) {
         TextView status = new TextView(activity); status.setTextColor(0xffedf8f9);
         FirebaseUser user = auth == null ? null : auth.getCurrentUser();
-        status.setText(user == null ? "Account: Guest · sign-in is optional" : "Account: " + user.getEmail()
+        status.setText(user == null ? "Account: Guest · sign-in is optional" : "Account: "
+                + (user.getDisplayName() == null || user.getDisplayName().isEmpty() ? "" : user.getDisplayName() + "\n") + user.getEmail()
                 + (user.isEmailVerified() ? " · verified" : " · email not verified")); parent.addView(status);
         if (auth == null) {
             TextView availability = new TextView(activity); availability.setTextColor(0xffaac1cd);
@@ -60,6 +62,7 @@ final class AccountController {
             button(parent, "Sign in", () -> credentials(false, false));
             button(parent, "Forgot password", this::resetPassword);
         } else {
+            button(parent, "Edit username", this::editUsername);
             if (!user.isEmailVerified()) {
                 button(parent, "Send verification email", () -> { if (busy) return; busy=true;
                     user.sendEmailVerification().addOnCompleteListener(task -> finish(task.isSuccessful(), task.getException(), "Verification email sent.")); });
@@ -82,13 +85,39 @@ final class AccountController {
         input.setSaveEnabled(false); if (secret) input.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO);
         form.addView(input); return input;
     }
+    private EditText usernameField(LinearLayout form, String value) {
+        EditText input=new EditText(activity); input.setHint("Username (display name)");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});
+        input.setSaveEnabled(false); if (value != null) input.setText(value); form.addView(input);
+        TextView help=new TextView(activity); help.setText("3–24 letters, numbers or underscores. Sign in with your email; usernames are display names and may be shared by other users."); form.addView(help);
+        return input;
+    }
+    private boolean validUsername(String name) {
+        return name.matches("[A-Za-z0-9_]{3,24}");
+    }
+    private void editUsername() {
+        if (auth == null || busy || auth.getCurrentUser() == null) return;
+        FirebaseUser user=auth.getCurrentUser(); LinearLayout form=form();
+        EditText username=usernameField(form,user.getDisplayName());
+        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Edit username").setView(form)
+                .setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (busy) return; String name=username.getText().toString().trim();
+            if (!validUsername(name)) { note("Use 3–24 letters, numbers or underscores for your username."); return; }
+            busy=true; dialog.dismiss();
+            user.updateProfile(new UserProfileChangeRequest.Builder().setDisplayName(name).build())
+                    .addOnCompleteListener(task -> finish(task.isSuccessful(),task.getException(),"Username saved."));
+        })); dialog.show();
+    }
     private void credentials(boolean create, boolean deleting) {
         if (auth == null || busy) return;
         FirebaseUser current=auth.getCurrentUser(); if (deleting && current == null) return;
         LinearLayout form=form();
         TextView description=new TextView(activity); description.setText(deleting
                 ? "Permanently delete your Photo Sweep login and its Firebase authentication record. Enter your password to confirm. Device photos, Android Trash, local guest progress and Play purchases are preserved. This cannot be undone."
-                : "Optional email account. Firebase handles your email, password credentials and authentication identifiers. Photos and progress remain on-device. You can delete this account in Settings or on our deletion website."); form.addView(description);
+                : "Optional email account. Firebase stores your username, email, password credentials and authentication identifiers. Use your email to sign in. Photos and progress remain on-device. You can delete this account in Settings or on our deletion website."); form.addView(description);
+        EditText username=create ? usernameField(form,null) : null;
         EditText email=field(form,"Email address",false); if (deleting) { email.setText(current.getEmail()); email.setEnabled(false); }
         EditText password=field(form,"Password",true);
         CheckBox consent=new CheckBox(activity); consent.setText("I have read the privacy policy and agree to create an account.");
@@ -98,6 +127,8 @@ final class AccountController {
         dialog.setOnDismissListener(d -> password.setText("")); dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             if (busy) return;
             String address=email.getText().toString().trim(), secret=password.getText().toString();
+            String name=create ? username.getText().toString().trim() : "";
+            if (create && !validUsername(name)) { note("Use 3–24 letters, numbers or underscores for your username."); return; }
             if (!android.util.Patterns.EMAIL_ADDRESS.matcher(address).matches() || secret.isEmpty()) { note("Enter a valid email and password."); return; }
             if (create && (!consent.isChecked() || secret.length()<8)) { note("Read the privacy policy and choose a password of at least 8 characters."); return; }
             busy=true; password.setText(""); dialog.dismiss();
@@ -113,9 +144,12 @@ final class AccountController {
                 auth.createUserWithEmailAndPassword(address,secret).addOnCompleteListener(task -> {
                     if (!task.isSuccessful()) { finish(false,task.getException(),""); return; }
                     FirebaseUser user=auth.getCurrentUser(); if (user == null) { finish(false,null,""); return; }
-                    user.sendEmailVerification().addOnCompleteListener(verification -> {
-                        finish(verification.isSuccessful(), verification.getException(),
-                                "Account created. Check your email to verify it.");
+                    user.updateProfile(new UserProfileChangeRequest.Builder().setDisplayName(name).build()).addOnCompleteListener(profile -> {
+                        if (!profile.isSuccessful()) { finish(false,profile.getException(),""); return; }
+                        user.sendEmailVerification().addOnCompleteListener(verification -> {
+                            finish(verification.isSuccessful(), verification.getException(),
+                                    "Account created. Check your email to verify it.");
+                        });
                     });
                 });
             } else auth.signInWithEmailAndPassword(address,secret).addOnCompleteListener(task -> finish(task.isSuccessful(),task.getException(),"Signed in."));
