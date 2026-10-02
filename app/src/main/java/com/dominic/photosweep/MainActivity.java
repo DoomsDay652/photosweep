@@ -419,13 +419,16 @@ public class MainActivity extends Activity {
             if (rotation == android.view.Surface.ROTATION_90) { float t = x; x = -y; y = t; }
             else if (rotation == android.view.Surface.ROTATION_270) { float t = x; x = y; y = -t; }
             else if (rotation == android.view.Surface.ROTATION_180) { x = -x; y = -y; }
-            // Upright sensor Y is positive. Keep screen gravity downward even when inverted.
+            // Sensor Y points toward the device top; canvas Y points downward.
             gravityX = Math.max(-1, Math.min(1, -x / 7f));
             gravityY = candyGravityY(y);
+            activeBackdrop.invalidate();
         }
     };
     private static float candyGravityY(float screenY) {
-        return Math.max(.35f, Math.min(1f, .35f + screenY / 7f));
+        // At rest an upright phone reports positive sensor Y. Canvas gravity
+        // is positive downward; negative values support an inverted phone.
+        return Math.max(-1f, Math.min(1f, screenY / 7f));
     }
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private long pendingTrash = -1;
@@ -1416,7 +1419,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean hasPhotoElementBorder() {
-        return themeChoice >= 20 && themeChoice <= 25 && swipeStyle != 9;
+        return themeTier(themeChoice) == 3 && swipeStyle != 9;
     }
 
     private void reviewScreen() {
@@ -1934,11 +1937,23 @@ public class MainActivity extends Activity {
 
         private int elementArt() {
             switch (element) {
+                case 18: return R.drawable.photo_border_candy;
+                case 19: return R.drawable.photo_border_toxic;
                 case 20: return R.drawable.photo_border_space;
                 case 22: return R.drawable.photo_border_water;
                 case 23: return R.drawable.photo_border_ice;
                 case 24: return R.drawable.photo_border_earth;
                 case 25: return R.drawable.photo_border_lightning;
+                case 27: case 30: case 40: return R.drawable.photo_border_blossom;
+                case 26: case 31: case 57: return R.drawable.photo_border_spirit;
+                case 32: case 33: case 50: case 51: case 52: case 53: case 54: case 55:
+                    return R.drawable.photo_border_festival;
+                case 34: return R.drawable.photo_border_web;
+                case 36: return R.drawable.photo_border_lightning;
+                case 39: case 42: return R.drawable.photo_border_space;
+                case 35: case 37: case 38: case 41: case 43: return R.drawable.photo_border_hero;
+                case 58: return R.drawable.photo_border_water;
+                case 56: case 59: case 60: return R.drawable.photo_border_anime;
                 default: return 0;
             }
         }
@@ -1947,11 +1962,23 @@ public class MainActivity extends Activity {
             // Measured from each generated asset's alpha opening at its middle
             // row/column (source size 887 x 1774), not from the outer PNG box.
             switch (element) {
+                case 18: return new float[]{169, 720, 147, 1604};
+                case 19: return new float[]{192, 694, 148, 1616};
                 case 20: return new float[]{159, 737, 137, 1612};
                 case 22: return new float[]{169, 738, 225, 1579};
                 case 23: return new float[]{144, 744, 299, 1465};
                 case 24: return new float[]{160, 757, 180, 1574};
-                case 25: return new float[]{196, 692, 166, 1603};
+                case 25: case 36: return new float[]{196, 692, 166, 1603};
+                case 27: case 30: case 40: return new float[]{187, 738, 168, 1552};
+                case 26: case 31: case 57: return new float[]{151, 738, 224, 1558};
+                case 32: case 33: case 50: case 51: case 52: case 53: case 54: case 55:
+                    return new float[]{175, 762, 102, 1547};
+                case 34: return new float[]{132, 754, 180, 1549};
+                case 39: case 42: return new float[]{159, 737, 137, 1612};
+                case 35: case 37: case 38: case 41: case 43:
+                    return new float[]{115, 786, 87, 1626};
+                case 58: return new float[]{169, 738, 225, 1579};
+                case 56: case 59: case 60: return new float[]{159, 728, 258, 1453};
                 default: return new float[]{0, 0, 0, 0};
             }
         }
@@ -2409,6 +2436,16 @@ public class MainActivity extends Activity {
         private long lastFrame;
         private boolean initialized;
         TextureBackdrop() { super(MainActivity.this); }
+        @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
+            super.onSizeChanged(w, h, oldW, oldH);
+            if (initialized && oldW > 0 && oldH > 0 && w > 0 && h > 0) {
+                for (int i = 0; i < sweetX.length; i++) {
+                    sweetX[i] *= w / (float) oldW;
+                    sweetY[i] *= h / (float) oldH;
+                }
+                lastFrame = 0;
+            }
+        }
         void resetSpider() { spiderStarted = false; invalidate(); }
         private void beginSpiderDescent(long start) {
             float next = .12f + spiderRandom.nextFloat() * .76f;
