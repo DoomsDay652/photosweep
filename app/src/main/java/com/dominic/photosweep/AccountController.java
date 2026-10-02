@@ -68,7 +68,7 @@ final class AccountController {
     private void button(LinearLayout parent, String text, Runnable action) {
         button(parent, text, SECONDARY, action);
     }
-    private void button(LinearLayout parent, String text, int role, Runnable action) {
+    private Button button(LinearLayout parent, String text, int role, Runnable action) {
         Button control = new Button(activity);
         control.setText(text); control.setAllCaps(false); control.setTextSize(16);
         control.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
@@ -85,6 +85,7 @@ final class AccountController {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(10); parent.addView(control, params);
         control.setOnClickListener(v -> { if (!busy) action.run(); });
+        return control;
     }
     void addControls(LinearLayout parent) { addControls(parent, panel, ink, accent, muted, danger); }
     void addControls(LinearLayout parent, int panel, int ink, int accent, int muted, int danger) {
@@ -117,23 +118,58 @@ final class AccountController {
         }
         if (PlayPolicy.validUrl(BuildConfig.DELETION_URL)) button(parent, "Account deletion help ↗", () -> open(BuildConfig.DELETION_URL));
     }
+    private AlertDialog accountDialog(String title, LinearLayout form, String action, boolean deleting) {
+        LinearLayout content = new LinearLayout(activity); content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(20), dp(20), dp(20), dp(12));
+        content.setBackground(surface(panel, blend(panel, accent, .45f)));
+        TextView heading = new TextView(activity); heading.setText(title); heading.setTextColor(ink);
+        heading.setTextSize(24); heading.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        heading.setPadding(0, 0, 0, dp(16)); content.addView(heading);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(activity) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int max = (int)(activity.getResources().getDisplayMetrics().heightPixels * .55f);
+                super.onMeasure(widthSpec, android.view.View.MeasureSpec.makeMeasureSpec(max, android.view.View.MeasureSpec.AT_MOST));
+            }
+        };
+        scroll.setClipToPadding(false); scroll.addView(form); content.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
+        AlertDialog dialog = new AlertDialog.Builder(activity).setView(content).create();
+        Button submit = button(content, action, deleting ? DESTRUCTIVE : PRIMARY, () -> {});
+        submit.setId(android.R.id.button1);
+        button(content, "Cancel", SECONDARY, dialog::dismiss);
+        return dialog;
+    }
+    private void showAccountDialog(AlertDialog dialog) {
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            dialog.getWindow().setLayout(activity.getResources().getDisplayMetrics().widthPixels - dp(32), -2);
+        }
+    }
+    private void styleInput(EditText input, LinearLayout form) {
+        input.setTextColor(ink); input.setHintTextColor(muted); input.setTextSize(16);
+        input.setPadding(dp(14), dp(14), dp(14), dp(14)); input.setMinHeight(dp(56));
+        input.setBackgroundTintList(null);
+        input.setBackground(surface(blend(panel, android.graphics.Color.BLACK, .18f), blend(panel, accent, .5f)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2); params.bottomMargin = dp(12);
+        form.addView(input, params);
+    }
     private LinearLayout form() {
         LinearLayout layout = new LinearLayout(activity); layout.setOrientation(LinearLayout.VERTICAL);
-        int pad=(int)(20*activity.getResources().getDisplayMetrics().density); layout.setPadding(pad,pad,pad,pad); return layout;
+        layout.setPadding(0, 0, 0, dp(8)); return layout;
     }
     private EditText field(LinearLayout form, String hint, boolean secret) {
         EditText input = new EditText(activity); input.setHint(hint);
         input.setInputType(secret ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
                 : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         input.setSaveEnabled(false); if (secret) input.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO);
-        form.addView(input); return input;
+        styleInput(input, form); return input;
     }
     private EditText usernameField(LinearLayout form, String value) {
-        EditText input=new EditText(activity); input.setHint("Username (display name)");
+        EditText input=new EditText(activity); input.setHint("Username");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});
-        input.setSaveEnabled(false); if (value != null) input.setText(value); form.addView(input);
-        TextView help=new TextView(activity); help.setText("3–24 letters, numbers or underscores. Sign in with your email; usernames are display names and may be shared by other users."); form.addView(help);
+        input.setSaveEnabled(false); if (value != null) input.setText(value); styleInput(input, form);
+        TextView help=new TextView(activity); help.setText("3–24 letters, numbers or underscores."); help.setTextColor(muted); help.setTextSize(13); help.setPadding(0, 0, 0, dp(12)); form.addView(help);
         return input;
     }
     private boolean validUsername(String name) {
@@ -143,31 +179,30 @@ final class AccountController {
         if (auth == null || busy || auth.getCurrentUser() == null) return;
         FirebaseUser user=auth.getCurrentUser(); LinearLayout form=form();
         EditText username=usernameField(form,user.getDisplayName());
-        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Edit username").setView(form)
-                .setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
-        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        AlertDialog dialog=accountDialog("Edit username", form, "Save", false);
+        dialog.setOnShowListener(d -> dialog.findViewById(android.R.id.button1).setOnClickListener(v -> {
             if (busy) return; String name=username.getText().toString().trim();
             if (!validUsername(name)) { note("Use 3–24 letters, numbers or underscores for your username."); return; }
             busy=true; dialog.dismiss();
             user.updateProfile(new UserProfileChangeRequest.Builder().setDisplayName(name).build())
                     .addOnCompleteListener(task -> finish(task.isSuccessful(),task.getException(),"Username saved."));
-        })); dialog.show();
+        })); showAccountDialog(dialog);
     }
     private void credentials(boolean create, boolean deleting) {
         if (auth == null || busy) return;
         FirebaseUser current=auth.getCurrentUser(); if (deleting && current == null) return;
         LinearLayout form=form();
         TextView description=new TextView(activity); description.setText(deleting
-                ? "Permanently delete your Photo Sweep login and its Firebase authentication record. Enter your password to confirm. Device photos, Android Trash, local guest progress and Play purchases are preserved. This cannot be undone."
-                : "Optional email account. Firebase stores your username, email, password credentials and authentication identifiers. Use your email to sign in. Photos and progress remain on-device. You can delete this account in Settings or on our deletion website."); form.addView(description);
+                ? "Enter your password to permanently delete your account. Photos, local progress and purchases stay intact."
+                : create ? "Create an optional account. Your photos stay on this device." : "Sign in with your email and password."); description.setTextColor(muted); description.setTextSize(14); description.setPadding(0,0,0,dp(16)); form.addView(description);
         EditText username=create ? usernameField(form,null) : null;
         EditText email=field(form,"Email address",false); if (deleting) { email.setText(current.getEmail()); email.setEnabled(false); }
         EditText password=field(form,"Password",true);
-        CheckBox consent=new CheckBox(activity); consent.setText("I have read the privacy policy and agree to create an account.");
+        CheckBox consent=new CheckBox(activity); consent.setText("I agree to the privacy policy."); consent.setTextColor(ink); consent.setTextSize(14); consent.setButtonTintList(android.content.res.ColorStateList.valueOf(accent));
         if (create) { button(form,"Read privacy policy",this::showPrivacy); form.addView(consent); }
-        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle(deleting ? "Delete account permanently?" : create ? "Create account" : "Sign in")
-                .setView(form).setNegativeButton("Cancel",null).setPositiveButton(deleting ? "Delete account" : create ? "Create" : "Sign in",null).create();
-        dialog.setOnDismissListener(d -> password.setText("")); dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        AlertDialog dialog=accountDialog(deleting ? "Delete account?" : create ? "Create account" : "Sign in",
+                form, deleting ? "Delete account" : create ? "Create account" : "Sign in", deleting);
+        dialog.setOnDismissListener(d -> password.setText("")); dialog.setOnShowListener(d -> dialog.findViewById(android.R.id.button1).setOnClickListener(v -> {
             if (busy) return;
             String address=email.getText().toString().trim(), secret=password.getText().toString();
             String name=create ? username.getText().toString().trim() : "";
@@ -196,18 +231,18 @@ final class AccountController {
                     });
                 });
             } else auth.signInWithEmailAndPassword(address,secret).addOnCompleteListener(task -> finish(task.isSuccessful(),task.getException(),"Signed in."));
-        })); dialog.show();
+        })); showAccountDialog(dialog);
     }
     private void resetPassword() {
         if (auth == null || busy) return;
         LinearLayout form=form(); EditText email=field(form,"Email address",false);
-        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Reset password").setView(form).setNegativeButton("Cancel",null).setPositiveButton("Send reset email",null).create();
-        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        AlertDialog dialog=accountDialog("Reset password", form, "Send reset email", false);
+        dialog.setOnShowListener(d -> dialog.findViewById(android.R.id.button1).setOnClickListener(v -> {
             String address=email.getText().toString().trim();
             if (!android.util.Patterns.EMAIL_ADDRESS.matcher(address).matches()) { note("Enter a valid email address."); return; }
             if (busy) return; busy=true; dialog.dismiss();
             auth.sendPasswordResetEmail(address).addOnCompleteListener(task -> finish(task.isSuccessful(),task.getException(),"If an account exists, a password reset email has been sent."));
-        })); dialog.show();
+        })); showAccountDialog(dialog);
     }
     private void finish(boolean success, Exception error, String message) {
         busy=false;
