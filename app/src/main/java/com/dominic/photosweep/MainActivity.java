@@ -586,6 +586,14 @@ public class MainActivity extends Activity {
             scrollPositions.put(activeScrollPage, activeScroll.getScrollY());
     }
 
+    private ScrollView boundedScroll() {
+        ScrollView scroll = new ScrollView(this);
+        // Menus must stay inside their viewport; only review cards can draw beyond it.
+        scroll.setClipChildren(true);
+        scroll.setClipToPadding(true);
+        return scroll;
+    }
+
     private void trackScroll(ScrollView scroll, String page) {
         activeScroll = scroll;
         activeScrollPage = page;
@@ -777,8 +785,9 @@ public class MainActivity extends Activity {
         }
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setClipChildren(false);
-        root.setClipToPadding(false);
+        boolean swipeOverflow = reviewing && !showingSettings && !showingThemes && !showingTrash;
+        root.setClipChildren(!swipeOverflow);
+        root.setClipToPadding(!swipeOverflow);
         applyContentInsets();
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
         if (showingThemes) themesScreen();
@@ -861,7 +870,7 @@ public class MainActivity extends Activity {
         button(root, "Account & settings", PANEL, INK, () -> { showingSettings = true; render(); });
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         while (root.getChildCount() > 0) { View child = root.getChildAt(0); root.removeView(child); body.addView(child); }
-        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.addView(body);
+        ScrollView scroll = boundedScroll(); scroll.setFillViewport(true); scroll.addView(body);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
@@ -936,7 +945,7 @@ public class MainActivity extends Activity {
             if (!reviewed.contains(Long.toString(p.id))) counts[1]++;
         }
         if (years.isEmpty()) { label("No photos are available. Check your photo access.", 17, MUTED, false); }
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = boundedScroll();
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         trackScroll(scroll, "years");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
@@ -981,7 +990,7 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout optionsList(String scrollKey) {
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = boundedScroll();
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         trackScroll(scroll, scrollKey);
         LinearLayout list = new LinearLayout(this);
@@ -1362,7 +1371,7 @@ public class MainActivity extends Activity {
             int[] counts = months.computeIfAbsent(p.month, k -> new int[2]);
             counts[0]++; if (!reviewed.contains(Long.toString(p.id))) counts[1]++;
         }
-        ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        ScrollView scroll = boundedScroll(); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         trackScroll(scroll, "months:" + selectedYear);
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
         for (Map.Entry<String, int[]> entry : months.entrySet()) {
@@ -1458,7 +1467,7 @@ public class MainActivity extends Activity {
             spacer(36); label("Trash is empty", 21, INK, true);
             return;
         }
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = boundedScroll();
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         trackScroll(scroll, "trash");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
