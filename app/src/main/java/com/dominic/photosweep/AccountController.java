@@ -43,6 +43,11 @@ final class AccountController {
         auth.addAuthStateListener(listener);
     }
     void close() { if (auth != null && listener != null) auth.removeAuthStateListener(listener); }
+    String photosHeading() {
+        FirebaseUser user=auth == null ? null : auth.getCurrentUser();
+        String name=user == null ? null : user.getDisplayName();
+        return name == null || name.trim().isEmpty() ? "Your photos" : name.trim() + "’s photos";
+    }
     private void note(String text) { if (!activity.isDestroyed()) Toast.makeText(activity, text, Toast.LENGTH_LONG).show(); }
     private void button(LinearLayout parent, String text, Runnable action) {
         Button button = new Button(activity); button.setText(text); parent.addView(button);
