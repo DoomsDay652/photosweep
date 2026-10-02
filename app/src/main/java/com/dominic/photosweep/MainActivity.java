@@ -813,7 +813,7 @@ public class MainActivity extends Activity {
         gear.setGravity(Gravity.CENTER); gear.setContentDescription("Options and sound settings");
         gear.setBackground(themeButton(PANEL, 16)); top.addView(gear, new LinearLayout.LayoutParams(dp(52), dp(52)));
         gear.setOnClickListener(v -> { showingSettings = true; render(); });
-        label("Your photos", 28, INK, true); spacer(13);
+        label(accounts == null ? "Your photos" : accounts.photosHeading(), 28, INK, true); spacer(13);
         LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
         statsToggle.setPadding(dp(16), dp(8), dp(16), dp(8)); statsToggle.setBackground(rounded(PANEL, 17));
         root.addView(statsToggle, new LinearLayout.LayoutParams(-1, dp(54)));
