@@ -915,11 +915,8 @@ public class MainActivity extends Activity {
             back("Photo Sweep", () -> { showingSettings = false; render(); });
             heading("Options", "Choose what you want to adjust");
             LinearLayout list = optionsList("options");
-            tile(list, "Themes & animations", "Choose a theme and tune its swipe effects", () -> {
-                showingSettings = false; showingThemes = true; render();
-            });
-            tile(list, "Audio", "Swipe sounds and music", () -> openOptionsSection(1));
             tile(list, "Account & support", "Sign in, support and app information", () -> openOptionsSection(2));
+            tile(list, "Audio", "Swipe sounds and music", () -> openOptionsSection(1));
             tile(list, "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
             tile(list, "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
             return;
