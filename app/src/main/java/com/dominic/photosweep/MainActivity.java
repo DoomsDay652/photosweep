@@ -375,14 +375,35 @@ public class MainActivity extends Activity {
     private Set<String> keptIds = new HashSet<>();
     private Set<String> trashedIds = new HashSet<>();
     private LinearLayout root;
+    private TextView headingSubtitle;
     private FrameLayout host;
+    private int renderedTheme = -1;
+    private boolean hasResumed, skipMediaReloadOnResume;
+    private ReviewPage reviewPage;
+    private final LruCache<Long, Bitmap> reviewPhotos = new LruCache<Long, Bitmap>(32 * 1024) {
+        @Override protected int sizeOf(Long key, Bitmap value) {
+            return Math.max(1, (value.getByteCount() + 1023) / 1024);
+        }
+    };
+    private long prefetchedReviewId = -1;
+    private class ReviewPage {
+        final LinearLayout content = root;
+        final String month = selectedMonth;
+        final boolean full = fullScreenReview;
+        final int theme = themeChoice;
+        long photoId = -1;
+        FrameLayout stage, card, progress;
+        ImageView image;
+        SwipeEffect effect;
+        PhotoElementBorderView border;
+        TextView date, count, duplicate, scanning;
+        View fill, undo;
+    }
     private int xp, keptCount, trashedCount, restoredCount;
     private int selectedYear = -1;
     private String selectedMonth;
     private boolean reviewing, loading, duplicateScanning, reloadPhotosPending;
     private boolean fullScreenReview, reviewActionRunning;
-    private Bitmap reviewBitmap;
-    private long reviewBitmapId = -1;
     private boolean showingTrash, deletingOld;
     private boolean showingSettings, showingThemes, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private int optionsSection;
@@ -489,16 +510,20 @@ public class MainActivity extends Activity {
         super.onResume();
         if (gravitySensor != null) sensorManager.registerListener(tiltListener, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
         if (musicEnabled) updateMusic();
-        if (root != null) {
+        // onCreate already loaded the library. Android photo-action results
+        // update local state before onResume; do not scan the gallery again.
+        if (!hasResumed) { hasResumed = true; return; }
+        if (skipMediaReloadOnResume) { skipMediaReloadOnResume = false; return; }
+        if (root != null && pendingTrash == -1 && pendingRestore == -1 && !reviewActionRunning) {
             loadTrashEntries();
-            render();
-            if (hasAccess() && pendingTrash == -1 && pendingRestore == -1 && !reviewActionRunning) {
-                previews.evictAll(); reviewBitmap = null; reviewBitmapId = -1; loadPhotos();
-            }
+            reviewPhotos.evictAll(); prefetchedReviewId = -1;
+            if (reviewPage != null) reviewPage.photoId = -1;
+            if (hasAccess()) loadPhotos(); else render();
         }
     }
 
     @Override protected void onPause() {
+        skipMediaReloadOnResume = pendingTrash != -1 || pendingRestore != -1;
         if (sensorManager != null) sensorManager.unregisterListener(tiltListener);
         stopMusic();
         clearSwipePreview();
@@ -516,9 +541,8 @@ public class MainActivity extends Activity {
         for (Bitmap bitmap : swipeSprites.values()) if (!bitmap.isRecycled()) bitmap.recycle();
         swipeSprites.clear();
         if (candySprites != null && !candySprites.isRecycled()) candySprites.recycle();
-        reviewBitmap = null; reviewBitmapId = -1;
         generation++;
-        previews.evictAll();
+        previews.evictAll(); reviewPhotos.evictAll();
         io.shutdownNow();
         duplicateWorker.shutdownNow();
         super.onDestroy();
@@ -638,7 +662,7 @@ public class MainActivity extends Activity {
         if (loading) { reloadPhotosPending = true; return; }
         loading = true; reloadPhotosPending = false;
         final int token = ++generation;
-        render();
+        if (photos.isEmpty()) render();
         io.execute(() -> {
             ArrayList<Photo> found = new ArrayList<>();
             String[] columns = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN,
@@ -717,65 +741,107 @@ public class MainActivity extends Activity {
                 safeInsets.right + (full ? 0 : dp(22)), safeInsets.bottom + (full ? 0 : dp(16)));
     }
     private void render() {
+        if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
+        if (updateReviewPage()) return;
+        reviewPage = null;
         clearSwipePreview();
         rememberScroll();
-        if (zoomOverlay != null && zoomOverlay.getParent() instanceof android.view.ViewGroup)
-            ((android.view.ViewGroup) zoomOverlay.getParent()).removeView(zoomOverlay);
-        FrameLayout previousHost = host;
-        boolean transition = animateThemeChange && previousHost != null && previousHost.getParent() != null;
+        LinearLayout previousRoot = root;
+        boolean transition = animateThemeChange;
         animateThemeChange = false;
         activeScroll = null;
         activeScrollPage = null;
-        host = new FrameLayout(this);
-        activeBackdrop = new TextureBackdrop();
-        host.addView(activeBackdrop, new FrameLayout.LayoutParams(-1, -1));
-        if (hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 21)
-            host.addView(new ThemeMotionOverlay(), new FrameLayout.LayoutParams(-1, -1));
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(22), dp(20), dp(22), dp(16));
-        applyContentInsets();
-        host.setOnApplyWindowInsetsListener((view, insets) -> {
-            if (view == host) {
+        if (host == null) {
+            host = new FrameLayout(this);
+            host.setClipChildren(false);
+            host.setClipToPadding(false);
+            setContentView(host);
+            host.setOnApplyWindowInsetsListener((view, insets) -> {
                 safeInsets = insets.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
                 applyContentInsets();
+                return insets;
+            });
+        }
+        if (renderedTheme != themeChoice) {
+            // The world survives navigation and photo decisions. Only changing
+            // the selected theme replaces its background and motion state.
+            for (int i = host.getChildCount() - 1; i >= 0; i--) {
+                View child = host.getChildAt(i);
+                if (child instanceof TextureBackdrop || child instanceof ThemeMotionOverlay) host.removeViewAt(i);
             }
-            return insets;
-        });
+            activeBackdrop = new TextureBackdrop();
+            host.addView(activeBackdrop, 0, new FrameLayout.LayoutParams(-1, -1));
+            if (hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 21)
+                host.addView(new ThemeMotionOverlay(), 1, new FrameLayout.LayoutParams(-1, -1));
+            renderedTheme = themeChoice;
+        }
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setClipChildren(false);
+        root.setClipToPadding(false);
+        applyContentInsets();
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
         if (showingThemes) themesScreen();
         else if (showingSettings) settingsScreen();
         else if (!hasAccess()) intro();
-        else if (loading) heading("Photo Sweep", "Gathering your photos…");
+        else if (loading && photos.isEmpty()) heading("Photo Sweep", "Gathering your photos…");
         else if (showingTrash) trashScreen();
         else if (reviewing && selectedMonth != null) reviewScreen();
         else if (selectedYear != -1) monthsScreen();
         else yearsScreen();
-        if (transition) {
-            FrameLayout content = findViewById(android.R.id.content);
-            host.setAlpha(0f);
-            content.addView(host, new FrameLayout.LayoutParams(-1, -1));
-            host.animate().alpha(1f).setDuration(260).withEndAction(() -> content.removeView(previousHost)).start();
-        } else if (previousHost != null && previousHost.getParent() instanceof FrameLayout) {
-            // Keep the last composed frame on screen until the replacement has
-            // measured and can draw. setContentView detaches it immediately and
-            // exposes a blank frame when a reviewed photo advances.
-            FrameLayout content = (FrameLayout) previousHost.getParent();
-            FrameLayout nextHost = host;
-            content.addView(nextHost, new FrameLayout.LayoutParams(-1, -1));
-            nextHost.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+        if (previousRoot != null) {
+            LinearLayout nextRoot = root;
+            nextRoot.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
                 @Override public boolean onPreDraw() {
-                    nextHost.getViewTreeObserver().removeOnPreDrawListener(this);
-                    content.removeView(previousHost);
+                    nextRoot.getViewTreeObserver().removeOnPreDrawListener(this);
+                    host.removeView(previousRoot);
                     return true;
                 }
             });
-        } else setContentView(host);
-        host.requestApplyInsets();
-        if (zoomOverlay != null) {
-            FrameLayout content = findViewById(android.R.id.content);
-            content.addView(zoomOverlay, new FrameLayout.LayoutParams(-1, -1));
         }
+        if (transition) { root.setAlpha(0f); root.animate().alpha(1f).setDuration(260).start(); }
+        host.requestApplyInsets();
+    }
+
+    private String photoDate(Photo photo) {
+        return DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(photo.timestamp));
+    }
+
+    /** Update the existing review page, including Undo, without restarting the world or layout. */
+    private boolean updateReviewPage() {
+        ReviewPage page = reviewPage;
+        if (page == null || page.content != root || !reviewing || showingSettings || showingThemes || showingTrash
+                || !hasAccess() || page.theme != themeChoice || page.full != fullScreenReview
+                || !page.month.equals(selectedMonth)) return false;
+        List<Photo> month = monthPhotos();
+        Photo current = null; int remaining = 0;
+        for (Photo photo : month) if (!reviewed.contains(Long.toString(photo.id))) {
+            remaining++; if (current == null) current = photo;
+        }
+        if (current == null) return false;
+        page.date.setText(photoDate(current));
+        page.count.setText(page.full ? remaining + "/" + month.size() + " left"
+                : remaining + " of " + month.size() + " left to review");
+        if (page.fill != null) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) page.fill.getLayoutParams();
+            lp.width = Math.round(page.progress.getWidth() * (month.size() - remaining) / (float) month.size());
+            page.fill.setLayoutParams(lp);
+        }
+        page.undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE);
+        if (page.duplicate != null) page.duplicate.setVisibility(duplicates.contains(current.id) ? View.VISIBLE : View.GONE);
+        if (page.scanning != null) page.scanning.setVisibility(duplicateScanning ? View.VISIBLE : View.GONE);
+        if (page.photoId != current.id) {
+            page.card.animate().cancel();
+            page.card.setTranslationX(0); page.card.setRotation(0); page.card.setAlpha(1f);
+            page.effect.cancel();
+            if (page.border != null) page.border.stop();
+            page.image.setImageDrawable(null);
+            loadReviewPhoto(current, page.image);
+            attachSwipeGesture(page.card, page.stage, page.effect, page.border, current,
+                    page.full ? null : () -> { fullScreenReview = true; render(); });
+            page.photoId = current.id;
+        }
+        return true;
     }
 
     private void intro() {
@@ -799,14 +865,15 @@ public class MainActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
-    private void heading(String title, String subtitle) {
+    private TextView heading(String title, String subtitle) {
         TextView eyebrow = label("✦  PHOTO SWEEP", 12, GREEN, true);
         eyebrow.setLetterSpacing(.16f);
         spacer(9);
-        label(title, 32, INK, true);
+        TextView titleView = label(title, 32, INK, true);
         spacer(5);
-        label(subtitle, 15, MUTED, false);
+        headingSubtitle = label(subtitle, 15, MUTED, false);
         spacer(21);
+        return titleView;
     }
 
     private void yearsScreen() {
@@ -1430,7 +1497,8 @@ public class MainActivity extends Activity {
         if (fullScreenReview) { fullScreenReview = false; applyContentInsets(); }
         back("Months", () -> { reviewing = false; fullScreenReview = false; render(); });
         String monthName = ReviewNavigation.title(selectedMonth, true);
-        heading(monthName, remaining + " of " + month.size() + " left to review");
+        TextView dateHeading = heading(current == null ? monthName : photoDate(current), remaining + " of " + month.size() + " left to review");
+        TextView remainingHeading = headingSubtitle;
         View track = new View(this); track.setBackground(rounded(PANEL, 4));
         root.addView(track, new LinearLayout.LayoutParams(-1, dp(5)));
         View fill = new View(this); fill.setBackground(rounded(GREEN, 4));
@@ -1459,16 +1527,18 @@ public class MainActivity extends Activity {
             return;
         }
         Photo shown = current;
-        FrameLayout stage = new FrameLayout(this);
+        ReviewPage page = new ReviewPage(); reviewPage = page;
+        page.date = dateHeading; page.count = remainingHeading; page.fill = fill; page.progress = progress; page.photoId = shown.id;
+        FrameLayout stage = new FrameLayout(this); stage.setClipChildren(false); stage.setClipToPadding(false); page.stage = stage;
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, 0, 1);
         cardParams.bottomMargin = dp(20); root.addView(stage, cardParams);
         FrameLayout card = new FrameLayout(this);
         card.setBackgroundColor(Color.TRANSPARENT);
-        card.setClipChildren(false);
+        card.setClipChildren(false); card.setClipToPadding(false); page.card = card;
         card.setContentDescription("Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        photo.setPadding(dp(28), dp(48), dp(28), dp(42));
+        photo.setPadding(dp(28), dp(20), dp(28), dp(42)); page.image = photo;
         photo.setContentDescription("Tap for full-screen photo review");
         card.addView(new PhotoShadowView(photo), new FrameLayout.LayoutParams(-1, -1));
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
@@ -1480,14 +1550,12 @@ public class MainActivity extends Activity {
         }
         SwipeEffect effect = new SwipeEffect();
         effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
-        if (duplicates.contains(shown.id)) {
+        {
             TextView bubble = pill("✦ Duplicate", GOLD, Color.rgb(89, 64, 27));
             FrameLayout.LayoutParams badge = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
             badge.setMargins(dp(12), dp(12), dp(12), 0); card.addView(bubble, badge);
+            page.duplicate = bubble; bubble.setVisibility(duplicates.contains(shown.id) ? View.VISIBLE : View.GONE);
         }
-        TextView date = pill(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(shown.timestamp)), Color.rgb(33, 57, 75), INK);
-        FrameLayout.LayoutParams dateParams = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        dateParams.topMargin = dp(18); card.addView(date, dateParams);
         LinearLayout overlay = new LinearLayout(this); overlay.setGravity(Gravity.CENTER);
         overlay.setClickable(false);
         FrameLayout.LayoutParams overlayLp = new FrameLayout.LayoutParams(-1, dp(64), Gravity.CENTER);
@@ -1509,13 +1577,16 @@ public class MainActivity extends Activity {
         fullLp.setMargins(0, 0, dp(12), dp(12)); stage.addView(full, fullLp); full.setElevation(dp(22));
         full.setOnClickListener(v -> { if (!reviewActionRunning) { fullScreenReview = true; render(); } });
         attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> { fullScreenReview = true; render(); });
-        if (canUndoLastPhoto()) {
+        page.card = card; page.effect = effect; page.border = fireBorder;
+        {
             TextView undo = label("Undo last photo", 14, GREEN, true);
+            page.undo = undo; undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE);
             undo.setPadding(0, dp(9), 0, 0);
             undo.setOnClickListener(v -> undoLastPhoto());
         }
         addMonthNavigation();
-        if (duplicateScanning) { spacer(6); label("Checking for exact duplicates…", 12, MUTED, false); }
+        spacer(6); page.scanning = label("Checking for exact duplicates…", 12, MUTED, false);
+        page.scanning.setVisibility(duplicateScanning ? View.VISIBLE : View.GONE);
     }
 
     private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect,
@@ -1551,8 +1622,8 @@ public class MainActivity extends Activity {
                         committed[0] = true; reviewActionRunning = true;
                         if (fireBorder != null) fireBorder.flare(dx > 0);
                         effect.release(dx > 0);
-                        card.animate().translationX((dx > 0 ? 1 : -1) * stage.getWidth() * 1.2f)
-                                .rotation(dx > 0 ? 16 : -16).alpha(0).setDuration(SwipeMotion.duration(swipeSpeed))
+                        card.animate().translationX((dx > 0 ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
+                                .rotation(dx > 0 ? 16 : -16).setDuration(SwipeMotion.duration(swipeSpeed))
                                 .withEndAction(() -> {
                                     effect.cancel();
                                     if (fireBorder != null) fireBorder.stop();
@@ -1572,13 +1643,16 @@ public class MainActivity extends Activity {
         });
     }
     private void fullScreenReviewScreen(Photo shown, int remaining, int total) {
+        ReviewPage page = new ReviewPage(); reviewPage = page; page.photoId = shown.id;
         FrameLayout stage = new FrameLayout(this); stage.setBackgroundColor(Color.BLACK);
+        stage.setClipChildren(false); stage.setClipToPadding(false); page.stage = stage;
         root.addView(stage, new LinearLayout.LayoutParams(-1, -1));
-        FrameLayout card = new FrameLayout(this);
+        FrameLayout card = new FrameLayout(this); page.card = card;
+        card.setClipChildren(false); card.setClipToPadding(false);
         FrameLayout.LayoutParams photoArea = new FrameLayout.LayoutParams(-1, -1);
         photoArea.setMargins(0, dp(58), 0, dp(52)); stage.addView(card, photoArea);
         ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        image.setPadding(dp(28), dp(48), dp(28), dp(42));
+        image.setPadding(dp(28), dp(20), dp(28), dp(42)); page.image = image;
         image.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
         card.addView(new PhotoShadowView(image), new FrameLayout.LayoutParams(-1, -1));
         card.addView(image, new FrameLayout.LayoutParams(-1, -1)); loadReviewPhoto(shown, image);
@@ -1588,6 +1662,7 @@ public class MainActivity extends Activity {
             card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
         }
         SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+        page.effect = effect; page.border = fireBorder;
         attachSwipeGesture(card, stage, effect, fireBorder, shown, null);
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(8), dp(6), dp(8), dp(6)); toolbar.setBackgroundColor(0xC0141A22); toolbar.setElevation(dp(24));
@@ -1595,49 +1670,82 @@ public class MainActivity extends Activity {
         Button exit = new Button(this); exit.setText("Exit full screen"); exit.setTextSize(12); exit.setTextColor(INK); exit.setBackground(rounded(PANEL, 10));
         toolbar.addView(exit, new LinearLayout.LayoutParams(dp(124), -1));
         exit.setOnClickListener(v -> { if (!reviewActionRunning) { fullScreenReview = false; render(); } });
-        TextView count = new TextView(this); count.setText(ReviewNavigation.title(selectedMonth, false) + " · " + remaining + "/" + total + " left");
-        count.setTextColor(INK); count.setTextSize(12); count.setGravity(Gravity.CENTER); toolbar.addView(count, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout details = new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setGravity(Gravity.CENTER);
+        toolbar.addView(details, new LinearLayout.LayoutParams(0, -1, 1));
+        TextView date = new TextView(this); date.setText(photoDate(shown)); date.setTextColor(INK); date.setTextSize(13); details.addView(date); page.date = date;
+        TextView count = new TextView(this); count.setText(remaining + "/" + total + " left");
+        count.setTextColor(MUTED); count.setTextSize(12); details.addView(count); page.count = count;
         Button inspect = new Button(this); inspect.setText("Zoom"); inspect.setTextSize(12); inspect.setTextColor(INK); inspect.setBackground(rounded(PANEL, 10));
         toolbar.addView(inspect, new LinearLayout.LayoutParams(dp(65), -1));
-        inspect.setOnClickListener(v -> { if (!reviewActionRunning) showPhotoZoom(shown); });
+        inspect.setOnClickListener(v -> {
+            if (!reviewActionRunning) for (Photo photo : monthPhotos()) if (photo.id == page.photoId) { showPhotoZoom(photo); break; }
+        });
         LinearLayout footer = new LinearLayout(this); footer.setGravity(Gravity.CENTER_VERTICAL); footer.setBackgroundColor(0xB0141A22); footer.setElevation(dp(24));
         FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(52), Gravity.BOTTOM); stage.addView(footer, bottom);
         TextView hint = new TextView(this); hint.setText("← Trash     Keep →"); hint.setTextColor(INK); hint.setTextSize(13); hint.setGravity(Gravity.CENTER);
         footer.addView(hint, new LinearLayout.LayoutParams(0, -1, 1));
-        if (canUndoLastPhoto()) {
-            Button undo = new Button(this); undo.setText("Undo last photo"); undo.setTextSize(12); undo.setTextColor(INK); undo.setBackground(rounded(PANEL, 10));
+        {
+            Button undo = new Button(this); undo.setText("Undo last photo");
+            page.undo = undo; undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE); undo.setTextSize(12); undo.setTextColor(INK); undo.setBackground(rounded(PANEL, 10));
             footer.addView(undo, new LinearLayout.LayoutParams(dp(144), dp(44))); undo.setOnClickListener(v -> { if (!reviewActionRunning) undoLastPhoto(); });
         }
     }
-    private void loadReviewPhoto(Photo photo, ImageView view) {
-        if (reviewBitmapId == photo.id && reviewBitmap != null && !reviewBitmap.isRecycled()) { view.setImageBitmap(reviewBitmap); return; }
-        Bitmap preview = previews.get(photo.id); if (preview != null) view.setImageBitmap(preview);
-        final FrameLayout requestedHost = host;
-        io.execute(() -> {
-            if (isDestroyed() || requestedHost != host) return;
-            Bitmap full = null;
-            try {
-                full = ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(), photo.uri), (decoder, info, source) -> {
-                    int w = info.getSize().getWidth(), h = info.getSize().getHeight();
-                    float scale = PhotoFit.scale(w, h);
-                    decoder.setTargetSize(Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
-                    decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
-                });
-            } catch (Exception ignored) { }
-            final Bitmap decoded = full;
-            runOnUiThread(() -> {
-                if (decoded == null) return;
-                if (isDestroyed() || requestedHost != host || !view.isAttachedToWindow()) { decoded.recycle(); return; }
-                reviewBitmap = decoded; reviewBitmapId = photo.id; view.setImageBitmap(decoded);
-                if (view.getParent() instanceof FrameLayout) {
-                    FrameLayout parent = (FrameLayout) view.getParent();
-                    for (int i = 0; i < parent.getChildCount(); i++) {
-                        View sibling = parent.getChildAt(i);
-                        if (sibling instanceof PhotoShadowView || sibling instanceof PhotoElementBorderView) sibling.invalidate();
-                    }
-                }
+    private Bitmap decodeReviewPhoto(Photo photo) {
+        Bitmap cached = reviewPhotos.get(photo.id);
+        if (cached != null && !cached.isRecycled()) return cached;
+        try {
+            Bitmap decoded = ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(), photo.uri), (decoder, info, source) -> {
+                int w = info.getSize().getWidth(), h = info.getSize().getHeight();
+                float scale = PhotoFit.scale(w, h);
+                decoder.setTargetSize(Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
+                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
             });
-        });
+            if (!isDestroyed()) reviewPhotos.put(photo.id, decoded);
+            return decoded;
+        } catch (Exception ignored) { return null; }
+    }
+
+    private void loadReviewPhoto(Photo photo, ImageView view) {
+        view.setTag(photo.id);
+        Bitmap cached = reviewPhotos.get(photo.id);
+        if (cached != null && !cached.isRecycled()) { view.setImageBitmap(cached); invalidatePhotoDecorations(view); }
+        else {
+            Bitmap preview = previews.get(photo.id); if (preview != null) view.setImageBitmap(preview);
+            io.execute(() -> {
+                if (isDestroyed()) return;
+                Bitmap decoded = decodeReviewPhoto(photo);
+                runOnUiThread(() -> {
+                    // The same ImageView is reused for the next card. A late
+                    // decode must never put the previous photo back on screen.
+                    if (decoded == null || isDestroyed() || !view.isAttachedToWindow() || !Long.valueOf(photo.id).equals(view.getTag())) return;
+                    view.setImageBitmap(decoded);
+                    invalidatePhotoDecorations(view);
+                });
+            });
+        }
+        // Decode only the next undecided photo into a bounded cache so a
+        // completed swipe can replace the image without an empty loading frame.
+        boolean found = false;
+        for (Photo next : monthPhotos()) {
+            if (next.id == photo.id) { found = true; continue; }
+            if (found && !reviewed.contains(Long.toString(next.id))) {
+                if (prefetchedReviewId != next.id) {
+                    prefetchedReviewId = next.id;
+                    io.execute(() -> { if (!isDestroyed()) decodeReviewPhoto(next); });
+                }
+                break;
+            }
+        }
+    }
+
+    private void invalidatePhotoDecorations(ImageView view) {
+        if (view.getParent() instanceof FrameLayout) {
+            FrameLayout parent = (FrameLayout) view.getParent();
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                View sibling = parent.getChildAt(i);
+                if (sibling instanceof PhotoShadowView || sibling instanceof PhotoElementBorderView) sibling.invalidate();
+            }
+        }
     }
 
     private void loadPreview(Photo p, ImageView view) {
@@ -2155,7 +2263,8 @@ public class MainActivity extends Activity {
             pendingTrash = p.id; pendingTrashUndo = snapshot(p, true);
             startIntentSenderForResult(request.getIntentSender(), TRASH_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
-            pendingTrash = -1; pendingTrashUndo = null;
+            pendingTrash = -1; pendingTrashUndo = null; skipMediaReloadOnResume = false;
+            if (reviewPage != null) reviewPage.photoId = -1;
             Toast.makeText(this, "Could not move photo to Trash", Toast.LENGTH_SHORT).show(); render();
         }
     }
@@ -2167,7 +2276,7 @@ public class MainActivity extends Activity {
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(entry.uri), false);
             startIntentSenderForResult(request.getIntentSender(), RESTORE_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
-            pendingRestore = -1; pendingRestoreUndo = false; Toast.makeText(this, "Could not restore photo", Toast.LENGTH_SHORT).show();
+            pendingRestore = -1; pendingRestoreUndo = false; skipMediaReloadOnResume = false; Toast.makeText(this, "Could not restore photo", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -2252,7 +2361,7 @@ public class MainActivity extends Activity {
                 if (deleted.isEmpty() || isDestroyed()) return;
                 evictionQueue.removeIf(entry -> deleted.contains(entry.id));
                 for (Long id : deleted) previews.remove(id);
-                saveTrashEntries(); render();
+                saveTrashEntries(); if (showingTrash) render();
             });
         });
     }
@@ -2278,6 +2387,7 @@ public class MainActivity extends Activity {
                 if (lastUndo != null && lastUndo.id == id) lastUndo.earnedXp = earned;
                 saveStats();
             }
+            if (resultCode != RESULT_OK && reviewPage != null) reviewPage.photoId = -1;
             render();
             if (earned > 0) floatXp(earned);
             if (resultCode == RESULT_OK) cleanupTrash();
