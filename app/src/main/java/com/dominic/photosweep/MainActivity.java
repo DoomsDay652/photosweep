@@ -21,6 +21,7 @@ import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PathMeasure;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -752,6 +753,20 @@ public class MainActivity extends Activity {
             host.setAlpha(0f);
             content.addView(host, new FrameLayout.LayoutParams(-1, -1));
             host.animate().alpha(1f).setDuration(260).withEndAction(() -> content.removeView(previousHost)).start();
+        } else if (previousHost != null && previousHost.getParent() instanceof FrameLayout) {
+            // Keep the last composed frame on screen until the replacement has
+            // measured and can draw. setContentView detaches it immediately and
+            // exposes a blank frame when a reviewed photo advances.
+            FrameLayout content = (FrameLayout) previousHost.getParent();
+            FrameLayout nextHost = host;
+            content.addView(nextHost, new FrameLayout.LayoutParams(-1, -1));
+            nextHost.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override public boolean onPreDraw() {
+                    nextHost.getViewTreeObserver().removeOnPreDrawListener(this);
+                    content.removeView(previousHost);
+                    return true;
+                }
+            });
         } else setContentView(host);
         host.requestApplyInsets();
         if (zoomOverlay != null) {
@@ -1400,6 +1415,10 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean hasPhotoElementBorder() {
+        return themeChoice >= 20 && themeChoice <= 25 && swipeStyle != 9;
+    }
+
     private void reviewScreen() {
         List<Photo> month = monthPhotos();
         Photo current = null; int remaining = 0;
@@ -1451,9 +1470,9 @@ public class MainActivity extends Activity {
         card.addView(new PhotoShadowView(photo), new FrameLayout.LayoutParams(-1, -1));
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
         loadReviewPhoto(shown, photo);
-        FirePhotoBorderView fireBorder = null;
-        if (themeChoice == 21) {
-            fireBorder = new FirePhotoBorderView(photo);
+        PhotoElementBorderView fireBorder = null;
+        if (hasPhotoElementBorder()) {
+            fireBorder = new PhotoElementBorderView(photo, themeChoice);
             card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
         }
         SwipeEffect effect = new SwipeEffect();
@@ -1497,7 +1516,7 @@ public class MainActivity extends Activity {
     }
 
     private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect,
-                                    FirePhotoBorderView fireBorder, Photo shown, Runnable tap) {
+                                    PhotoElementBorderView fireBorder, Photo shown, Runnable tap) {
         final boolean[] committed = {false}, multitouch = {false}; final float[] start = new float[2]; final int[] position = new int[2];
         card.setOnTouchListener((view, event) -> {
             if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
@@ -1560,9 +1579,9 @@ public class MainActivity extends Activity {
         image.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
         card.addView(new PhotoShadowView(image), new FrameLayout.LayoutParams(-1, -1));
         card.addView(image, new FrameLayout.LayoutParams(-1, -1)); loadReviewPhoto(shown, image);
-        FirePhotoBorderView fireBorder = null;
-        if (themeChoice == 21) {
-            fireBorder = new FirePhotoBorderView(image);
+        PhotoElementBorderView fireBorder = null;
+        if (hasPhotoElementBorder()) {
+            fireBorder = new PhotoElementBorderView(image, themeChoice);
             card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
         }
         SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
@@ -1611,7 +1630,7 @@ public class MainActivity extends Activity {
                     FrameLayout parent = (FrameLayout) view.getParent();
                     for (int i = 0; i < parent.getChildCount(); i++) {
                         View sibling = parent.getChildAt(i);
-                        if (sibling instanceof PhotoShadowView || sibling instanceof FirePhotoBorderView) sibling.invalidate();
+                        if (sibling instanceof PhotoShadowView || sibling instanceof PhotoElementBorderView) sibling.invalidate();
                     }
                 }
             });
@@ -1844,16 +1863,19 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Draw the animated sprite as eight edge pieces around the actual rendered photo. */
-    private class FirePhotoBorderView extends View {
+    /** Keep every elemental border on the photo itself, never on the review stage. */
+    private class PhotoElementBorderView extends View {
         private static final int IDLE = 0, IGNITING = 1, BURNING = 2, COOLING = 3;
         private final ImageView photo;
+        private final int element;
         private final Paint flamePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Rect source = new Rect();
         private final RectF destination = new RectF();
         private final RectF outline = new RectF();
         private final float[] sourceX = new float[4], sourceY = new float[4];
         private final float[] targetX = new float[4], targetY = new float[4];
+        private final Path leftRoute = new Path(), rightRoute = new Path(), reveal = new Path();
+        private final Paint revealStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         // The painted rim moves within the 6x2 AI sprite sheet. These anchors
         // were measured at several points along every frame's bright inner edge.
         private final int[] burnLeft = {52,47,42,38,32,26,53,46,41,39,32,28};
@@ -1865,37 +1887,129 @@ public class MainActivity extends Activity {
         private long phaseStarted;
         private long releaseAt;
         private boolean releaseKeep;
+        private float coolFrom = 1f;
 
-        FirePhotoBorderView(ImageView photo) {
+        PhotoElementBorderView(ImageView photo, int element) {
             super(MainActivity.this);
             this.photo = photo;
+            this.element = element;
             setClickable(false);
             setFocusable(false);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            setVisibility(View.GONE);
+            revealStroke.setStyle(Paint.Style.STROKE);
+            revealStroke.setStrokeCap(Paint.Cap.ROUND);
+            revealStroke.setStrokeJoin(Paint.Join.ROUND);
         }
-        void ignite() { phase = IGNITING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
-        void flare(boolean keep) { phase = BURNING; phaseStarted = releaseAt = android.os.SystemClock.uptimeMillis(); releaseKeep = keep; invalidate(); }
-        void cool() { releaseAt = 0; phase = COOLING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
+        private float progress(long now) {
+            if (phase == IGNITING) return Math.min(1f, (now - phaseStarted) / 850f);
+            if (phase == BURNING) return 1f;
+            if (phase == COOLING) return coolFrom * Math.max(0f, 1f - (now - phaseStarted) / 650f);
+            return 0f;
+        }
+        void ignite() {
+            releaseAt = 0;
+            phase = IGNITING;
+            phaseStarted = android.os.SystemClock.uptimeMillis();
+            setVisibility(View.VISIBLE);
+            invalidate();
+        }
+        void flare(boolean keep) {
+            long now = android.os.SystemClock.uptimeMillis();
+            coolFrom = progress(now);
+            phase = COOLING;
+            phaseStarted = releaseAt = now;
+            releaseKeep = keep;
+            invalidate();
+        }
+        void cool() {
+            long now = android.os.SystemClock.uptimeMillis();
+            coolFrom = progress(now);
+            releaseAt = 0;
+            phase = COOLING;
+            phaseStarted = now;
+            invalidate();
+        }
         void stop() { releaseAt = 0; phase = IDLE; setVisibility(View.GONE); }
 
+        private int elementArt() {
+            switch (element) {
+                case 20: return R.drawable.photo_border_space;
+                case 22: return R.drawable.photo_border_water;
+                case 23: return R.drawable.photo_border_ice;
+                case 24: return R.drawable.photo_border_earth;
+                case 25: return R.drawable.photo_border_lightning;
+                default: return 0;
+            }
+        }
+
+        private float[] artAnchors() {
+            // Measured from each generated asset's alpha opening at its middle
+            // row/column (source size 887 x 1774), not from the outer PNG box.
+            switch (element) {
+                case 20: return new float[]{159, 737, 137, 1612};
+                case 22: return new float[]{169, 738, 225, 1579};
+                case 23: return new float[]{144, 744, 299, 1465};
+                case 24: return new float[]{160, 757, 180, 1574};
+                case 25: return new float[]{196, 692, 166, 1603};
+                default: return new float[]{0, 0, 0, 0};
+            }
+        }
+
+        private void clipGrowth(Canvas canvas, float growth, float thickness) {
+            float r = Math.min(dp(6), Math.min(outline.width(), outline.height()) * .1f);
+            float l = outline.left, t = outline.top, right = outline.right, b = outline.bottom;
+            // Two symmetric paths begin at the bottom middle. Their rounded
+            // corners climb the photo and meet at its top middle.
+            leftRoute.reset(); leftRoute.moveTo(outline.centerX(), b);
+            leftRoute.lineTo(l + r, b); leftRoute.quadTo(l, b, l, b - r);
+            leftRoute.lineTo(l, t + r); leftRoute.quadTo(l, t, l + r, t);
+            leftRoute.lineTo(outline.centerX(), t);
+            rightRoute.reset(); rightRoute.moveTo(outline.centerX(), b);
+            rightRoute.lineTo(right - r, b); rightRoute.quadTo(right, b, right, b - r);
+            rightRoute.lineTo(right, t + r); rightRoute.quadTo(right, t, right - r, t);
+            rightRoute.lineTo(outline.centerX(), t);
+            reveal.reset();
+            PathMeasure measure = new PathMeasure(leftRoute, false);
+            measure.getSegment(0, measure.getLength() * growth, reveal, true);
+            measure.setPath(rightRoute, false);
+            measure.getSegment(0, measure.getLength() * growth, reveal, true);
+            revealStroke.setStrokeWidth(thickness);
+            Path coverage = new Path();
+            revealStroke.getFillPath(reveal, coverage);
+            canvas.clipPath(coverage);
+        }
+
         @Override protected void onDraw(Canvas canvas) {
+            if (phase == IDLE) return;
+            long now = android.os.SystemClock.uptimeMillis();
+            float growth = progress(now);
+            if (growth <= 0f) {
+                if (phase == COOLING && now - phaseStarted >= 650) stop();
+                else if (isAttachedToWindow()) postInvalidateOnAnimation();
+                return;
+            }
             Bitmap sheet;
-            long age = android.os.SystemClock.uptimeMillis() - phaseStarted;
+            long age = now - phaseStarted;
             int frame;
-            if (phase == IGNITING && age >= 6 * 95) { phase = BURNING; phaseStarted += 6 * 95; age -= 6 * 95; }
-            if (phase == COOLING && age >= 6 * 105) phase = IDLE;
-            if (phase == BURNING) {
+            if (phase == IGNITING && age >= 850) { phase = BURNING; phaseStarted = now; age = 0; }
+            boolean fire = element == 21;
+            if (!fire) {
+                sheet = swipeAsset(elementArt());
+                frame = 0;
+            } else if (phase == BURNING) {
                 sheet = swipeAsset(R.drawable.fire_border_frames);
                 frame = (int)((age / 105) % 12);
             } else {
                 sheet = swipeAsset(R.drawable.fire_touch_frames);
-                frame = phase == IGNITING ? 6 + (int)Math.min(5, age / 95)
-                        : phase == COOLING ? (int)Math.min(5, age / 105) : 5;
+                frame = phase == IGNITING ? 6 + (int)Math.min(5, age / 140)
+                        : (int)Math.max(0, 5 - Math.min(5, age / 105));
             }
             if (sheet == null || sheet.isRecycled()) return;
-            int frameWidth = sheet.getWidth() / 6, frameHeight = sheet.getHeight() / 2;
-            source.set((frame % 6) * frameWidth, (frame / 6) * frameHeight,
-                    (frame % 6 + 1) * frameWidth, (frame / 6 + 1) * frameHeight);
+            int frameWidth = fire ? sheet.getWidth() / 6 : sheet.getWidth();
+            int frameHeight = fire ? sheet.getHeight() / 2 : sheet.getHeight();
+            source.set(fire ? (frame % 6) * frameWidth : 0, fire ? (frame / 6) * frameHeight : 0,
+                    (fire ? frame % 6 + 1 : 1) * frameWidth, (fire ? frame / 6 + 1 : 1) * frameHeight);
             if (!visiblePhotoBounds(photo, outline)) {
                 postInvalidateDelayed(250);
                 return;
@@ -1905,27 +2019,34 @@ public class MainActivity extends Activity {
             // row is painted 32 pixels higher. Its x position also drifts left
             // by up to 26 pixels through each six-frame sequence.
             boolean burningSheet = phase == BURNING;
-            float left = (burningSheet ? burnLeft[frame] : touchLeft[frame]) * frameWidth / 256f;
-            float right = (burningSheet ? burnRight[frame] : touchRight[frame]) * frameWidth / 256f;
-            float top = (frame >= 6 ? (burningSheet ? 69 : 74) : (burningSheet ? 101 : 102)) * frameHeight / 512f;
-            float bottom = (frame >= 6 ? (burningSheet ? 391 : 393) : (burningSheet ? 423 : 424)) * frameHeight / 512f;
-            float unit = getResources().getDisplayMetrics().density * .42f;
-            sourceX[0] = 0; sourceX[1] = left + 32 * frameWidth / 256f;
-            sourceX[2] = right - 32 * frameWidth / 256f; sourceX[3] = frameWidth;
-            sourceY[0] = 0; sourceY[1] = top + 43 * frameHeight / 512f;
-            sourceY[2] = bottom - 34 * frameHeight / 512f; sourceY[3] = frameHeight;
-            targetX[0] = outline.left - left * unit * 256 / frameWidth;
-            targetX[1] = outline.left + 32 * unit;
-            targetX[2] = outline.right - 32 * unit;
-            targetX[3] = outline.right + (frameWidth - right) * unit * 256 / frameWidth;
-            targetY[0] = outline.top - top * unit * 512 / frameHeight;
-            targetY[1] = outline.top + 43 * unit;
-            targetY[2] = outline.bottom - 34 * unit;
-            targetY[3] = outline.bottom + (frameHeight - bottom) * unit * 512 / frameHeight;
+            float[] anchors = fire ? null : artAnchors();
+            float left = fire ? (burningSheet ? burnLeft[frame] : touchLeft[frame]) * frameWidth / 256f : anchors[0] * frameWidth / 887f;
+            float right = fire ? (burningSheet ? burnRight[frame] : touchRight[frame]) * frameWidth / 256f : anchors[1] * frameWidth / 887f;
+            float top = fire ? (frame >= 6 ? (burningSheet ? 69 : 74) : (burningSheet ? 101 : 102)) * frameHeight / 512f : anchors[2] * frameHeight / 1774f;
+            float bottom = fire ? (frame >= 6 ? (burningSheet ? 391 : 393) : (burningSheet ? 423 : 424)) * frameHeight / 512f : anchors[3] * frameHeight / 1774f;
+            float unit = getResources().getDisplayMetrics().density * (fire ? .42f : .14f);
+            float cornerX = fire ? 32 * frameWidth / 256f : frameWidth * .12f;
+            float cornerTop = fire ? 43 * frameHeight / 512f : frameHeight * .07f;
+            float cornerBottom = fire ? 34 * frameHeight / 512f : frameHeight * .07f;
+            sourceX[0] = 0; sourceX[1] = left + cornerX;
+            sourceX[2] = right - cornerX; sourceX[3] = frameWidth;
+            sourceY[0] = 0; sourceY[1] = top + cornerTop;
+            sourceY[2] = bottom - cornerBottom; sourceY[3] = frameHeight;
+            targetX[0] = outline.left - left * unit;
+            targetX[1] = outline.left + cornerX * unit;
+            targetX[2] = outline.right - cornerX * unit;
+            targetX[3] = outline.right + (frameWidth - right) * unit;
+            targetY[0] = outline.top - top * unit;
+            targetY[1] = outline.top + cornerTop * unit;
+            targetY[2] = outline.bottom - cornerBottom * unit;
+            targetY[3] = outline.bottom + (frameHeight - bottom) * unit;
             // Very small photos still get a non-inverted center section.
             if (targetX[1] > targetX[2]) targetX[1] = targetX[2] = outline.centerX();
             if (targetY[1] > targetY[2]) targetY[1] = targetY[2] = outline.centerY();
             int frameLeft = source.left, frameTop = source.top;
+            int save = canvas.save();
+            clipGrowth(canvas, growth, fire ? dp(92) : dp(55));
+            if (!fire) flamePaint.setAlpha((int)(220 + 30 * Math.sin(now / 280.0)));
             for (int y = 0; y < 3; y++) for (int x = 0; x < 3; x++) {
                 if (x == 1 && y == 1) continue; // Never paint over the photo interior.
                 source.set(frameLeft + Math.round(sourceX[x]), frameTop + Math.round(sourceY[y]),
@@ -1933,7 +2054,8 @@ public class MainActivity extends Activity {
                 destination.set(targetX[x], targetY[y], targetX[x + 1], targetY[y + 1]);
                 if (!destination.isEmpty()) canvas.drawBitmap(sheet, source, destination, flamePaint);
             }
-            if (releaseAt != 0) {
+            canvas.restoreToCount(save);
+            if (fire && releaseAt != 0) {
                 float progress = Math.min(1f, (android.os.SystemClock.uptimeMillis() - releaseAt) / 460f);
                 if (progress < 1f) {
                     Bitmap burst = swipeAsset(R.drawable.fire_release_burst);
