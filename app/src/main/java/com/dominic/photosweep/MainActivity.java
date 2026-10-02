@@ -383,7 +383,8 @@ public class MainActivity extends Activity {
     private Bitmap reviewBitmap;
     private long reviewBitmapId = -1;
     private boolean showingTrash, deletingOld;
-    private boolean showingSettings, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
+    private boolean showingSettings, showingThemes, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
+    private int optionsSection;
     private boolean arachnophobiaMode, animateThemeChange;
     private int themeChoice, musicVolume;
     private int swipeStyle, swipeIntensity = 55, swipeSpeed = 100;
@@ -458,6 +459,8 @@ public class MainActivity extends Activity {
             reviewing = state.getBoolean("reviewing");
             fullScreenReview = state.getBoolean("fullScreenReview");
             showingSettings = state.getBoolean("showingSettings");
+            showingThemes = state.getBoolean("showingThemes");
+            optionsSection = state.getInt("optionsSection");
             showingTrash = state.getBoolean("showingTrash");
             pendingTrash = state.getLong("pendingTrash", -1);
             pendingRestore = state.getLong("pendingRestore", -1);
@@ -521,6 +524,10 @@ public class MainActivity extends Activity {
         if (reviewActionRunning) return;
         if (zoomOverlay != null) closePhotoZoom();
         else if (fullScreenReview) { fullScreenReview = false; render(); }
+        else if (showingThemes) { showingThemes = false; render(); }
+        else if (showingSettings && optionsSection != 0) { optionsSection = 0; render(); }
+        else if (showingSettings) { showingSettings = false; render(); }
+        else if (showingTrash) { showingTrash = false; render(); }
         else super.onBackPressed();
     }
 
@@ -531,6 +538,8 @@ public class MainActivity extends Activity {
         state.putBoolean("reviewing", reviewing);
         state.putBoolean("fullScreenReview", fullScreenReview);
         state.putBoolean("showingSettings", showingSettings);
+        state.putBoolean("showingThemes", showingThemes);
+        state.putInt("optionsSection", optionsSection);
         state.putBoolean("showingTrash", showingTrash);
         state.putLong("pendingTrash", pendingTrash);
         state.putLong("pendingRestore", pendingRestore);
@@ -699,7 +708,7 @@ public class MainActivity extends Activity {
 
     private void applyContentInsets() {
         if (root == null) return;
-        boolean full = reviewing && fullScreenReview && !showingSettings && !showingTrash;
+        boolean full = reviewing && fullScreenReview && !showingSettings && !showingThemes && !showingTrash;
         root.setPadding(safeInsets.left + (full ? 0 : dp(22)), safeInsets.top + (full ? 0 : dp(20)),
                 safeInsets.right + (full ? 0 : dp(22)), safeInsets.bottom + (full ? 0 : dp(16)));
     }
@@ -730,7 +739,8 @@ public class MainActivity extends Activity {
             return insets;
         });
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        if (showingSettings) settingsScreen();
+        if (showingThemes) themesScreen();
+        else if (showingSettings) settingsScreen();
         else if (!hasAccess()) intro();
         else if (loading) heading("Photo Sweep", "Gathering your photos…");
         else if (showingTrash) trashScreen();
@@ -787,6 +797,12 @@ public class MainActivity extends Activity {
         TextView brand = new TextView(this); brand.setText("PHOTO SWEEP"); brand.setLetterSpacing(.13f);
         brand.setTextColor(GREEN); brand.setTextSize(15); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView themes = new TextView(this); themes.setText("✦"); themes.setTextSize(27); themes.setTextColor(GREEN);
+        themes.setGravity(Gravity.CENTER); themes.setContentDescription("Themes and animation settings");
+        themes.setBackground(themeButton(PANEL, 16));
+        LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(dp(52), dp(52)); themeLp.rightMargin = dp(8);
+        top.addView(themes, themeLp);
+        themes.setOnClickListener(v -> { showingThemes = true; render(); });
         TextView trash = new TextView(this); trash.setText("🗑"); trash.setTextSize(25); trash.setTextColor(GOLD);
         trash.setGravity(Gravity.CENTER); trash.setContentDescription("Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()));
         trash.setBackground(themeButton(PANEL, 16));
@@ -879,12 +895,57 @@ public class MainActivity extends Activity {
         TextView label = new TextView(this); label.setText(title); label.setTextColor(MUTED); label.setTextSize(13); box.addView(label);
     }
 
+    private LinearLayout optionsList(String scrollKey) {
+        ScrollView scroll = new ScrollView(this);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        trackScroll(scroll, scrollKey);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(list);
+        return list;
+    }
+
+    private void openOptionsSection(int section) {
+        optionsSection = section;
+        render();
+    }
+
     private void settingsScreen() {
-        back("Photo Sweep", () -> { showingSettings = false; render(); });
-        heading("Options", "Make each sweep feel like yours");
-        ScrollView scroll = new ScrollView(this); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        trackScroll(scroll, "settings");
-        LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
+        if (optionsSection == 0) {
+            back("Photo Sweep", () -> { showingSettings = false; render(); });
+            heading("Options", "Choose what you want to adjust");
+            LinearLayout list = optionsList("options");
+            tile(list, "Themes & animations", "Choose a theme and tune its swipe effects", () -> {
+                showingSettings = false; showingThemes = true; render();
+            });
+            tile(list, "Audio", "Swipe sounds and music", () -> openOptionsSection(1));
+            tile(list, "Account & support", "Sign in, support and app information", () -> openOptionsSection(2));
+            tile(list, "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
+            tile(list, "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
+            return;
+        }
+        String[] titles = {"", "Audio", "Account & support", "Privacy & permissions", "Testing & progress"};
+        back("Options", () -> { optionsSection = 0; render(); });
+        heading(titles[optionsSection], "Photo Sweep options");
+        LinearLayout list = optionsList("options:" + optionsSection);
+        switch (optionsSection) {
+            case 1: addAudioOptions(list); break;
+            case 2: addAccountOptions(list); break;
+            case 3: addPrivacyOptions(list); break;
+            case 4: addTestingOptions(list); break;
+            default: optionsSection = 0; render(); break;
+        }
+    }
+
+    private void themesScreen() {
+        back("Photo Sweep", () -> { showingThemes = false; render(); });
+        heading("Themes", "Choose your look and swipe animations");
+        LinearLayout list = optionsList("themes");
+        addSwipeControls(list);
+        addThemeOptions(list);
+    }
+
+    private void addTestingOptions(LinearLayout list) {
         sectionTitle(list, "TESTING");
         settingSwitch(list, "Admin mode", "Preview all themes without earning XP or reviewing photos", adminMode, value -> {
             if (value) getPreferences(MODE_PRIVATE).edit().putInt("theme_before_admin", themeChoice).apply();
@@ -900,6 +961,9 @@ public class MainActivity extends Activity {
         Button reset = new Button(this); reset.setText("Reset local progress"); reset.setTextColor(INK);
         reset.setBackground(rounded(PANEL, 12)); list.addView(reset, new LinearLayout.LayoutParams(-1, dp(52)));
         reset.setOnClickListener(v -> confirmProgressReset());
+    }
+
+    private void addThemeOptions(LinearLayout list) {
         sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
         LinearLayout tier1 = themeGroup(list, "tier1", "TIER 1 · COLORS",
@@ -919,7 +983,9 @@ public class MainActivity extends Activity {
         addThemeChoices(worlds, new int[]{27, 30, 31}, level);
 
         addCountryThemes(tier3, true, level);
-        addSwipeControls(list);
+    }
+
+    private void addAccountOptions(LinearLayout list) {
         sectionTitle(list, "ACCOUNT & SUPPORT");
         accounts.addControls(list);
         TextView account = new TextView(this); account.setText("Photos and progress stay on this device.");
@@ -930,11 +996,17 @@ public class MainActivity extends Activity {
         Button setup = new Button(this); setup.setText("Account & support details"); setup.setTextColor(INK);
         setup.setBackground(rounded(PANEL, 12)); list.addView(setup, new LinearLayout.LayoutParams(-1, dp(52)));
         setup.setOnClickListener(v -> showSupportDetails());
+    }
+
+    private void addPrivacyOptions(LinearLayout list) {
         sectionTitle(list, "PRIVACY & PERMISSIONS");
         button(list, "Privacy policy", PANEL, INK, () -> accounts.showPrivacy());
         button(list, "Change photo access", PANEL, INK, this::requestAccess);
         button(list, "Android app permissions", PANEL, INK, () -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
         button(list, "Optional prompt-free Trash", PANEL, INK, this::requestMediaManagement);
+    }
+
+    private void addAudioOptions(LinearLayout list) {
         sectionTitle(list, "AUDIO");
         settingSwitch(list, "Swipe sounds", "Coin chime for Keep, soft sweep for Trash", soundEnabled, value -> {
             soundEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled", value).apply();
@@ -1458,11 +1530,13 @@ public class MainActivity extends Activity {
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
                     {
                         committed[0] = true; reviewActionRunning = true;
-                        if (fireBorder != null) fireBorder.flare();
+                        if (fireBorder != null) fireBorder.flare(dx > 0);
                         effect.release(dx > 0);
                         card.animate().translationX((dx > 0 ? 1 : -1) * stage.getWidth() * 1.2f)
                                 .rotation(dx > 0 ? 16 : -16).alpha(0).setDuration(SwipeMotion.duration(swipeSpeed))
                                 .withEndAction(() -> {
+                                    effect.cancel();
+                                    if (fireBorder != null) fireBorder.stop();
                                     reviewActionRunning = false;
                                     if (isDestroyed()) return;
                                     if (dx > 0) keep(shown); else trash(shown);
@@ -1783,8 +1857,17 @@ public class MainActivity extends Activity {
         private final RectF outline = new RectF();
         private final float[] sourceX = new float[4], sourceY = new float[4];
         private final float[] targetX = new float[4], targetY = new float[4];
+        // The painted rim moves within the 6x2 AI sprite sheet. These anchors
+        // were measured at several points along every frame's bright inner edge.
+        private final int[] burnLeft = {52,47,42,38,32,26,53,46,41,39,32,28};
+        private final int[] burnRight = {231,229,221,217,212,207,230,229,220,218,213,207};
+        private final int[] touchLeft = {54,48,44,41,34,29,53,48,44,41,40,32};
+        private final int[] touchRight = {232,230,222,218,212,207,230,226,221,218,213,209};
+        private final Paint burstPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private int phase = IDLE;
         private long phaseStarted;
+        private long releaseAt;
+        private boolean releaseKeep;
 
         FirePhotoBorderView(ImageView photo) {
             super(MainActivity.this);
@@ -1794,8 +1877,9 @@ public class MainActivity extends Activity {
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         }
         void ignite() { phase = IGNITING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
-        void flare() { phase = BURNING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
-        void cool() { phase = COOLING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
+        void flare(boolean keep) { phase = BURNING; phaseStarted = releaseAt = android.os.SystemClock.uptimeMillis(); releaseKeep = keep; invalidate(); }
+        void cool() { releaseAt = 0; phase = COOLING; phaseStarted = android.os.SystemClock.uptimeMillis(); invalidate(); }
+        void stop() { releaseAt = 0; phase = IDLE; setVisibility(View.GONE); }
 
         @Override protected void onDraw(Canvas canvas) {
             Bitmap sheet;
@@ -1819,22 +1903,28 @@ public class MainActivity extends Activity {
                 postInvalidateDelayed(250);
                 return;
             }
-            // Sprite frame 256x512: the bright inner rim is at x=52/232 and
-            // y=102/424. The middle stretches; the four corners retain their
-            // shape and the flame thickness stays the same for every aspect ratio.
+            // Normalize each moving sprite rim to the exact same photo outline.
+            // The first row's horizontal rim is around y=101/424; the second
+            // row is painted 32 pixels higher. Its x position also drifts left
+            // by up to 26 pixels through each six-frame sequence.
+            boolean burningSheet = phase == BURNING;
+            float left = (burningSheet ? burnLeft[frame] : touchLeft[frame]) * frameWidth / 256f;
+            float right = (burningSheet ? burnRight[frame] : touchRight[frame]) * frameWidth / 256f;
+            float top = (frame >= 6 ? (burningSheet ? 69 : 74) : (burningSheet ? 101 : 102)) * frameHeight / 512f;
+            float bottom = (frame >= 6 ? (burningSheet ? 391 : 393) : (burningSheet ? 423 : 424)) * frameHeight / 512f;
             float unit = getResources().getDisplayMetrics().density * .42f;
-            sourceX[0] = 0; sourceX[1] = frameWidth * 84f / 256f;
-            sourceX[2] = frameWidth * 200f / 256f; sourceX[3] = frameWidth;
-            sourceY[0] = 0; sourceY[1] = frameHeight * 145f / 512f;
-            sourceY[2] = frameHeight * 390f / 512f; sourceY[3] = frameHeight;
-            targetX[0] = outline.left - 52 * unit;
+            sourceX[0] = 0; sourceX[1] = left + 32 * frameWidth / 256f;
+            sourceX[2] = right - 32 * frameWidth / 256f; sourceX[3] = frameWidth;
+            sourceY[0] = 0; sourceY[1] = top + 43 * frameHeight / 512f;
+            sourceY[2] = bottom - 34 * frameHeight / 512f; sourceY[3] = frameHeight;
+            targetX[0] = outline.left - left * unit * 256 / frameWidth;
             targetX[1] = outline.left + 32 * unit;
             targetX[2] = outline.right - 32 * unit;
-            targetX[3] = outline.right + 24 * unit;
-            targetY[0] = outline.top - 102 * unit;
+            targetX[3] = outline.right + (frameWidth - right) * unit * 256 / frameWidth;
+            targetY[0] = outline.top - top * unit * 512 / frameHeight;
             targetY[1] = outline.top + 43 * unit;
             targetY[2] = outline.bottom - 34 * unit;
-            targetY[3] = outline.bottom + 88 * unit;
+            targetY[3] = outline.bottom + (frameHeight - bottom) * unit * 512 / frameHeight;
             // Very small photos still get a non-inverted center section.
             if (targetX[1] > targetX[2]) targetX[1] = targetX[2] = outline.centerX();
             if (targetY[1] > targetY[2]) targetY[1] = targetY[2] = outline.centerY();
@@ -1846,45 +1936,32 @@ public class MainActivity extends Activity {
                 destination.set(targetX[x], targetY[y], targetX[x + 1], targetY[y + 1]);
                 if (!destination.isEmpty()) canvas.drawBitmap(sheet, source, destination, flamePaint);
             }
+            if (releaseAt != 0) {
+                float progress = Math.min(1f, (android.os.SystemClock.uptimeMillis() - releaseAt) / 460f);
+                if (progress < 1f) {
+                    Bitmap burst = swipeAsset(R.drawable.fire_release_burst);
+                    if (burst != null && !burst.isRecycled()) {
+                        float width = Math.min(outline.width() * .65f, dp(260));
+                        float height = Math.min(outline.height() * .75f, dp(500));
+                        float direction = releaseKeep ? 1 : -1;
+                        float center = outline.centerX() + direction * outline.width() * progress * .28f;
+                        burstPaint.setAlpha((int)(190 * (1 - progress) * (1 - progress)));
+                        canvas.drawBitmap(burst, null, new RectF(center - width / 2, outline.centerY() - height / 2,
+                                center + width / 2, outline.centerY() + height / 2), burstPaint);
+                    }
+                } else releaseAt = 0;
+            }
             if (phase != IDLE && isAttachedToWindow()) postInvalidateOnAnimation();
         }
     }
     private class SwipeEffect extends SwipeVfxView {
-        private long fireReleased;
-        private boolean fireKeep;
-        private final Paint firePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         SwipeEffect() {
             super(MainActivity.this, MainActivity.this::selectedSwipeSprite,
                     countryCollection(themeChoice) >= 0 && (swipeStyle == 0 || swipeStyle == 8)
                             ? COUNTRY_FLAGS[countryCollection(themeChoice)] : null,
                     selectedSwipeProfile(),
-                    !canCustomizeSwipe() || swipeStyle != 9, GREEN, RED, swipeIntensity, swipeSpeed);
-        }
-        @Override void hold(float x, float y) { fireReleased = 0; super.hold(x, y); }
-        @Override void cancel() { fireReleased = 0; super.cancel(); }
-        @Override void release(boolean keep) {
-            if (themeChoice == 21) { fireReleased = android.os.SystemClock.uptimeMillis(); fireKeep = keep; }
-            super.release(keep);
-        }
-        @Override protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            if (themeChoice != 21 || fireReleased == 0) return;
-            float elapsed = (android.os.SystemClock.uptimeMillis() - fireReleased) / 460f;
-            if (elapsed >= 1) { fireReleased = 0; return; }
-            Bitmap burst = swipeAsset(R.drawable.fire_release_burst);
-            if (burst == null || burst.isRecycled()) return;
-            float w = getWidth(), h = getHeight();
-            float side = fireKeep ? 1f : -1f;
-            float centerX = w * (.5f + side * (.18f + elapsed * .29f));
-            float bw = Math.min(w * .68f, dp(260)) * (1 + elapsed * .35f);
-            float bh = Math.min(h * .82f, dp(500)) * (1 + elapsed * .2f);
-            firePaint.setAlpha((int)(215 * (1 - elapsed) * (1 - elapsed)));
-            canvas.save();
-            if (!fireKeep) { canvas.scale(-1, 1, centerX, h / 2); }
-            canvas.drawBitmap(burst, null, new RectF(centerX - bw / 2, h / 2 - bh / 2,
-                    centerX + bw / 2, h / 2 + bh / 2), firePaint);
-            canvas.restore();
-            if (isAttachedToWindow()) postInvalidateOnAnimation();
+                    (!canCustomizeSwipe() || swipeStyle != 9) && !(themeChoice == 21 && swipeStyle == 0),
+                    GREEN, RED, swipeIntensity, swipeSpeed);
         }
     }
 
