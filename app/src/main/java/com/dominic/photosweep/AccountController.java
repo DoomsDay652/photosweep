@@ -25,6 +25,22 @@ final class AccountController {
     private final Runnable changed;
     private FirebaseAuth auth;
     private boolean busy;
+    private int panel = 0xff23384d, ink = 0xffedf8f9, accent = 0xff40d2bc,
+            muted = 0xffaac1cd, danger = 0xffff7580;
+    private static final int SECONDARY = 0, PRIMARY = 1, DESTRUCTIVE = 2;
+    private int dp(float value) { return Math.round(value * activity.getResources().getDisplayMetrics().density); }
+    private int blend(int first, int second, float amount) {
+        return android.graphics.Color.rgb(
+                Math.round(android.graphics.Color.red(first) * (1 - amount) + android.graphics.Color.red(second) * amount),
+                Math.round(android.graphics.Color.green(first) * (1 - amount) + android.graphics.Color.green(second) * amount),
+                Math.round(android.graphics.Color.blue(first) * (1 - amount) + android.graphics.Color.blue(second) * amount));
+    }
+    private android.graphics.drawable.GradientDrawable surface(int color, int outline) {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[]{blend(color, android.graphics.Color.WHITE, .09f), color});
+        shape.setCornerRadius(dp(18)); shape.setStroke(dp(1), outline); return shape;
+    }
     private FirebaseAuth.AuthStateListener listener;
 
     AccountController(Activity activity, Runnable changed) {
@@ -50,34 +66,56 @@ final class AccountController {
     }
     private void note(String text) { if (!activity.isDestroyed()) Toast.makeText(activity, text, Toast.LENGTH_LONG).show(); }
     private void button(LinearLayout parent, String text, Runnable action) {
-        Button button = new Button(activity); button.setText(text); parent.addView(button);
-        button.setEnabled(!busy); button.setOnClickListener(v -> action.run());
+        button(parent, text, SECONDARY, action);
     }
-    void addControls(LinearLayout parent) {
-        TextView status = new TextView(activity); status.setTextColor(0xffedf8f9);
+    private void button(LinearLayout parent, String text, int role, Runnable action) {
+        Button control = new Button(activity);
+        control.setText(text); control.setAllCaps(false); control.setTextSize(16);
+        control.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        control.setMinHeight(dp(56)); control.setMinimumHeight(dp(56));
+        control.setPadding(dp(18), dp(14), dp(18), dp(14));
+        int color = role == PRIMARY ? accent : role == DESTRUCTIVE ? blend(panel, danger, .18f) : panel;
+        int outline = role == DESTRUCTIVE ? danger : role == PRIMARY ? accent : blend(panel, accent, .45f);
+        control.setTextColor(role == PRIMARY ? 0xff17212b : ink);
+        android.graphics.drawable.GradientDrawable mask = surface(android.graphics.Color.WHITE, android.graphics.Color.WHITE);
+        control.setBackgroundTintList(null);
+        control.setBackground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x33ffffff), surface(color, outline), mask));
+        control.setElevation(dp(2)); control.setEnabled(!busy); control.setAlpha(busy ? .55f : 1f);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10); parent.addView(control, params);
+        control.setOnClickListener(v -> { if (!busy) action.run(); });
+    }
+    void addControls(LinearLayout parent) { addControls(parent, panel, ink, accent, muted, danger); }
+    void addControls(LinearLayout parent, int panel, int ink, int accent, int muted, int danger) {
+        this.panel = panel; this.ink = ink; this.accent = accent; this.muted = muted; this.danger = danger;
+        TextView status = new TextView(activity); status.setTextColor(ink); status.setTextSize(16);
+        status.setPadding(dp(18), dp(16), dp(18), dp(16));
+        status.setBackground(surface(panel, blend(panel, accent, .35f)));
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2); statusParams.bottomMargin = dp(16);
         FirebaseUser user = auth == null ? null : auth.getCurrentUser();
         status.setText(user == null ? "Account: Guest · sign-in is optional" : "Account: "
                 + (user.getDisplayName() == null || user.getDisplayName().isEmpty() ? "" : user.getDisplayName() + "\n") + user.getEmail()
-                + (user.isEmailVerified() ? " · verified" : " · email not verified")); parent.addView(status);
+                + (user.isEmailVerified() ? " · verified" : " · email not verified")); parent.addView(status, statusParams);
         if (auth == null) {
-            TextView availability = new TextView(activity); availability.setTextColor(0xffaac1cd);
+            TextView availability = new TextView(activity); availability.setTextColor(muted);
             availability.setText("Online accounts are not available in this build. You can use every photo-review feature as a guest."); parent.addView(availability);
         } else if (user == null) {
-            button(parent, "Create account", () -> credentials(true, false));
+            button(parent, "Create account", PRIMARY, () -> credentials(true, false));
             button(parent, "Sign in", () -> credentials(false, false));
             button(parent, "Forgot password", this::resetPassword);
         } else {
-            button(parent, "Edit username", this::editUsername);
+            button(parent, "Edit username", user.isEmailVerified() ? PRIMARY : SECONDARY, this::editUsername);
             if (!user.isEmailVerified()) {
-                button(parent, "Send verification email", () -> { if (busy) return; busy=true;
+                button(parent, "Send verification email", PRIMARY, () -> { if (busy) return; busy=true;
                     user.sendEmailVerification().addOnCompleteListener(task -> finish(task.isSuccessful(), task.getException(), "Verification email sent.")); });
                 button(parent, "Check verification", () -> { if (busy) return; busy=true;
                     user.reload().addOnCompleteListener(task -> finish(task.isSuccessful(), task.getException(), "Account refreshed.")); });
             }
             button(parent, "Sign out", () -> { if (!busy) { auth.signOut(); changed.run(); } });
-            button(parent, "Delete account", () -> credentials(false, true));
+            button(parent, "Delete account", DESTRUCTIVE, () -> credentials(false, true));
         }
-        if (PlayPolicy.validUrl(BuildConfig.DELETION_URL)) button(parent, "Account deletion website", () -> open(BuildConfig.DELETION_URL));
+        if (PlayPolicy.validUrl(BuildConfig.DELETION_URL)) button(parent, "Account deletion help ↗", () -> open(BuildConfig.DELETION_URL));
     }
     private LinearLayout form() {
         LinearLayout layout = new LinearLayout(activity); layout.setOrientation(LinearLayout.VERTICAL);
