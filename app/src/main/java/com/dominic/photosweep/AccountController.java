@@ -114,8 +114,8 @@ final class AccountController {
                     if (!task.isSuccessful()) { finish(false,task.getException(),""); return; }
                     FirebaseUser user=auth.getCurrentUser(); if (user == null) { finish(false,null,""); return; }
                     user.sendEmailVerification().addOnCompleteListener(verification -> {
-                        busy=false; note(verification.isSuccessful() ? "Account created. Check your email to verify it." : "Account created. Resend verification from Settings.");
-                        if (!activity.isDestroyed()) changed.run();
+                        finish(verification.isSuccessful(), verification.getException(),
+                                "Account created. Check your email to verify it.");
                     });
                 });
             } else auth.signInWithEmailAndPassword(address,secret).addOnCompleteListener(task -> finish(task.isSuccessful(),task.getException(),"Signed in."));
@@ -133,10 +133,43 @@ final class AccountController {
         })); dialog.show();
     }
     private void finish(boolean success, Exception error, String message) {
-        busy=false; String code=error instanceof FirebaseAuthException ? ((FirebaseAuthException)error).getErrorCode() : "";
-        note(success ? message : code.equals("ERROR_TOO_MANY_REQUESTS") ? "Too many attempts. Please try again later."
-                : "Could not complete this request. Check your connection and credentials, then try again.");
+        busy=false;
+        if (success) note(message);
+        else if (!activity.isDestroyed()) new AlertDialog.Builder(activity)
+                .setTitle("Account request failed")
+                .setMessage(accountError(error))
+                .setPositiveButton("OK", null).show();
         if (!activity.isDestroyed()) changed.run();
+    }
+    private String accountError(Exception error) {
+        if (error instanceof com.google.firebase.FirebaseNetworkException)
+            return "Firebase could not be reached. Check your internet connection and try again.";
+        if (error instanceof com.google.firebase.FirebaseTooManyRequestsException)
+            return "Firebase temporarily blocked further attempts. Wait before trying again.";
+        String code=error instanceof FirebaseAuthException ? ((FirebaseAuthException)error).getErrorCode() : "";
+        switch (code) {
+            case "ERROR_WRONG_PASSWORD":
+            case "ERROR_INVALID_CREDENTIAL":
+            case "ERROR_INVALID_LOGIN_CREDENTIALS":
+                return "Firebase could not verify your email and password. For deletion, enter your Photo Sweep account password. If you forgot it, sign out and use Forgot password, then sign in again.";
+            case "ERROR_REQUIRES_RECENT_LOGIN":
+            case "ERROR_USER_TOKEN_EXPIRED":
+            case "ERROR_INVALID_USER_TOKEN":
+                return "Your sign-in needs to be refreshed. Sign out, sign in again, and retry the request.";
+            case "ERROR_USER_NOT_FOUND":
+                return "This account no longer exists in Firebase. Sign out to return to guest mode.";
+            case "ERROR_USER_DISABLED":
+                return "This account has been disabled. Contact Dreamy Game Studios support.";
+            case "ERROR_EMAIL_ALREADY_IN_USE":
+                return "An account already uses this email. Choose Sign in or Forgot password.";
+            case "ERROR_TOO_MANY_REQUESTS":
+                return "Firebase temporarily blocked further attempts. Wait before trying again.";
+            case "ERROR_OPERATION_NOT_ALLOWED":
+                return "Firebase has not enabled this account operation. Contact Dreamy Game Studios support.";
+            default:
+                return "Firebase could not complete the request. Your account may still exist. Try signing out and back in. If it continues, send support this code: "
+                        + (code.isEmpty() ? (error == null ? "NO_CURRENT_USER" : error.getClass().getSimpleName()) : code) + ".";
+        }
     }
     private void open(String url) {
         try { activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url))); }
