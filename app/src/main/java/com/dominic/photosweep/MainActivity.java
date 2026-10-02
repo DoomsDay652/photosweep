@@ -591,6 +591,10 @@ public class MainActivity extends Activity {
         // Menus must stay inside their viewport; only review cards can draw beyond it.
         scroll.setClipChildren(true);
         scroll.setClipToPadding(true);
+        // Clip the ScrollView's own render layer too: elevated controls can otherwise
+        // escape child clipping and overlap the fixed page heading.
+        scroll.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
+                view.setClipBounds(new Rect(0, 0, right - left, bottom - top)));
         return scroll;
     }
 
