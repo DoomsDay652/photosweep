@@ -1069,15 +1069,13 @@ public class MainActivity extends Activity {
 
     private void addAccountOptions(LinearLayout list) {
         sectionTitle(list, "ACCOUNT & SUPPORT");
-        accounts.addControls(list);
+        accounts.addControls(list, PANEL, INK, GREEN, MUTED, RED);
         TextView account = new TextView(this); account.setText("Photos and progress stay on this device.");
         account.setTextColor(INK); account.setTextSize(16); list.addView(account);
         TextView support = new TextView(this);
         support.setText("Your photos stay on this device. Accounts are optional. Support purchases and ad removal will become available after store setup; this version has no ads.");
         support.setTextColor(MUTED); support.setTextSize(14); support.setPadding(0, dp(8), 0, dp(16)); list.addView(support);
-        Button setup = new Button(this); setup.setText("Account & support details"); setup.setTextColor(INK);
-        setup.setBackground(rounded(PANEL, 12)); list.addView(setup, new LinearLayout.LayoutParams(-1, dp(52)));
-        setup.setOnClickListener(v -> showSupportDetails());
+        button(list, "Account & support details", PANEL, INK, this::showSupportDetails);
     }
 
     private void addPrivacyOptions(LinearLayout list) {
