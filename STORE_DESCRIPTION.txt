@@ -1,0 +1,27 @@
+Make photo cleanup feel less like a chore.
+
+Photo Sweep helps you review your photo library one month at a time. Swipe right to keep a photo or left to move it to Trash, with colorful themes and animations that make each sweep feel like your own.
+
+REVIEW AT YOUR OWN PACE
+Browse photos by year and month, see each photo’s date, and move between months as you make progress. Keeping a photo leaves the original in your gallery. Made a mistake? Undo your last photo decision and keep going.
+
+SEE THE WHOLE PHOTO
+Open a photo in full screen for a closer look while keeping swipe controls available. Exact duplicate indicators help you spot identical files as you review.
+
+MAKE IT YOURS
+Choose from a growing collection of illustrated and animated themes, including country-inspired designs, elemental effects and playful worlds. Customize supported swipe effects, sounds and music to suit your style.
+
+REVIEW YOUR TRASH
+Check recently trashed photos and restore them while they are still recoverable. Photo Sweep’s cleanup can permanently remove tracked photos after seven days or when its recent Trash limit is exceeded. Android controls media permissions and recovery, so review your Trash before photos are permanently deleted.
+
+OPTIONAL ACCOUNTS
+Use Photo Sweep as a guest or sign in with Google. Existing email accounts remain supported, and you can personalize your display name or delete your Photo Sweep account. Your photos and review progress stay on your device; signing in does not back them up or sync them between devices.
+
+COMING SOON: AD REMOVAL AND SUPPORT PURCHASES
+We plan to offer optional support purchases and a one-time purchase to remove ads. Ads and checkout are not active in this early release. When available, eligible ad-removal purchases can be restored using the same Google Play account that purchased them, including after reinstalling the app. Consumed support purchases are not restorable. Google Play purchase ownership is separate from your Photo Sweep account.
+
+PHOTO ACCESS YOU CONTROL
+Photo Sweep requests Android photo permissions and processes your photos on your device. Your photos are not uploaded to Dreamy Game Studios or Firebase. You can change photo access in Android settings.
+
+Created by Dreamy Game Studios (D.G.S.).
+Support: dreamygamestudios.support@gmail.com

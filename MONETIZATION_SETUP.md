@@ -69,3 +69,15 @@ Complete step 1 first. The next useful checkpoint is a Play Console app dashboar
 ## Updated app preparation
 
 Email/password account flows are now implemented but disabled until configured. See `store/PLAY_RELEASE_READINESS.md` for the current instructions, including Firebase Email/Password, public privacy/deletion pages, CI configuration and release checks. Google sign-in remains a later integration. The account deletion and privacy website source is supplied in `store/public`; it is not deployed yet. Do not publish this internal-testing build as fully configured production.
+
+
+## Google sign-in and purchase restoration (0.1.0)
+
+1. Firebase Console → Authentication → Sign-in method: enable Google and choose the studio support email.
+2. Firebase project settings → Android app `com.dominic.photosweep`: add the SHA-1 and SHA-256 fingerprints for the direct APK signing certificate and the Play app signing certificate (Play Console → App integrity). These can be different keys.
+3. Download the updated `google-services.json` after enabling Google. Replace the repository Actions secret `PHOTO_SWEEP_FIREBASE_ANDROID_CONFIG` with its complete contents. The build extracts the **Web** OAuth client (`client_type: 3`); never use an Android OAuth client ID here. Rebuild after updating the secret.
+4. Test Google sign-in, cancellation, account selection after sign-out, linking an existing email account, editing the display name, and deletion with both correct and incorrect Google accounts. Existing email accounts remain available.
+5. Restore purchases queries Google Play independently of Firebase sign-in, including in guest mode. It restores only completed, acknowledged `remove_ads` ownership; pending or unacknowledged purchases are not granted. Consumed support products are not restored. No checkout or ads are enabled by this change. Before enabling checkout, implement purchase verification and acknowledgement, Play product configuration, consent/ads configuration and updated Data safety declarations.
+6. The external deletion page accepts Google-account deletion requests through support email. The studio must verify ownership and delete the requested Firebase account; never request a user's Google password.
+
+User-visible version names now follow semantic versions (`0.1.0` during early development). CI build numbers continue as increasing Android version codes.
