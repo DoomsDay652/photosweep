@@ -4,6 +4,26 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.CancellationSignal;
+import androidx.credentials.CredentialManager;
+import androidx.credentials.CredentialManagerCallback;
+import androidx.credentials.GetCredentialRequest;
+import androidx.credentials.GetCredentialResponse;
+import androidx.credentials.CustomCredential;
+import androidx.credentials.ClearCredentialStateRequest;
+import androidx.credentials.exceptions.GetCredentialException;
+import androidx.credentials.exceptions.GetCredentialCancellationException;
+import androidx.credentials.exceptions.ClearCredentialException;
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
+import com.google.firebase.auth.GoogleAuthProvider;
+import com.google.firebase.auth.AuthCredential;
+import com.android.billingclient.api.BillingClient;
+import com.android.billingclient.api.BillingClientStateListener;
+import com.android.billingclient.api.BillingResult;
+import com.android.billingclient.api.PendingPurchasesParams;
+import com.android.billingclient.api.QueryPurchasesParams;
+import com.android.billingclient.api.Purchase;
 import android.text.InputType;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -19,12 +39,24 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.UserProfileChangeRequest;
 
-/** Optional email accounts. No photos, progress or purchase tokens are stored in Firebase. */
+/** Optional Google and email accounts. No photos, progress or purchase tokens are stored in Firebase. */
 final class AccountController {
     private final Activity activity;
     private final Runnable changed;
     private FirebaseAuth auth;
-    private boolean busy;
+    private boolean busy, closed;
+    private CancellationSignal credentialCancellation;
+    private BillingClient restoreClient;
+    private boolean restoring;
+    private int restoreSession;
+    private final android.os.Handler restoreHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable restoreTimeout = () -> {
+        if (restoring && !closed) restored("Google Play took too long to respond. Please try again.");
+    };
+    private boolean linkedGoogle(FirebaseUser user) {
+        return user != null && user.getProviderData().stream()
+                .anyMatch(provider -> GoogleAuthProvider.PROVIDER_ID.equals(provider.getProviderId()));
+    }
     private int panel = 0xff23384d, ink = 0xffedf8f9, accent = 0xff40d2bc,
             muted = 0xffaac1cd, danger = 0xffff7580;
     private static final int SECONDARY = 0, PRIMARY = 1, DESTRUCTIVE = 2;
@@ -58,7 +90,13 @@ final class AccountController {
         listener = a -> { if (!activity.isDestroyed()) changed.run(); };
         auth.addAuthStateListener(listener);
     }
-    void close() { if (auth != null && listener != null) auth.removeAuthStateListener(listener); }
+    void close() {
+        closed = true;
+        restoreHandler.removeCallbacks(restoreTimeout);
+        if (credentialCancellation != null) credentialCancellation.cancel();
+        if (restoreClient != null) restoreClient.endConnection();
+        if (auth != null && listener != null) auth.removeAuthStateListener(listener);
+    }
     String photosHeading() {
         FirebaseUser user=auth == null ? null : auth.getCurrentUser();
         String name=user == null ? null : user.getDisplayName();
@@ -102,8 +140,15 @@ final class AccountController {
             TextView availability = new TextView(activity); availability.setTextColor(muted);
             availability.setText("Online accounts are not available in this build. You can use every photo-review feature as a guest."); parent.addView(availability);
         } else if (user == null) {
-            button(parent, "Create account", PRIMARY, () -> credentials(true, false));
-            button(parent, "Sign in", () -> credentials(false, false));
+            com.google.android.gms.common.SignInButton google = new com.google.android.gms.common.SignInButton(activity);
+            google.setSize(com.google.android.gms.common.SignInButton.SIZE_WIDE);
+            google.setColorScheme(com.google.android.gms.common.SignInButton.COLOR_LIGHT);
+            google.setEnabled(!busy);
+            LinearLayout.LayoutParams googleParams = new LinearLayout.LayoutParams(-1, dp(56));
+            googleParams.bottomMargin = dp(10); parent.addView(google, googleParams);
+            google.setOnClickListener(v -> { if (!busy) googleConsent(false); });
+            button(parent, "Create account with email", () -> credentials(true, false));
+            button(parent, "Sign in with email", () -> credentials(false, false));
             button(parent, "Forgot password", this::resetPassword);
         } else {
             button(parent, "Edit username", user.isEmailVerified() ? PRIMARY : SECONDARY, this::editUsername);
@@ -113,10 +158,157 @@ final class AccountController {
                 button(parent, "Check verification", () -> { if (busy) return; busy=true;
                     user.reload().addOnCompleteListener(task -> finish(task.isSuccessful(), task.getException(), "Account refreshed.")); });
             }
-            button(parent, "Sign out", () -> { if (!busy) { auth.signOut(); changed.run(); } });
-            button(parent, "Delete account", DESTRUCTIVE, () -> credentials(false, true));
+            if (!linkedGoogle(user)) button(parent, "Link Google account", () -> googleConsent(true));
+            button(parent, "Sign out", this::signOut);
+            button(parent, "Delete account", DESTRUCTIVE, () -> {
+                if (linkedGoogle(user)) confirmGoogleDeletion(); else credentials(false, true);
+            });
         }
+        button(parent, restoring ? "Checking purchases…" : "Restore purchases", this::restorePurchases);
         if (PlayPolicy.validUrl(BuildConfig.DELETION_URL)) button(parent, "Account deletion help ↗", () -> open(BuildConfig.DELETION_URL));
+    }
+    private void googleConsent(boolean linking) {
+        if (busy || auth == null) return;
+        if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isEmpty()) {
+            note("Google sign-in is awaiting studio configuration. Email sign-in and guest mode are available."); return;
+        }
+        LinearLayout content = form();
+        TextView explanation = new TextView(activity);
+        explanation.setText(linking ? "Add Google sign-in to this account. Your username stays the same."
+                : "Use your Google account. Your photos and progress stay on this device.");
+        explanation.setTextColor(muted); explanation.setPadding(0, 0, 0, dp(12)); content.addView(explanation);
+        button(content, "Privacy policy", this::showPrivacy);
+        CheckBox consent = new CheckBox(activity); consent.setText("I agree to the privacy policy.");
+        consent.setTextColor(ink); consent.setButtonTintList(android.content.res.ColorStateList.valueOf(accent));
+        content.addView(consent);
+        AlertDialog dialog = accountDialog(linking ? "Link Google account" : "Continue with Google",
+                content, "Continue", false);
+        dialog.setOnShowListener(d -> dialog.findViewById(android.R.id.button1).setOnClickListener(v -> {
+            if (!consent.isChecked()) { note("Please agree to the privacy policy to continue."); return; }
+            dialog.dismiss(); googleCredential(linking ? 1 : 0);
+        })); showAccountDialog(dialog);
+    }
+    private void confirmGoogleDeletion() {
+        LinearLayout content = form(); TextView explanation = new TextView(activity);
+        explanation.setText("Permanently delete your Photo Sweep account? Your Google account, photos and Google Play purchases stay intact.");
+        explanation.setTextColor(muted); explanation.setPadding(0, 0, 0, dp(16)); content.addView(explanation);
+        AlertDialog dialog = accountDialog("Delete Photo Sweep account?", content, "Verify with Google and delete", true);
+        dialog.setOnShowListener(d -> dialog.findViewById(android.R.id.button1).setOnClickListener(v -> {
+            if (busy) return; dialog.dismiss(); googleCredential(2);
+        })); showAccountDialog(dialog);
+    }
+    // 0: sign in, 1: link to the authenticated account, 2: reauthenticate then delete.
+    private void googleCredential(int operation) {
+        if (busy || auth == null || closed) return;
+        if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isEmpty()) { note("Google sign-in needs studio configuration."); return; }
+        FirebaseUser original = auth.getCurrentUser();
+        if (operation != 0 && original == null) return;
+        String originalId = original == null ? null : original.getUid();
+        busy = true; credentialCancellation = new CancellationSignal();
+        GetCredentialRequest request = new GetCredentialRequest.Builder()
+                .addCredentialOption(new GetSignInWithGoogleOption.Builder(BuildConfig.GOOGLE_WEB_CLIENT_ID).build()).build();
+        CredentialManager.create(activity).getCredentialAsync(activity, request, credentialCancellation,
+                activity.getMainExecutor(), new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
+            @Override public void onResult(GetCredentialResponse result) {
+                if (closed || activity.isDestroyed()) return;
+                try {
+                    if (!(result.getCredential() instanceof CustomCredential)) throw new IllegalArgumentException("Unexpected credential");
+                    CustomCredential custom = (CustomCredential) result.getCredential();
+                    if (!GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL.equals(custom.getType()))
+                        throw new IllegalArgumentException("Unexpected credential type");
+                    AuthCredential credential = GoogleAuthProvider.getCredential(
+                            GoogleIdTokenCredential.createFrom(custom.getData()).getIdToken(), null);
+                    if (operation == 0) {
+                        auth.signInWithCredential(credential).addOnCompleteListener(task -> finish(task.isSuccessful(), task.getException(), "Signed in with Google."));
+                        return;
+                    }
+                    FirebaseUser current = auth.getCurrentUser();
+                    if (current == null || !current.getUid().equals(originalId)) { finish(false, null, ""); return; }
+                    if (operation == 1) {
+                        String savedName = current.getDisplayName();
+                        current.linkWithCredential(credential).addOnCompleteListener(task -> {
+                            if (!task.isSuccessful()) { finish(false, task.getException(), ""); return; }
+                            if (savedName == null || savedName.isEmpty()) { finish(true, null, "Google account linked."); return; }
+                            current.updateProfile(new UserProfileChangeRequest.Builder().setDisplayName(savedName).build())
+                                    .addOnCompleteListener(profile -> finish(profile.isSuccessful(), profile.getException(), "Google account linked."));
+                        });
+                    } else current.reauthenticate(credential).addOnCompleteListener(task -> {
+                        if (!task.isSuccessful()) { finish(false, task.getException(), ""); return; }
+                        FirebaseUser refreshed = auth.getCurrentUser();
+                        if (refreshed == null || !refreshed.getUid().equals(originalId)) { finish(false, null, ""); return; }
+                        refreshed.delete().addOnCompleteListener(deleted -> {
+                            if (deleted.isSuccessful()) clearGoogleSession();
+                            finish(deleted.isSuccessful(), deleted.getException(), "Photo Sweep account deleted. You are now a guest.");
+                        });
+                    });
+                } catch (Exception invalid) { finish(false, invalid, ""); }
+            }
+            @Override public void onError(GetCredentialException error) {
+                if (closed || activity.isDestroyed()) return;
+                if (error instanceof GetCredentialCancellationException) { busy = false; changed.run(); return; }
+                busy = false;
+                note("Google sign-in could not finish. Check your connection and Google account, then try again."); changed.run();
+            }
+        });
+    }
+    private void signOut() {
+        if (busy || auth == null) return;
+        auth.signOut(); clearGoogleSession(); changed.run();
+    }
+    private void clearGoogleSession() {
+        CredentialManager.create(activity).clearCredentialStateAsync(new ClearCredentialStateRequest(), null,
+                activity.getMainExecutor(), new CredentialManagerCallback<Void, ClearCredentialException>() {
+            @Override public void onResult(Void result) { }
+            @Override public void onError(ClearCredentialException error) {
+                if (!closed) note("Signed out. If Google offers the previous account, choose a different account.");
+            }
+        });
+    }
+    private void restorePurchases() {
+        if (restoring || closed) return;
+        restoring = true; final int session = ++restoreSession;
+        restoreHandler.postDelayed(restoreTimeout, 30000); changed.run();
+        restoreClient = BillingClient.newBuilder(activity.getApplicationContext())
+                .setListener((result, purchases) -> {})
+                .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
+                .enableAutoServiceReconnection().build();
+        restoreClient.startConnection(new BillingClientStateListener() {
+            @Override public void onBillingSetupFinished(BillingResult result) {
+                if (closed || session != restoreSession || !restoring) return;
+                if (result.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+                    restored("Google Play could not be reached. Check that Play Store is installed and signed in, then try again."); return;
+                }
+                restoreClient.queryPurchasesAsync(QueryPurchasesParams.newBuilder()
+                        .setProductType(BillingClient.ProductType.INAPP).build(), (query, purchases) -> {
+                    if (closed || session != restoreSession || !restoring) return;
+                    if (query.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+                        restored("Purchases could not be checked. Try again when Google Play is available."); return;
+                    }
+                    boolean removeAds = false, pending = false;
+                    for (Purchase purchase : purchases) {
+                        if (!purchase.getProducts().contains(AppServices.Product.REMOVE_ADS.playId)) continue;
+                        if (purchase.getPurchaseState() == Purchase.PurchaseState.PURCHASED && purchase.isAcknowledged()) removeAds = true;
+                        else pending = true;
+                    }
+                    activity.getSharedPreferences("billing_entitlements", Activity.MODE_PRIVATE).edit()
+                            .putBoolean("remove_ads", removeAds).apply();
+                    restored(removeAds ? "Ad removal restored from Google Play."
+                            : pending ? "Ad removal is pending payment or purchase verification. Try again after it completes."
+                            : "No ad-removal purchase was found for this Google Play account. Payments are not available yet.");
+                });
+            }
+            @Override public void onBillingServiceDisconnected() {
+                if (!closed && session == restoreSession && restoring) restored("Google Play disconnected. Please try restoring again.");
+            }
+        });
+    }
+    private void restored(String message) {
+        activity.runOnUiThread(() -> {
+            if (closed) return;
+            restoring = false; restoreSession++; restoreHandler.removeCallbacks(restoreTimeout);
+            if (restoreClient != null) { restoreClient.endConnection(); restoreClient = null; }
+            note(message); changed.run();
+        });
     }
     private AlertDialog accountDialog(String title, LinearLayout form, String action, boolean deleting) {
         LinearLayout content = new LinearLayout(activity); content.setOrientation(LinearLayout.VERTICAL);
@@ -246,6 +438,7 @@ final class AccountController {
     }
     private void finish(boolean success, Exception error, String message) {
         busy=false;
+        if (closed) return;
         if (success) note(message);
         else if (!activity.isDestroyed()) new AlertDialog.Builder(activity)
                 .setTitle("Account request failed")
@@ -272,6 +465,12 @@ final class AccountController {
                 return "This account no longer exists in Firebase. Sign out to return to guest mode.";
             case "ERROR_USER_DISABLED":
                 return "This account has been disabled. Contact Dreamy Game Studios support.";
+            case "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL":
+                return "This email already has a Photo Sweep account. Sign in with your existing email and password, then choose Link Google account.";
+            case "ERROR_CREDENTIAL_ALREADY_IN_USE":
+                return "That Google account is already linked to another Photo Sweep account. Sign out and use Sign in with Google.";
+            case "ERROR_USER_MISMATCH":
+                return "Choose the Google account linked to this Photo Sweep account to verify deletion.";
             case "ERROR_EMAIL_ALREADY_IN_USE":
                 return "An account already uses this email. Choose Sign in or Forgot password.";
             case "ERROR_TOO_MANY_REQUESTS":

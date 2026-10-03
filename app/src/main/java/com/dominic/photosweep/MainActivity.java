@@ -1089,7 +1089,7 @@ public class MainActivity extends Activity {
         TextView account = new TextView(this); account.setText("Photos and progress stay on this device.");
         account.setTextColor(INK); account.setTextSize(16); list.addView(account);
         TextView support = new TextView(this);
-        support.setText("Your photos stay on this device. Accounts are optional. Support purchases and ad removal will become available after store setup; this version has no ads.");
+        support.setText("Accounts are optional. Purchases use your Google Play account. Ads and payments are coming later.");
         support.setTextColor(MUTED); support.setTextSize(14); support.setPadding(0, dp(8), 0, dp(16)); list.addView(support);
         button(list, "Account & support details", PANEL, INK, this::showSupportDetails);
     }
@@ -1232,7 +1232,7 @@ public class MainActivity extends Activity {
     }
     private void showSupportDetails() {
         new android.app.AlertDialog.Builder(this).setTitle("Account & Support")
-                .setMessage("ACCOUNT\nGuest · photos stay on your device. Optional Google sign-in needs provider configuration.\n\nSUPPORT DEVELOPMENT\nSmall, medium, and large support purchases are planned. Prices will come from Google Play in your local currency.\n\nREMOVE ADS\nA one-time purchase will remove all ads. There are no ads in this release. Owned purchases will be restorable through Google Play.\n\nSETUP STATUS\nPlay Console products, AdMob placements, sign-in configuration, and purchase verification are not configured yet. No payment is collected by this release.")
+                .setMessage("ACCOUNTS\nUse Google or an existing email account, or continue as a guest. Photos and progress stay on this device.\n\nPURCHASES\nAd removal and support purchases are coming later. No ads or payments are active yet.\n\nRESTORE\nUse Restore purchases with the Google Play account that made the purchase. Photo Sweep sign-in does not change your Play account. Consumable support purchases cannot be restored.")
                 .setPositiveButton("Done", null).show();
     }
     private boolean canCustomizeSwipe() { return hasThemeMotion(themeChoice) || countryCollection(themeChoice) >= 0 || themeChoice == 61; }
