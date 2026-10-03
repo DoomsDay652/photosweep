@@ -434,7 +434,7 @@ public class MainActivity extends Activity {
     private final SensorEventListener tiltListener = new SensorEventListener() {
         @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
         @Override public void onSensorChanged(SensorEvent event) {
-            if (activeBackdrop == null || themeChoice != 18) return;
+            if (activeBackdrop == null || (themeChoice != 18 && themeChoice != 19 && themeChoice != 22)) return;
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             float x = event.values[0], y = event.values[1];
             if (rotation == android.view.Surface.ROTATION_90) { float t = x; x = -y; y = t; }
@@ -462,7 +462,10 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         accounts = new AccountController(this, () -> { if (!isDestroyed() && root != null) render(); });
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-        if (sensorManager != null) gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
+        if (sensorManager != null) {
+            gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
+            if (gravitySensor == null) gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        }
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
         adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
@@ -783,7 +786,7 @@ public class MainActivity extends Activity {
             }
             activeBackdrop = new TextureBackdrop();
             host.addView(activeBackdrop, 0, new FrameLayout.LayoutParams(-1, -1));
-            if (hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 21)
+            if (hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 19 && themeChoice != 21 && themeChoice != 22)
                 host.addView(new ThemeMotionOverlay(), 1, new FrameLayout.LayoutParams(-1, -1));
             renderedTheme = themeChoice;
         }
@@ -1497,7 +1500,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean hasPhotoElementBorder() {
-        return themeTier(themeChoice) == 3 && swipeStyle != 9;
+        return (themeTier(themeChoice) == 3 || countryCollection(themeChoice) >= 0) && swipeStyle != 9;
     }
 
     private void reviewScreen() {
@@ -1920,6 +1923,7 @@ public class MainActivity extends Activity {
         Bitmap bitmap = swipeSprites.get(id);
         if (bitmap == null) {
             BitmapFactory.Options options = new BitmapFactory.Options(); options.inScaled = false;
+            if (id == R.drawable.fx_water_drop || id == R.drawable.fx_toxic_drop) options.inSampleSize = 4;
             bitmap = BitmapFactory.decodeResource(getResources(), id, options);
             if (bitmap != null) swipeSprites.put(id, bitmap);
         }
@@ -2054,6 +2058,49 @@ public class MainActivity extends Activity {
         }
         void stop() { releaseAt = 0; phase = IDLE; setVisibility(View.GONE); }
 
+        private void drawCountryBorder(Canvas canvas, int country, long now, float growth) {
+            if (!visiblePhotoBounds(photo, outline)) return;
+            int[][] colors = {
+                    {0xfff5eee5, 0xffdc3443, 0xffffb8cb}, {0xff16824b, 0xfff8eed0, 0xffdc4735},
+                    {0xffdf3e4e, 0xfff9f4e8, 0xff335fa9}, {0xffb8293d, 0xffffcb45, 0xffc54836},
+                    {0xff1c9856, 0xffffd944, 0xff2368b0}, {0xff3456a4, 0xfffaf1e3, 0xffc64651},
+                    {0xff34845c, 0xfff7eee2, 0xffc84445}, {0xfff1f1ef, 0xffda4050, 0xff326cb2}};
+            int save = canvas.save(); clipGrowth(canvas, growth, dp(48));
+            float radius = dp(8), time = now / 1000f;
+            Path rim = new Path(); rim.addRoundRect(outline, radius, radius, Path.Direction.CW);
+            flamePaint.setShader(null); flamePaint.setStyle(Paint.Style.STROKE); flamePaint.setStrokeWidth(dp(7));
+            flamePaint.setColor(colors[country][0]); flamePaint.setAlpha(235);
+            canvas.drawPath(rim, flamePaint);
+            flamePaint.setStrokeWidth(dp(country == 4 ? 4 : 2.5f));
+            flamePaint.setColor(colors[country][1]);
+            float dash = dp(country == 2 ? 12 : country == 3 ? 20 : 7);
+            flamePaint.setPathEffect(new android.graphics.DashPathEffect(new float[]{dash, dp(country == 0 ? 18 : 5)}, time * dp(5)));
+            canvas.drawPath(rim, flamePaint); flamePaint.setPathEffect(null);
+            RectF outer = new RectF(outline); outer.inset(-dp(5), -dp(5));
+            flamePaint.setColor(colors[country][2]); flamePaint.setStrokeWidth(dp(1.5f));
+            canvas.drawRoundRect(outer, radius, radius, flamePaint);
+            // Country-specific artwork follows the photo perimeter, not a shared lantern frame.
+            Bitmap motif = effectSprite(COUNTRY_ANIMATED_THEMES[country]);
+            PathMeasure route = new PathMeasure(rim, false); float length = route.getLength();
+            float[] point = new float[2], tangent = new float[2];
+            int count = country == 3 || country == 7 ? 10 : 16;
+            flamePaint.setStyle(Paint.Style.FILL); flamePaint.setAlpha(245);
+            if (motif != null) for (int i = 0; i < count; i++) {
+                route.getPosTan(length * (i + .5f) / count, point, tangent);
+                float size = dp(country == 0 || country == 7 ? 23 : country == 2 ? 18 : 21);
+                float height = size * motif.getHeight() / motif.getWidth();
+                canvas.save();
+                canvas.rotate((float)Math.toDegrees(Math.atan2(tangent[1], tangent[0])) + 90
+                        + (float)Math.sin(time * 1.6f + i) * (country == 3 ? 12 : 5), point[0], point[1]);
+                canvas.drawBitmap(motif, null, new RectF(point[0]-size/2, point[1]-height/2,
+                        point[0]+size/2, point[1]+height/2), flamePaint);
+                canvas.restore();
+            }
+            drawCountryFlag(canvas, flamePaint, country, outline.left + dp(15), outline.top + dp(4), dp(26));
+            drawCountryFlag(canvas, flamePaint, country, outline.right - dp(15), outline.bottom - dp(4), dp(26));
+            flamePaint.setStyle(Paint.Style.FILL); flamePaint.setAlpha(255); canvas.restoreToCount(save);
+        }
+
         private int elementArt() {
             switch (element) {
                 case 18: return R.drawable.photo_border_candy;
@@ -2133,6 +2180,13 @@ public class MainActivity extends Activity {
             if (growth <= 0f) {
                 if (phase == COOLING && now - phaseStarted >= 650) stop();
                 else if (isAttachedToWindow()) postInvalidateOnAnimation();
+                return;
+            }
+            int country = countryCollection(element);
+            if (country >= 0) {
+                if (phase == IGNITING && now - phaseStarted >= 850) { phase = BURNING; phaseStarted = now; }
+                drawCountryBorder(canvas, country, now, growth);
+                if (isAttachedToWindow()) postInvalidateOnAnimation();
                 return;
             }
             Bitmap sheet;
@@ -2607,6 +2661,10 @@ public class MainActivity extends Activity {
                 Bitmap symbol = effectSprite(COUNTRY_ANIMATED_THEMES[country]);
                 if (symbol != null) drawCountryEffects(canvas, symbol, w, h, 0f, country);
             }
+            if (themeChoice == 19 || themeChoice == 22) {
+                drawLiquid(canvas, w, h, android.os.SystemClock.uptimeMillis() / 1000f, themeChoice == 19);
+                if (isAttachedToWindow()) postInvalidateDelayed(32);
+            }
             if (themeChoice == 18) {
                 canvas.drawColor(0x500D0922);
                 drawCandies(canvas, w, h);
@@ -2988,6 +3046,81 @@ public class MainActivity extends Activity {
             }
             paint.setStyle(Paint.Style.FILL); paint.setAlpha(255);
         }
+        private float liquidTilt;
+        private final Path liquidFill = new Path(), liquidLine = new Path();
+        private final float[] dropPrevious = new float[8], rippleStarted = new float[8], rippleX = new float[8];
+        private float surfaceY(float x, float w, float h, float time, boolean toxic) {
+            return h * .75f + (x - w * .5f) * liquidTilt
+                    + (float)Math.sin(x / dp(toxic ? 75 : 90) + time * (toxic ? 1.2f : 2.1f)) * dp(toxic ? 5 : 3);
+        }
+        private void drawLiquid(Canvas canvas, float w, float h, float time, boolean toxic) {
+            // Gravity is display-rotation corrected by the same sensor listener as Candy.
+            // Smoothing prevents a noisy sensor from shaking the entire liquid surface.
+            int liquidSave = canvas.save();
+            boolean inverted = gravityY < -.2f;
+            if (inverted) canvas.rotate(180, w * .5f, h * .5f);
+            float screenGravityX = inverted ? -gravityX : gravityX;
+            float target = Math.max(-h * .44f / w, Math.min(h * .44f / w,
+                    -screenGravityX / Math.max(.28f, Math.abs(gravityY))));
+            liquidTilt += (target - liquidTilt) * (toxic ? .035f : .09f);
+            liquidFill.reset(); liquidLine.reset();
+            for (int i = 0; i <= 48; i++) {
+                float x = w * i / 48f, y = surfaceY(x, w, h, time, toxic);
+                if (i == 0) { liquidFill.moveTo(x, y); liquidLine.moveTo(x, y); }
+                else { liquidFill.lineTo(x, y); liquidLine.lineTo(x, y); }
+            }
+            liquidFill.lineTo(w, h); liquidFill.lineTo(0, h); liquidFill.close();
+            paint.setStyle(Paint.Style.FILL); paint.setAlpha(255);
+            paint.setShader(new LinearGradient(0, h * .55f, 0, h,
+                    toxic ? 0xcc91cf35 : 0xaa71d9f5, toxic ? 0xee163c19 : 0xe916557d, Shader.TileMode.CLAMP));
+            canvas.drawPath(liquidFill, paint); paint.setShader(null);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(toxic ? 3 : 2));
+            paint.setColor(toxic ? 0xeeccff68 : 0xddc3f6ff); canvas.drawPath(liquidLine, paint);
+            paint.setStyle(Paint.Style.FILL);
+            // Each drop has one impact event. Ripples retain that impact position as the surface tilts.
+            for (int i = 0; i < dropPrevious.length; i++) {
+                float duration = toxic ? 4.8f + i % 3 * .4f : 3.1f + i % 3 * .3f;
+                float phase = loop(time / duration + i * .137f, 1f);
+                float x = w * (.09f + (i * 37 % 83) / 100f);
+                float surface = surfaceY(x, w, h, time, toxic);
+                if (phase >= .72f && dropPrevious[i] < .72f) { rippleStarted[i] = time; rippleX[i] = x; }
+                dropPrevious[i] = phase;
+                if (phase < .72f) {
+                    float t = phase / .72f, y = -dp(24) + (surface + dp(24)) * t * t;
+                    float radius = dp(toxic ? 5.5f : 4);
+                    Bitmap drop = swipeAsset(toxic ? R.drawable.fx_toxic_drop : R.drawable.fx_water_drop);
+                    if (drop != null) {
+                        paint.setColor(Color.WHITE); paint.setAlpha(220);
+                        canvas.drawBitmap(drop, null, new RectF(x - radius * 2, y - radius * 3.5f,
+                                x + radius * 2, y + radius), paint); paint.setAlpha(255);
+                    }
+                }
+                float age = time - rippleStarted[i], life = toxic ? 2.4f : 1.6f;
+                if (rippleStarted[i] > 0 && age >= 0 && age < life) {
+                    float radius = dp(8) + age * dp(toxic ? 22 : 42);
+                    float y = surfaceY(rippleX[i], w, h, time, toxic);
+                    int save = canvas.save(); canvas.clipPath(liquidFill);
+                    canvas.rotate((float)Math.toDegrees(Math.atan(liquidTilt)), rippleX[i], y);
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1.5f));
+                    paint.setColor(Color.argb((int)(210 * (1-age/life)), toxic ? 210 : 185, 248, toxic ? 95 : 255));
+                    canvas.drawOval(rippleX[i]-radius, y-radius*.24f, rippleX[i]+radius, y+radius*.24f, paint);
+                    canvas.drawOval(rippleX[i]-radius*.65f, y-radius*.15f, rippleX[i]+radius*.65f, y+radius*.15f, paint);
+                    paint.setStyle(Paint.Style.FILL); canvas.restoreToCount(save);
+                }
+            }
+            if (toxic) {
+                int save = canvas.save(); canvas.clipPath(liquidFill);
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2));
+                for (int i = 0; i < 12; i++) {
+                    float x = w * ((i * 47 % 97) / 97f), top = surfaceY(x, w, h, time, true);
+                    float y = h - loop(time * dp(12 + i%3*4) + i * h / 12, Math.max(dp(1), h-top));
+                    paint.setColor(0x99c5f97c); canvas.drawCircle(x, y, dp(3+i%4), paint);
+                }
+                paint.setStyle(Paint.Style.FILL); canvas.restoreToCount(save);
+            }
+            paint.setAlpha(255); paint.setShader(null); canvas.restoreToCount(liquidSave);
+        }
+
         private void drawCandies(Canvas canvas, float w, float h) {
             if (candySprites == null) candySprites = BitmapFactory.decodeResource(getResources(), R.drawable.candy_sprites);
             if (candySprites == null) return;
