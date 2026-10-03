@@ -3046,79 +3046,112 @@ public class MainActivity extends Activity {
             }
             paint.setStyle(Paint.Style.FILL); paint.setAlpha(255);
         }
-        private float liquidTilt;
-        private final Path liquidFill = new Path(), liquidLine = new Path();
-        private final float[] dropPrevious = new float[8], rippleStarted = new float[8], rippleX = new float[8];
-        private float surfaceY(float x, float w, float h, float time, boolean toxic) {
-            return h * .75f + (x - w * .5f) * liquidTilt
-                    + (float)Math.sin(x / dp(toxic ? 75 : 90) + time * (toxic ? 1.2f : 2.1f)) * dp(toxic ? 5 : 3);
-        }
-        private void drawLiquid(Canvas canvas, float w, float h, float time, boolean toxic) {
-            // Gravity is display-rotation corrected by the same sensor listener as Candy.
-            // Smoothing prevents a noisy sensor from shaking the entire liquid surface.
-            int liquidSave = canvas.save();
-            boolean inverted = gravityY < -.2f;
-            if (inverted) canvas.rotate(180, w * .5f, h * .5f);
-            float screenGravityX = inverted ? -gravityX : gravityX;
-            float target = Math.max(-h * .44f / w, Math.min(h * .44f / w,
-                    -screenGravityX / Math.max(.28f, Math.abs(gravityY))));
-            liquidTilt += (target - liquidTilt) * (toxic ? .035f : .09f);
-            liquidFill.reset(); liquidLine.reset();
-            for (int i = 0; i <= 48; i++) {
-                float x = w * i / 48f, y = surfaceY(x, w, h, time, toxic);
-                if (i == 0) { liquidFill.moveTo(x, y); liquidLine.moveTo(x, y); }
-                else { liquidFill.lineTo(x, y); liquidLine.lineTo(x, y); }
+        private final LiquidPlane liquidPlane = new LiquidPlane();
+        private final Path liquidFill = new Path(), liquidLine = new Path(), ooze = new Path();
+        private final float[] dropPrevious = new float[6], rippleStarted = new float[6];
+        private long liquidLastFrame, liquidStarted;
+        private float liquidAngle = (float)Math.PI / 2;
+        private void drawLiquid(Canvas canvas, float w, float h, float ignored, boolean toxic) {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (liquidStarted == 0) liquidStarted = now;
+            float time = (now-liquidStarted)/1000f;
+            float dt = liquidLastFrame == 0 ? .032f : Math.min(.08f, (now-liquidLastFrame)/1000f);
+            liquidLastFrame = now;
+            // Ignore an almost-flat phone's weak/noisy screen-plane gravity.
+            // Sludge stays attached to the top and settles slowly at the bottom.
+            if (!toxic && Math.hypot(gravityX, gravityY) > .45f) {
+                float target = (float)Math.atan2(gravityY, gravityX);
+                float difference = (float)Math.atan2(Math.sin(target-liquidAngle), Math.cos(target-liquidAngle));
+                liquidAngle += difference * (1-(float)Math.exp(-dt/.32f));
             }
-            liquidFill.lineTo(w, h); liquidFill.lineTo(0, h); liquidFill.close();
+            liquidPlane.update(w, h, toxic ? 0 : (float)Math.cos(liquidAngle),
+                    toxic ? 1 : (float)Math.sin(liquidAngle), .25f);
+            float nx = liquidPlane.nx, ny = liquidPlane.ny, tx = -ny, ty = nx;
+            float ax = liquidPlane.ax, ay = liquidPlane.ay, bx = liquidPlane.bx, by = liquidPlane.by;
+            // Wave displacement stays tiny; the underlying plane preserves one quarter of the area.
+            liquidFill.reset();
+            for (int i = 0; i < liquidPlane.points; i++) {
+                float x = liquidPlane.polygon[i*2], y = liquidPlane.polygon[i*2+1];
+                if (i == 0) liquidFill.moveTo(x,y); else liquidFill.lineTo(x,y);
+            }
+            liquidFill.close();
             paint.setStyle(Paint.Style.FILL); paint.setAlpha(255);
-            paint.setShader(new LinearGradient(0, h * .55f, 0, h,
-                    toxic ? 0xcc91cf35 : 0xaa71d9f5, toxic ? 0xee163c19 : 0xe916557d, Shader.TileMode.CLAMP));
+            float cx = (ax+bx)*.5f, cy = (ay+by)*.5f, depth = Math.max(w,h)*.35f;
+            paint.setShader(new LinearGradient(cx, cy, cx+nx*depth, cy+ny*depth,
+                    toxic ? 0xcb7cad2e : 0x995abedb, toxic ? 0xed1b351a : 0xdf164b70, Shader.TileMode.CLAMP));
             canvas.drawPath(liquidFill, paint); paint.setShader(null);
-            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(toxic ? 3 : 2));
-            paint.setColor(toxic ? 0xeeccff68 : 0xddc3f6ff); canvas.drawPath(liquidLine, paint);
+            liquidLine.reset();
+            for (int i = 0; i <= 48; i++) {
+                float t = i/48f, wave = (float)Math.sin(t*12+time*(toxic ? .35f : 1.3f))
+                        * dp(toxic ? 1.5f : 2) * (float)Math.sin(Math.PI*t);
+                float x = ax+(bx-ax)*t+nx*wave, y = ay+(by-ay)*t+ny*wave;
+                if (i == 0) liquidLine.moveTo(x,y); else liquidLine.lineTo(x,y);
+            }
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(toxic ? 3 : 1.5f));
+            paint.setColor(toxic ? 0xccb3e768 : 0xbbe0f8ff); canvas.drawPath(liquidLine, paint);
             paint.setStyle(Paint.Style.FILL);
-            // Each drop has one impact event. Ripples retain that impact position as the surface tilts.
-            for (int i = 0; i < dropPrevious.length; i++) {
-                float duration = toxic ? 4.8f + i % 3 * .4f : 3.1f + i % 3 * .3f;
-                float phase = loop(time / duration + i * .137f, 1f);
-                float x = w * (.09f + (i * 37 % 83) / 100f);
-                float surface = surfaceY(x, w, h, time, toxic);
-                if (phase >= .72f && dropPrevious[i] < .72f) { rippleStarted[i] = time; rippleX[i] = x; }
+            int count = toxic ? 3 : dropPrevious.length;
+            for (int i = 0; i < count; i++) {
+                float duration = toxic ? 18+i*3 : 5+i*.7f;
+                float phase = loop(time/duration+i*.173f, 1f);
+                float fraction = .12f + i * .76f / Math.max(1,count-1);
+                float impactX = ax+(bx-ax)*fraction, impactY = ay+(by-ay)*fraction;
+                float hit = toxic ? .9f : .76f;
+                if (phase >= hit && dropPrevious[i] < hit) rippleStarted[i] = time;
                 dropPrevious[i] = phase;
-                if (phase < .72f) {
-                    float t = phase / .72f, y = -dp(24) + (surface + dp(24)) * t * t;
-                    float radius = dp(toxic ? 5.5f : 4);
+                float radius = dp(toxic ? 6 : 4);
+                if (toxic && phase < .68f) {
+                    // A thick attached strand creeps down, stretches, then releases one heavy glob.
+                    float amount = phase/.68f;
+                    float x = w*(.17f+i*.33f), length = dp(16) + amount*amount*Math.min(h*.32f,dp(180));
+                    float stem = dp(9)*(1-amount*.62f), bulb = radius*(1+amount*.6f);
+                    ooze.reset(); ooze.moveTo(x-stem,0);
+                    ooze.cubicTo(x-stem,length*.5f,x-bulb,length-bulb,x-bulb,length);
+                    ooze.cubicTo(x-bulb,length+bulb*1.5f,x+bulb,length+bulb*1.5f,x+bulb,length);
+                    ooze.cubicTo(x+bulb,length-bulb,x+stem,length*.5f,x+stem,0); ooze.close();
+                    paint.setColor(0xbfa4d83a); canvas.drawPath(ooze,paint);
+                    paint.setColor(0x55e1ff90); canvas.drawRoundRect(x-stem*.4f,0,x,length*.88f,dp(3),dp(3),paint);
+                }
+                if ((!toxic && phase < hit) || (toxic && phase >= .68f && phase < hit)) {
+                    float t = toxic ? (phase-.68f)/(hit-.68f) : phase/hit;
+                    float distance = toxic ? Math.max(0,impactY-Math.min(h*.32f,dp(180))) : (float)Math.hypot(w,h)+dp(24);
+                    float remaining = distance*(1-t*t);
+                    float x = toxic ? w*(.17f+i*.33f) : impactX-nx*remaining;
+                    float y = toxic ? impactY-remaining : impactY-ny*remaining;
                     Bitmap drop = swipeAsset(toxic ? R.drawable.fx_toxic_drop : R.drawable.fx_water_drop);
                     if (drop != null) {
-                        paint.setColor(Color.WHITE); paint.setAlpha(220);
-                        canvas.drawBitmap(drop, null, new RectF(x - radius * 2, y - radius * 3.5f,
-                                x + radius * 2, y + radius), paint); paint.setAlpha(255);
+                        paint.setColor(Color.WHITE); paint.setAlpha(toxic ? 210 : 190);
+                        canvas.save(); if (!toxic) canvas.rotate((float)Math.toDegrees(liquidAngle)-90,x,y);
+                        canvas.drawBitmap(drop,null,new RectF(x-radius*2,y-radius*3.5f,x+radius*2,y+radius),paint);
+                        canvas.restore(); paint.setAlpha(255);
                     }
                 }
-                float age = time - rippleStarted[i], life = toxic ? 2.4f : 1.6f;
+                float age = time-rippleStarted[i], life = toxic ? 4 : 1.8f;
                 if (rippleStarted[i] > 0 && age >= 0 && age < life) {
-                    float radius = dp(8) + age * dp(toxic ? 22 : 42);
-                    float y = surfaceY(rippleX[i], w, h, time, toxic);
+                    if (toxic) { impactX = w*(.17f+i*.33f); impactY = h*.75f; }
+                    float radiusRipple = dp(5)+age*dp(toxic ? 7 : 28);
                     int save = canvas.save(); canvas.clipPath(liquidFill);
-                    canvas.rotate((float)Math.toDegrees(Math.atan(liquidTilt)), rippleX[i], y);
-                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1.5f));
-                    paint.setColor(Color.argb((int)(210 * (1-age/life)), toxic ? 210 : 185, 248, toxic ? 95 : 255));
-                    canvas.drawOval(rippleX[i]-radius, y-radius*.24f, rippleX[i]+radius, y+radius*.24f, paint);
-                    canvas.drawOval(rippleX[i]-radius*.65f, y-radius*.15f, rippleX[i]+radius*.65f, y+radius*.15f, paint);
+                    canvas.rotate((float)Math.toDegrees(Math.atan2(by-ay,bx-ax)),impactX,impactY);
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(toxic ? 2 : 1.2f));
+                    paint.setColor(Color.argb((int)((toxic ? 95 : 170)*(1-age/life)),toxic ? 198 : 190,239,toxic ? 107 : 255));
+                    canvas.drawOval(impactX-radiusRipple,impactY-radiusRipple*.25f,
+                            impactX+radiusRipple,impactY+radiusRipple*.25f,paint);
                     paint.setStyle(Paint.Style.FILL); canvas.restoreToCount(save);
                 }
             }
             if (toxic) {
                 int save = canvas.save(); canvas.clipPath(liquidFill);
-                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2));
-                for (int i = 0; i < 12; i++) {
-                    float x = w * ((i * 47 % 97) / 97f), top = surfaceY(x, w, h, time, true);
-                    float y = h - loop(time * dp(12 + i%3*4) + i * h / 12, Math.max(dp(1), h-top));
-                    paint.setColor(0x99c5f97c); canvas.drawCircle(x, y, dp(3+i%4), paint);
+                // Sparse, nearly stationary gas pockets form and subside; nothing races or wraps.
+                for (int i = 0; i < 4; i++) {
+                    float age = loop(time+i*4.7f, 22), life = age/22;
+                    float size = dp(3+i%3)*(float)Math.sin(Math.PI*life);
+                    float x = w*(.13f+i*.23f), y = h*(.88f-i%2*.055f)-life*dp(8);
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1.2f)); paint.setColor(0x4497bc51);
+                    canvas.drawCircle(x,y,size,paint);
                 }
                 paint.setStyle(Paint.Style.FILL); canvas.restoreToCount(save);
             }
-            paint.setAlpha(255); paint.setShader(null); canvas.restoreToCount(liquidSave);
+            paint.setAlpha(255); paint.setShader(null);
         }
 
         private void drawCandies(Canvas canvas, float w, float h) {
@@ -3170,6 +3203,59 @@ public class MainActivity extends Activity {
             if (isAttachedToWindow()) postInvalidateDelayed(32);
         }
     }
+    /** Clip a constant-volume liquid against screen gravity, without inversion switches. */
+    static final class LiquidPlane {
+        final float[] polygon = new float[12];
+        int points;
+        float nx = 0, ny = 1, level, ax, ay, bx, by;
+        void update(float width, float height, float x, float y, float fraction) {
+            float magnitude = (float)Math.hypot(x, y);
+            nx = magnitude < .001f ? 0 : x / magnitude;
+            ny = magnitude < .001f ? 1 : y / magnitude;
+            float low = Math.min(0, Math.min(nx * width, Math.min(ny * height, nx * width + ny * height)));
+            float high = Math.max(0, Math.max(nx * width, Math.max(ny * height, nx * width + ny * height)));
+            float desired = width * height * fraction;
+            for (int i = 0; i < 24; i++) {
+                float middle = (low + high) * .5f;
+                clip(width, height, middle);
+                if (area() > desired) low = middle; else high = middle;
+            }
+            level = (low + high) * .5f; clip(width, height, level);
+            // The two boundary intersections form the free surface.
+            int found = 0;
+            for (int i = 0; i < points; i++) {
+                float px = polygon[i*2], py = polygon[i*2+1];
+                if (Math.abs(nx*px + ny*py - level) < .05f) {
+                    if (found == 0) { ax = px; ay = py; found = 1; }
+                    else if (Math.hypot(px-ax, py-ay) > .1f) { bx = px; by = py; break; }
+                }
+            }
+        }
+        private void clip(float width, float height, float threshold) {
+            points = 0;
+            for (int i = 0; i < 4; i++) {
+                float x = i == 1 || i == 2 ? width : 0, y = i >= 2 ? height : 0;
+                int j = (i + 1) % 4;
+                float nextX = j == 1 || j == 2 ? width : 0, nextY = j >= 2 ? height : 0;
+                float a = nx*x + ny*y - threshold, b = nx*nextX + ny*nextY - threshold;
+                if (a >= 0) { polygon[points*2] = x; polygon[points*2+1] = y; points++; }
+                if ((a >= 0) != (b >= 0)) {
+                    float t = a / (a-b);
+                    polygon[points*2] = x + (nextX-x)*t;
+                    polygon[points*2+1] = y + (nextY-y)*t; points++;
+                }
+            }
+        }
+        float area() {
+            float sum = 0;
+            for (int i = 0; i < points; i++) {
+                int j = (i+1)%points;
+                sum += polygon[i*2]*polygon[j*2+1] - polygon[j*2]*polygon[i*2+1];
+            }
+            return Math.abs(sum)*.5f;
+        }
+    }
+
     private class ThemeMotionOverlay extends View {
         ThemeMotionOverlay() { super(MainActivity.this); setClickable(false); setFocusable(false); }
         @Override protected void onDraw(Canvas canvas) {
