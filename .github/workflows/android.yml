@@ -21,10 +21,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 8.12
+      - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.12'
+          gradle-version: '8.13'
 
       - name: Verify review logic
         run: |
@@ -62,6 +62,19 @@ jobs:
           PHOTO_SWEEP_KEYSTORE_PATH: ${{ github.workspace }}/app/photosweep-signing.p12
           PHOTO_SWEEP_STORE_PASSWORD: ${{ secrets.PHOTO_SWEEP_STORE_PASSWORD }}
         run: gradle :app:lintRelease :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+
+      - name: Verify Play crash diagnostics
+        run: python3 tools/verify_release_bundle.py app/build/outputs/bundle/release/app-release.aab
+
+      - name: Save crash diagnostics for download
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoSweep-crash-diagnostics
+          path: |
+            app/build/outputs/mapping/release/mapping.txt
+            app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
+            app/build/outputs/release-diagnostics.txt
+          if-no-files-found: error
 
       - name: Save APK for download
         uses: actions/upload-artifact@v4
