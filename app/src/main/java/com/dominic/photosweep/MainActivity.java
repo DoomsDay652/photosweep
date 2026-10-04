@@ -850,7 +850,9 @@ public class MainActivity extends ComponentActivity {
         if (showingThemes) themesScreen();
         else if (showingSettings) settingsScreen();
         else if (!hasAccess()) intro();
-        else if (loading && photos.isEmpty()) heading("Photo Sweep", "Gathering your photos…");
+        else if (loading && photos.isEmpty()) {
+            if (!reviewing || !fullScreenReview) heading("Photo Sweep", "Gathering your photos…");
+        }
         else if (showingTrash) trashScreen();
         else if (reviewing && selectedMonth != null) reviewScreen();
         else if (selectedYear != -1) monthsScreen();
