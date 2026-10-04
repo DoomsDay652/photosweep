@@ -25,6 +25,7 @@ final class AudioController implements AutoCloseable {
     private final Map<Integer, Integer> effects = new HashMap<>();
     private final Set<Integer> loaded = new HashSet<>();
     private final int[] streams = new int[4];
+    private final float[] streamGains = new float[4];
     private int nextStream;
     private static final int[] TRACKS = {R.raw.dreamy_sweep, R.raw.paper_lantern,
             R.raw.nebula_drift, R.raw.midnight_polaroid};
@@ -35,7 +36,7 @@ final class AudioController implements AutoCloseable {
     private boolean musicPrepared, nextPrepared, announced, repeatTrack;
     private int track, restorePosition;
     private boolean foreground, enabled, focused, ducked, closed;
-    private float volume;
+    private float volume, masterVolume = 1f, effectsVolume = 1f;
 
     AudioController(Context context, Consumer<String> trackChanged) {
         this.context = context.getApplicationContext();
@@ -73,8 +74,8 @@ final class AudioController implements AutoCloseable {
     void configure(boolean enabled, float volume) {
         if (closed) return;
         this.enabled = enabled;
-        this.volume = Math.max(0, Math.min(.5f, volume));
-        if (!foreground || !enabled || this.volume == 0) {
+        this.volume = Math.max(0, Math.min(1f, volume));
+        if (!foreground || !enabled || this.volume * masterVolume == 0) {
             pausePlayer();
             abandonFocus();
             return;
@@ -86,7 +87,7 @@ final class AudioController implements AutoCloseable {
     }
 
     private boolean canPlay() {
-        return !closed && foreground && enabled && volume > 0 && focused;
+        return !closed && foreground && enabled && volume * masterVolume > 0 && focused;
     }
 
     private void startPlayer() {
@@ -179,7 +180,7 @@ final class AudioController implements AutoCloseable {
     }
 
     private void applyVolume() {
-        float level = volume * (ducked ? .2f : 1f);
+        float level = volume * masterVolume * (ducked ? .2f : 1f);
         if (music != null && musicPrepared) music.setVolume(level, level);
         if (nextMusic != null && nextPrepared) nextMusic.setVolume(level, level);
     }
@@ -211,11 +212,23 @@ final class AudioController implements AutoCloseable {
         }
     }
 
-    void effect(int resource, float volume) {
+    void setMix(float master, float effects) {
         if (closed) return;
+        masterVolume = Math.max(0, Math.min(1f, master));
+        effectsVolume = Math.max(0, Math.min(1f, effects));
+        applyVolume();
+        for (int i = 0; i < streams.length; i++) {
+            float level = streamGains[i] * masterVolume * effectsVolume;
+            if (streams[i] != 0) pool.setVolume(streams[i], level, level);
+        }
+    }
+
+    void effect(int resource, float volume) {
+        if (closed || !foreground || masterVolume == 0 || effectsVolume == 0) return;
         Integer id = effects.get(resource);
         if (id != null && loaded.contains(id)) {
-            float level = Math.max(0, Math.min(.4f, volume));
+            streamGains[nextStream] = Math.max(0, Math.min(.4f, volume));
+            float level = streamGains[nextStream] * masterVolume * effectsVolume;
             streams[nextStream] = pool.play(id, level, level, 1, 0, 1f);
             nextStream = (nextStream + 1) % streams.length;
         }
