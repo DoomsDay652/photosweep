@@ -2,6 +2,14 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      sessions:
+        description: Emulator sessions to run
+        type: choice
+        default: All ten
+        options:
+          - All ten
+          - Midnight only
   push:
     branches: [main]
 
@@ -28,6 +36,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Run ten Android app sessions
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          PHOTO_SWEEP_TEST_CASE: ${{ inputs.sessions == 'Midnight only' && 'com.dominic.photosweep.TenSessionSmokeTest#session01_midnight' || 'com.dominic.photosweep.TenSessionSmokeTest' }}
         with:
           api-level: 35
           arch: x86_64
@@ -49,6 +59,7 @@ jobs:
 
   build:
     needs: smoke
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.sessions != 'Midnight only' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check out app
