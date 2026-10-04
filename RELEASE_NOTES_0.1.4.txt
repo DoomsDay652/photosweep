@@ -1,0 +1,6 @@
+<en-US>
+Added D.G.S. Radio with four longer original lo-fi and dreamscape tracks.
+Dreamy Sweep is now 96 seconds long. Tracks can play as a radio or loop individually.
+A small now-playing bubble appears when the song changes and slowly fades away.
+Added Next track and Loop current track controls in Audio settings.
+</en-US>
