@@ -20,4 +20,4 @@ Keep marks a photo reviewed without changing the original. Uninstalling removes 
 
 ## Build
 
-The workflow uses Java 17, Gradle 8.12 and Android SDK 35. It reads the private signing key from the existing `PHOTO_SWEEP_KEYSTORE_BASE64` and `PHOTO_SWEEP_STORE_PASSWORD` repository secrets. The package ID stays `com.dominic.photosweep` for in-place updates.
+The workflow uses Java 17, Gradle 8.13, Android Gradle Plugin 8.13.2 and Android SDK 36. It reads the private signing key from the existing `PHOTO_SWEEP_KEYSTORE_BASE64` and `PHOTO_SWEEP_STORE_PASSWORD` repository secrets. The package ID stays `com.dominic.photosweep` for in-place updates.
