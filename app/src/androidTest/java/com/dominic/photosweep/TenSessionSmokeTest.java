@@ -60,6 +60,11 @@ public class TenSessionSmokeTest {
         context.getSharedPreferences("radio", Context.MODE_PRIVATE).edit().clear().commit();
         try {
             samples.add(seedPhoto(index, 0)); samples.add(seedPhoto(index, 1));
+            for (Uri uri : samples) try (android.database.Cursor c = context.getContentResolver().query(uri,
+                    new String[]{MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED}, null, null, null)) {
+                assertNotNull(c); assertTrue(c.moveToFirst());
+                android.util.Log.i("PhotoSweepSmoke", "fixture dates: " + c.getLong(0) + ", " + c.getLong(1));
+            }
             scenario = ActivityScenario.launch(MainActivity.class);
             awaitText("Your photos");
             assertLabelFits("Themes"); assertLabelFits("Settings"); assertLabelFits("Trash");
@@ -102,7 +107,7 @@ public class TenSessionSmokeTest {
                 evidence.mkdirs();
                 Bitmap screen = instrumentation.getUiAutomation().takeScreenshot();
                 if (screen != null) {
-                    try (OutputStream out = new java.io.FileOutputStream(new java.io.File(evidence, "session-" + (index+1) + ".png"))) {
+                    try (OutputStream out = evidenceStream("session-" + (index+1) + ".png", "image/png")) {
                         screen.compress(Bitmap.CompressFormat.PNG, 100, out);
                     } finally { screen.recycle(); }
                 }
@@ -111,6 +116,13 @@ public class TenSessionSmokeTest {
             }
             for (Uri uri : samples) context.getContentResolver().delete(uri, null, null);
         }
+    }
+
+    private OutputStream evidenceStream(String name, String mime) throws Exception {
+        ContentValues values = new ContentValues(); values.put(MediaStore.Downloads.DISPLAY_NAME, name);
+        values.put(MediaStore.Downloads.MIME_TYPE, mime); values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/PhotoSweepSmoke");
+        Uri uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        return context.getContentResolver().openOutputStream(uri);
     }
 
     private Uri seedPhoto(int session, int number) throws Exception {
@@ -176,7 +188,17 @@ public class TenSessionSmokeTest {
             if (found.get()) return;
             SystemClock.sleep(100);
         } while (SystemClock.uptimeMillis() < end);
-        fail("Missing UI: " + name);
+        AtomicReference<String> visible = new AtomicReference<>();
+        scenario.onActivity(a -> {
+            List<String> labels = new ArrayList<>(); collectText(a.getWindow().getDecorView(), labels);
+            visible.set(labels.toString());
+        });
+        fail("Missing UI: " + name + "; available: " + visible.get());
+    }
+    private void collectText(View v, List<String> labels) {
+        if (v.getVisibility() != View.VISIBLE) return;
+        if (v instanceof TextView) labels.add(((TextView)v).getText().toString() + " [" + v.getWidth() + "x" + v.getHeight() + "]");
+        if (v instanceof ViewGroup) for (int i=0; i<((ViewGroup)v).getChildCount(); i++) collectText(((ViewGroup)v).getChildAt(i), labels);
     }
     private void awaitText(String value) { await(text(value), value); }
     private void awaitDescription(String value) { await(description(value), value); }
