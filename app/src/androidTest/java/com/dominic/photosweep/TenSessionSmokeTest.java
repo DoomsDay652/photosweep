@@ -60,10 +60,13 @@ public class TenSessionSmokeTest {
         context.getSharedPreferences("radio", Context.MODE_PRIVATE).edit().clear().commit();
         try {
             samples.add(seedPhoto(index, 0)); samples.add(seedPhoto(index, 1));
+            java.time.YearMonth fixtureMonth = null;
             for (Uri uri : samples) try (android.database.Cursor c = context.getContentResolver().query(uri,
                     new String[]{MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED}, null, null, null)) {
                 assertNotNull(c); assertTrue(c.moveToFirst());
-                android.util.Log.i("PhotoSweepSmoke", "fixture dates: " + c.getLong(0) + ", " + c.getLong(1));
+                long indexedDate = c.getLong(0) > 0 ? c.getLong(0) : c.getLong(1) * 1000L;
+                java.time.YearMonth indexedMonth = java.time.YearMonth.from(java.time.Instant.ofEpochMilli(indexedDate).atZone(java.time.ZoneId.systemDefault()));
+                if (fixtureMonth == null) fixtureMonth = indexedMonth; else assertEquals("Fixtures share a month", fixtureMonth, indexedMonth);
             }
             scenario = ActivityScenario.launch(MainActivity.class);
             awaitText("Your photos");
@@ -86,7 +89,8 @@ public class TenSessionSmokeTest {
             adjustVolume("Master volume", 0); assertEquals(0, preferences.getInt("master_volume", -1));
             adjustVolume("Master volume", 1); assertEquals(100, preferences.getInt("master_volume", -1));
             back(); back(); awaitText("Your photos");
-            clickText("2026"); awaitText("Choose a month"); clickText("January");
+            clickText(Integer.toString(fixtureMonth.getYear())); awaitText("Choose a month");
+            clickText(fixtureMonth.format(java.time.format.DateTimeFormatter.ofPattern("MMMM", java.util.Locale.getDefault())));
             awaitText("2 of 2 left to review");
             dragPhoto(.08f, false); awaitText("2 of 2 left to review");
             dragPhoto(.40f, false); awaitText("1 of 2 left to review");
@@ -140,15 +144,8 @@ public class TenSessionSmokeTest {
         try (OutputStream stream = context.getContentResolver().openOutputStream(uri)) {
             assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream));
         } finally { bitmap.recycle(); }
-        // MediaStore rescans published JPEGs; embed a real capture date so its
-        // scanner cannot replace the fixture's date with today's import date.
-        try (android.os.ParcelFileDescriptor fd = context.getContentResolver().openFileDescriptor(uri, "rw")) {
-            android.media.ExifInterface exif = new android.media.ExifInterface(fd.getFileDescriptor());
-            String captured = new java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US).format(date.getTime());
-            exif.setAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL, captured);
-            exif.setAttribute(android.media.ExifInterface.TAG_DATETIME, captured);
-            exif.saveAttributes();
-        }
+        // Use the indexed capture/import date when navigating: Android may clear
+        // DATE_TAKEN while scanning a generated image without camera metadata.
         values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0);
         context.getContentResolver().update(uri, values, null, null); return uri;
     }
