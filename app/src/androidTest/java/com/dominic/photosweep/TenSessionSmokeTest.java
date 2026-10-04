@@ -52,6 +52,7 @@ public class TenSessionSmokeTest {
     @Test public void session10_yinYang() throws Exception { runSession(9); }
 
     private void runSession(int index) throws Exception {
+        androidx.test.uiautomator.Configurator.getInstance().setWaitForIdleTimeout(0);
         List<Uri> samples = new ArrayList<>();
         shell("pm grant " + context.getPackageName() + " android.permission.READ_MEDIA_IMAGES");
         preferences.edit().clear().putInt("theme", THEMES[index]).putBoolean("admin_mode", true)
@@ -127,6 +128,15 @@ public class TenSessionSmokeTest {
         try (OutputStream stream = context.getContentResolver().openOutputStream(uri)) {
             assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream));
         } finally { bitmap.recycle(); }
+        // MediaStore rescans published JPEGs; embed a real capture date so its
+        // scanner cannot replace the fixture's date with today's import date.
+        try (android.os.ParcelFileDescriptor fd = context.getContentResolver().openFileDescriptor(uri, "rw")) {
+            android.media.ExifInterface exif = new android.media.ExifInterface(fd.getFileDescriptor());
+            String captured = new java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US).format(date.getTime());
+            exif.setAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL, captured);
+            exif.setAttribute(android.media.ExifInterface.TAG_DATETIME, captured);
+            exif.saveAttributes();
+        }
         values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0);
         context.getContentResolver().update(uri, values, null, null); return uri;
     }
