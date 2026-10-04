@@ -1,0 +1,5 @@
+<en-US>
+Google Play now checks for updates when Photo Sweep opens.
+Accept an update to download it while reviewing photos, then restart when ready.
+Includes the version label and crash-report improvements from 0.1.2.
+</en-US>
