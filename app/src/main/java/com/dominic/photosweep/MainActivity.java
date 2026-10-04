@@ -1,7 +1,8 @@
 package com.dominic.photosweep;
 
 import android.Manifest;
-import android.app.Activity;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import android.app.PendingIntent;
 import android.app.job.JobInfo;
 import android.app.job.JobParameters;
@@ -77,7 +78,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MainActivity extends Activity {
+public class MainActivity extends ComponentActivity {
     private static final int PERMISSION_REQUEST = 31;
     private static final int TRASH_REQUEST = 32;
     private static final int RESTORE_REQUEST = 33;
@@ -456,6 +457,14 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() {
+                if (handleAppBack()) return;
+                setEnabled(false);
+                try { getOnBackPressedDispatcher().onBackPressed(); }
+                finally { setEnabled(true); }
+            }
+        });
         audio = new AudioController(this);
         accounts = new AccountController(this, () -> { if (!isDestroyed() && root != null) render(); });
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -548,15 +557,16 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
-    @Override public void onBackPressed() {
-        if (reviewActionRunning) return;
+    private boolean handleAppBack() {
+        if (reviewActionRunning) return true;
         if (zoomOverlay != null) closePhotoZoom();
         else if (fullScreenReview) { fullScreenReview = false; render(); }
         else if (showingThemes) { showingThemes = false; render(); }
         else if (showingSettings && optionsSection != 0) { optionsSection = 0; render(); }
         else if (showingSettings) { showingSettings = false; render(); }
         else if (showingTrash) { showingTrash = false; render(); }
-        else super.onBackPressed();
+        else return false;
+        return true;
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
