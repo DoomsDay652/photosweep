@@ -1,0 +1,6 @@
+<en-US>
+Added a small version and build number in the main menu's bottom-right corner.
+Improved release builds with crash-decoding information for Google Play.
+Updated Android back-gesture handling for menus and full-screen views.
+Preserved existing themes, audio, accounts and development controls.
+</en-US>

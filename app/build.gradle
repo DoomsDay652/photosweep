@@ -19,7 +19,7 @@ android {
         publicConfig.each { key, value -> buildConfigField 'String', key, groovy.json.JsonOutput.toJson(value) }
         targetSdk 36
         versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
-        versionName '0.1.1'
+        versionName '0.1.2'
     }
     signingConfigs {
         release {
@@ -32,7 +32,14 @@ android {
         }
     }
     buildTypes {
-        release { signingConfig signingConfigs.release }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            // Theme artwork is referenced by runtime selections. Keep resources intact.
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            ndk { debugSymbolLevel 'FULL' }
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -43,6 +50,7 @@ android {
 // Present in the setup bundle so Play Console can enable product configuration.
 // Guest/offline AppServices remains active until products and verification are configured.
 dependencies {
+    implementation 'androidx.activity:activity:1.10.1'
     implementation platform('org.jetbrains.kotlin:kotlin-bom:2.2.0')
     implementation platform('com.google.firebase:firebase-bom:34.19.0')
     implementation 'com.google.firebase:firebase-auth'
