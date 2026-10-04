@@ -121,13 +121,25 @@ public class TenSessionSmokeTest {
                 shell("mkdir -p /data/local/tmp/PhotoSweepSmoke");
                 for (String extension : new String[]{"png", "xml"}) {
                     String name = "session-" + (index+1) + "." + extension;
-                    shell("run-as " + context.getPackageName() + " cat " + evidence.getAbsolutePath() + "/" + name + " > /data/local/tmp/PhotoSweepSmoke/" + name);
+                    exportEvidence(new java.io.File(evidence, name), name);
                 }
                 scenario.close(); scenario = null;
             }
             android.os.Bundle cleanup = new android.os.Bundle();
             cleanup.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE);
             for (Uri uri : samples) context.getContentResolver().delete(uri, cleanup);
+        }
+    }
+
+    private void exportEvidence(java.io.File file, String name) throws Exception {
+        android.os.ParcelFileDescriptor[] pipes = instrumentation.getUiAutomation()
+                .executeShellCommandRw("dd of=/data/local/tmp/PhotoSweepSmoke/" + name);
+        try (java.io.InputStream source = new java.io.FileInputStream(file);
+             OutputStream target = new android.os.ParcelFileDescriptor.AutoCloseOutputStream(pipes[1])) {
+            source.transferTo(target);
+        }
+        try (java.io.InputStream response = new android.os.ParcelFileDescriptor.AutoCloseInputStream(pipes[0])) {
+            response.readAllBytes();
         }
     }
 
