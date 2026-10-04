@@ -410,6 +410,7 @@ public class MainActivity extends ComponentActivity {
     private android.animation.ValueAnimator swipePreviewAnimator;
     private SwipeEffect swipePreviewEffect;
     private AudioController audio;
+    private PlayUpdateController playUpdates;
     private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
     private final Bitmap[] themeEffects = new Bitmap[THEME_NAMES.length];
     private Bitmap fireBackgroundFrames, fireSparkSprites;
@@ -457,6 +458,7 @@ public class MainActivity extends ComponentActivity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        playUpdates = new PlayUpdateController(this, state);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 if (handleAppBack()) return;
@@ -517,6 +519,7 @@ public class MainActivity extends ComponentActivity {
 
     @Override protected void onResume() {
         super.onResume();
+        playUpdates.onResume();
         if (gravitySensor != null) sensorManager.registerListener(tiltListener, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
         audio.resume(musicEnabled, musicVolume / 100f);
         // onCreate already loaded the library. Android photo-action results
@@ -532,7 +535,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onPause() {
-        skipMediaReloadOnResume = pendingTrash != -1 || pendingRestore != -1;
+        skipMediaReloadOnResume = pendingTrash != -1 || pendingRestore != -1 || playUpdates.isFlowActive();
+        playUpdates.onPause();
         if (sensorManager != null) sensorManager.unregisterListener(tiltListener);
         stopMusic();
         clearSwipePreview();
@@ -540,6 +544,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override public void onDestroy() {
+        if (playUpdates != null) playUpdates.close();
         if (accounts != null) accounts.close();
         if (audio != null) audio.close();
         closePhotoZoom();
@@ -570,6 +575,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
+        playUpdates.saveState(state);
         rememberScroll();
         state.putInt("selectedYear", selectedYear);
         state.putString("selectedMonth", selectedMonth);
