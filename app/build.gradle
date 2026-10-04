@@ -19,7 +19,7 @@ android {
         publicConfig.each { key, value -> buildConfigField 'String', key, groovy.json.JsonOutput.toJson(value) }
         targetSdk 36
         versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
-        versionName '0.1.4'
+        versionName '0.1.5'
     }
     signingConfigs {
         release {
