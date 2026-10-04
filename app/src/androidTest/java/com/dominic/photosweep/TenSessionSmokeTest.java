@@ -88,6 +88,7 @@ public class TenSessionSmokeTest {
             assertSlider("Master volume", master); assertSlider("Music volume", music); assertSlider("VFX sound volume", vfx);
             adjustVolume("Master volume", 0); assertEquals(0, preferences.getInt("master_volume", -1));
             adjustVolume("Master volume", 1); assertEquals(100, preferences.getInt("master_volume", -1));
+            verifyRadioDrag();
             back(); back(); awaitText("Your photos");
             clickText(Integer.toString(fixtureMonth.getYear())); awaitText("Choose a month");
             clickText(fixtureMonth.format(java.time.format.DateTimeFormatter.ofPattern("MMMM", java.util.Locale.getDefault())));
@@ -99,6 +100,7 @@ public class TenSessionSmokeTest {
             awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
             scenario.recreate(); awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
             assertImmersive();
+            captureEvidence("fullscreen-" + (index + 1));
             pinchAndPan();
             tapPhoto(true, true); awaitText("2 of 2 left to review");
             tapPhoto(false, false); awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
@@ -248,6 +250,38 @@ public class TenSessionSmokeTest {
     }
     private void assertSlider(String name, int value) {
         scenario.onActivity(a -> assertEquals(name, value, ((SeekBar)find(a.getWindow().getDecorView(), description(name))).getProgress()));
+    }
+    private void captureEvidence(String name) {
+        try {
+            java.io.File file = new java.io.File(context.getFilesDir(), name + ".png");
+            Bitmap bitmap = instrumentation.getUiAutomation().takeScreenshot();
+            assertNotNull(bitmap);
+            try (OutputStream out = new java.io.FileOutputStream(file)) { bitmap.compress(Bitmap.CompressFormat.PNG,100,out); }
+            finally { bitmap.recycle(); }
+            shell("mkdir -p /data/local/tmp/PhotoSweepSmoke"); exportEvidence(file, name + ".png");
+        } catch (Exception error) { throw new AssertionError(error); }
+    }
+    private void verifyRadioDrag() {
+        clickText("Next track →"); awaitDescription("Radio track. Drag to move");
+        scenario.onActivity(a -> {
+            View bubble = find(a.getWindow().getDecorView(), description("Radio track. Drag to move"));
+            long now = SystemClock.uptimeMillis();
+            MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,20,20,0);
+            MotionEvent move=MotionEvent.obtain(now,now+100,MotionEvent.ACTION_MOVE,-110,170,0);
+            MotionEvent up=MotionEvent.obtain(now,now+200,MotionEvent.ACTION_UP,-110,170,0);
+            bubble.dispatchTouchEvent(down); bubble.dispatchTouchEvent(move); bubble.dispatchTouchEvent(up);
+            down.recycle(); move.recycle(); up.recycle();
+        });
+        float x=preferences.getFloat("radio_x", -1), y=preferences.getFloat("radio_y", -1);
+        assertTrue("Radio drag saves a horizontal location", x>=0 && x<=1);
+        assertTrue("Radio drag saves a vertical location", y>=0 && y<=1);
+        clickText("Next track →"); awaitDescription("Radio track. Drag to move"); SystemClock.sleep(200);
+        scenario.onActivity(a -> {
+            View bubble=find(a.getWindow().getDecorView(),description("Radio track. Drag to move"));
+            View parent=(View)bubble.getParent();
+            assertEquals("Next track keeps dragged x", x, bubble.getX()/Math.max(1f,parent.getWidth()-bubble.getWidth()), .03f);
+            assertEquals("Next track keeps dragged y", y, bubble.getY()/Math.max(1f,parent.getHeight()-bubble.getHeight()), .03f);
+        });
     }
     private static final String NORMAL_PHOTO = "Photo. Tap for full-screen review, swipe left to Trash or right to Keep";
     private static final String FULL_PHOTO = "Whole photo. Swipe right to Keep or left to Trash";
