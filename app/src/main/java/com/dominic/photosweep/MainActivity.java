@@ -32,9 +32,6 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.media.AudioAttributes;
-import android.media.AudioFormat;
-import android.media.AudioTrack;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -340,7 +337,6 @@ public class MainActivity extends Activity {
     private int GREEN = Color.rgb(64, 210, 188);
     private int RED = Color.rgb(255, 117, 128);
     private int GOLD = Color.rgb(247, 204, 128);
-    private static final int SAMPLE_RATE = 22050;
 
     private static class Photo {
         long id, timestamp, size;
@@ -412,7 +408,7 @@ public class MainActivity extends Activity {
     private int swipeStyle, swipeIntensity = 55, swipeSpeed = 100;
     private android.animation.ValueAnimator swipePreviewAnimator;
     private SwipeEffect swipePreviewEffect;
-    private AudioTrack musicTrack;
+    private AudioController audio;
     private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
     private final Bitmap[] themeEffects = new Bitmap[THEME_NAMES.length];
     private Bitmap fireBackgroundFrames, fireSparkSprites;
@@ -460,6 +456,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        audio = new AudioController(this);
         accounts = new AccountController(this, () -> { if (!isDestroyed() && root != null) render(); });
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         if (sensorManager != null) {
@@ -512,7 +509,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (gravitySensor != null) sensorManager.registerListener(tiltListener, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
-        if (musicEnabled) updateMusic();
+        audio.resume(musicEnabled, musicVolume / 100f);
         // onCreate already loaded the library. Android photo-action results
         // update local state before onResume; do not scan the gallery again.
         if (!hasResumed) { hasResumed = true; return; }
@@ -535,7 +532,7 @@ public class MainActivity extends Activity {
 
     @Override public void onDestroy() {
         if (accounts != null) accounts.close();
-        stopMusic();
+        if (audio != null) audio.close();
         closePhotoZoom();
         for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         for (Bitmap bitmap : themeEffects) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
@@ -1104,11 +1101,11 @@ public class MainActivity extends Activity {
 
     private void addAudioOptions(LinearLayout list) {
         sectionTitle(list, "AUDIO");
-        settingSwitch(list, "Swipe sounds", "Coin chime for Keep, soft sweep for Trash", soundEnabled, value -> {
+        settingSwitch(list, "Swipe sounds", "Soft, bubbly feedback while you swipe", soundEnabled, value -> {
             soundEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled", value).apply();
             if (value) playEffect(true);
         });
-        settingSwitch(list, "Gentle music", "A quiet loop while the app is open", musicEnabled, value -> {
+        settingSwitch(list, "Dreamy Sweep music", "A gentle original loop for every theme", musicEnabled, value -> {
             musicEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled", value).apply(); updateMusic();
         });
         TextView volume = new TextView(this); volume.setText("Music volume  ·  " + musicVolume + "%");
@@ -1122,7 +1119,7 @@ public class MainActivity extends Activity {
                 if (!user) return;
                 musicVolume = value; volume.setText("Music volume  ·  " + value + "%");
                 getPreferences(MODE_PRIVATE).edit().putInt("music_volume", value).apply();
-                if (musicTrack != null) musicTrack.setVolume(value / 100f);
+                updateMusic();
             }
             @Override public void onStartTrackingTouch(SeekBar bar) { }
             @Override public void onStopTrackingTouch(SeekBar bar) { }
@@ -1352,7 +1349,7 @@ public class MainActivity extends Activity {
         } else {
             TextView lock = new TextView(this); lock.setText("🔒"); lock.setTextSize(16); row.addView(lock);
         }
-        row.setOnClickListener(v -> action.run());
+        row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 
     private interface ToggleAction { void changed(boolean enabled); }
@@ -1464,6 +1461,7 @@ public class MainActivity extends Activity {
         xp = lastUndo.restoredXp(xp);
         keptCount = keptIds.size(); trashedCount = trashedIds.size();
         lastUndo = null; saveStats(); saveReviewed(); applyTheme();
+        playSound(R.raw.bubble_undo, .28f);
     }
 
     private void trashScreen() {
@@ -2292,6 +2290,7 @@ public class MainActivity extends Activity {
         int earned = awardXp(p.id, 10); lastUndo.earnedXp = earned;
         saveStats();
         reviewed.add(Long.toString(p.id)); saveReviewed(); render();
+        playMonthComplete();
         if (earned > 0) floatXp(earned);
     }
 
@@ -2455,7 +2454,7 @@ public class MainActivity extends Activity {
             if (resultCode != RESULT_OK && reviewPage != null) reviewPage.photoId = -1;
             render();
             if (earned > 0) floatXp(earned);
-            if (resultCode == RESULT_OK) cleanupTrash();
+            if (resultCode == RESULT_OK) { playMonthComplete(); cleanupTrash(); }
         } else if (requestCode == RESTORE_REQUEST) {
             long id = pendingRestore; pendingRestore = -1;
             boolean undo = pendingRestoreUndo; pendingRestoreUndo = false;
@@ -2505,89 +2504,38 @@ public class MainActivity extends Activity {
     }
 
     private void updateMusic() {
-        if (!musicEnabled || musicVolume == 0) { stopMusic(); return; }
-        if (musicTrack != null) { musicTrack.setVolume(musicVolume / 100f); return; }
-        try {
-            byte[] loop = synthMusic();
-            AudioTrack track = new AudioTrack.Builder()
-                    .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                    .setAudioFormat(new AudioFormat.Builder().setSampleRate(SAMPLE_RATE)
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                    .setBufferSizeInBytes(loop.length).setTransferMode(AudioTrack.MODE_STATIC).build();
-            if (track.getState() != AudioTrack.STATE_INITIALIZED || track.write(loop, 0, loop.length) != loop.length) {
-                track.release(); return;
-            }
-            track.setLoopPoints(0, loop.length / 2, -1);
-            track.setVolume(musicVolume / 100f);
-            track.play(); musicTrack = track;
-        } catch (Exception ignored) { stopMusic(); }
+        if (audio != null) audio.configure(musicEnabled, musicVolume / 100f);
     }
 
     private void stopMusic() {
-        if (musicTrack == null) return;
-        try { musicTrack.pause(); musicTrack.flush(); musicTrack.release(); } catch (Exception ignored) { }
-        musicTrack = null;
+        if (audio != null) audio.pause();
+    }
+
+    private void playSound(int resource, float volume) {
+        if (soundEnabled && audio != null) audio.effect(resource, volume);
     }
 
     private void playEffect(boolean keep) {
-        if (!soundEnabled) return;
-        try {
-            byte[] samples = synthEffect(keep);
-            AudioTrack track = new AudioTrack.Builder()
-                    .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-                    .setAudioFormat(new AudioFormat.Builder().setSampleRate(SAMPLE_RATE)
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                    .setBufferSizeInBytes(samples.length).setTransferMode(AudioTrack.MODE_STATIC).build();
-            if (track.getState() != AudioTrack.STATE_INITIALIZED || track.write(samples, 0, samples.length) != samples.length) {
-                track.release(); return;
-            }
-            track.setVolume(.38f); track.play();
-            uiHandler.postDelayed(() -> { try { track.stop(); track.release(); } catch (Exception ignored) { } }, 900);
-        } catch (Exception ignored) { }
+        playSound(keep ? R.raw.bubble_keep : R.raw.bubble_trash, .30f);
+        int accent;
+        switch (selectedSwipeProfile()) {
+            case FIRE: accent = R.raw.bubble_fire; break;
+            case WATER: accent = R.raw.bubble_water; break;
+            case TOXIC: accent = R.raw.bubble_toxic; break;
+            case CANDY: accent = R.raw.bubble_candy; break;
+            default: return;
+        }
+        playSound(accent, .13f);
     }
 
-    private byte[] synthEffect(boolean keep) {
-        int count = (int) (SAMPLE_RATE * (keep ? .52f : .44f));
-        byte[] pcm = new byte[count * 2];
-        for (int i = 0; i < count; i++) {
-            double t = i / (double) SAMPLE_RATE, duration = count / (double) SAMPLE_RATE;
-            double envelope = Math.min(1, t * 90) * Math.pow(Math.max(0, 1 - t / duration), keep ? 2.1 : 1.6);
-            double wave;
-            if (keep) {
-                double note = t < .12 ? 784 : 1174.66;
-                wave = .54 * Math.sin(2 * Math.PI * note * t) + .24 * Math.sin(2 * Math.PI * note * 2.01 * t);
-            } else {
-                double noise = Math.sin(i * 12.9898) * 43758.5453;
-                noise = (noise - Math.floor(noise)) * 2 - 1;
-                wave = .40 * noise + .23 * Math.sin(2 * Math.PI * (180 - 120 * t) * t);
-            }
-            short sample = (short) (Math.max(-1, Math.min(1, wave * envelope)) * 24000);
-            pcm[i * 2] = (byte) sample; pcm[i * 2 + 1] = (byte) (sample >> 8);
-        }
-        return pcm;
-    }
-
-    private byte[] synthMusic() {
-        int count = SAMPLE_RATE * 12;
-        byte[] pcm = new byte[count * 2];
-        double[] first = {174.61, 261.63, 329.63};
-        double[] second = {146.83, 220.00, 293.66};
-        for (int i = 0; i < count; i++) {
-            double t = i / (double) SAMPLE_RATE;
-            double blend = (1 - Math.cos(2 * Math.PI * t / 12)) / 2;
-            double swell = .42 + .10 * Math.sin(2 * Math.PI * t / 5);
-            double edge = Math.min(1, Math.min(t, 12 - t) * 2);
-            double wave = 0;
-            for (int note = 0; note < first.length; note++) {
-                wave += ((1 - blend) * Math.sin(2 * Math.PI * first[note] * t)
-                        + blend * Math.sin(2 * Math.PI * second[note] * t)) / (note + 2.3);
-            }
-            short sample = (short) (Math.max(-1, Math.min(1, wave * swell * edge)) * 15000);
-            pcm[i * 2] = (byte) sample; pcm[i * 2 + 1] = (byte) (sample >> 8);
-        }
-        return pcm;
+    private void playMonthComplete() {
+        if (selectedMonth == null || showingTrash) return;
+        for (Photo photo : monthPhotos())
+            if (!reviewed.contains(Long.toString(photo.id))) return;
+        uiHandler.postDelayed(() -> {
+            if (!isFinishing() && !isDestroyed() && hasWindowFocus())
+                playSound(R.raw.bubble_complete, .23f);
+        }, 380);
     }
 
     private void saveReviewed() { getPreferences(MODE_PRIVATE).edit().putStringSet("reviewed", new HashSet<>(reviewed)).apply(); }
@@ -3385,7 +3333,7 @@ public class MainActivity extends Activity {
     private Button button(LinearLayout parent, String value, int bg, int color, Runnable action) {
         Button button = new Button(this); button.setText(value); button.setAllCaps(false); button.setTextSize(16);
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(themeButton(bg, 18));
-        button.setOnClickListener(v -> action.run());
+        button.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
         parent.addView(button, new LinearLayout.LayoutParams(-1, dp(55))); return button;
     }
     private void back(String value, Runnable action) {
@@ -3394,7 +3342,7 @@ public class MainActivity extends Activity {
         back.setPadding(dp(18), 0, dp(18), 0);
         back.setMinWidth(dp(150)); back.setHeight(dp(56));
         back.setBackground(themeButton(PANEL, 18));
-        back.setOnClickListener(v -> action.run());
+        back.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
         spacer(15);
     }
     private void tile(LinearLayout parent, String title, String detail, Runnable action) {
@@ -3409,6 +3357,6 @@ public class MainActivity extends Activity {
         TextView sub = new TextView(this); sub.setText(detail); sub.setTextSize(14); sub.setTextColor(MUTED);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2); subLp.topMargin = dp(4); copy.addView(sub, subLp);
         TextView arrow = new TextView(this); arrow.setText("›"); arrow.setTextColor(GREEN); arrow.setTextSize(28); row.addView(arrow);
-        row.setOnClickListener(v -> action.run());
+        row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
