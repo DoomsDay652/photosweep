@@ -410,6 +410,14 @@ public class MainActivity extends ComponentActivity {
     private android.animation.ValueAnimator swipePreviewAnimator;
     private SwipeEffect swipePreviewEffect;
     private AudioController audio;
+    private TextView radioBubble, radioTrackLabel;
+    private final Runnable fadeRadioBubble = () -> {
+        TextView bubble = radioBubble;
+        if (bubble != null) bubble.animate().alpha(0f).setDuration(2400).withEndAction(() -> {
+            if (host != null) host.removeView(bubble);
+            if (radioBubble == bubble) radioBubble = null;
+        }).start();
+    };
     private PlayUpdateController playUpdates;
     private final Bitmap[] themeBackdrops = new Bitmap[THEME_NAMES.length];
     private final Bitmap[] themeEffects = new Bitmap[THEME_NAMES.length];
@@ -467,7 +475,7 @@ public class MainActivity extends ComponentActivity {
                 finally { setEnabled(true); }
             }
         });
-        audio = new AudioController(this);
+        audio = new AudioController(this, this::showRadioTrack);
         accounts = new AccountController(this, () -> { if (!isDestroyed() && root != null) render(); });
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         if (sensorManager != null) {
@@ -535,6 +543,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onPause() {
+        clearRadioBubble();
         skipMediaReloadOnResume = pendingTrash != -1 || pendingRestore != -1 || playUpdates.isFlowActive();
         playUpdates.onPause();
         if (sensorManager != null) sensorManager.unregisterListener(tiltListener);
@@ -544,6 +553,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override public void onDestroy() {
+        clearRadioBubble();
         if (playUpdates != null) playUpdates.close();
         if (accounts != null) accounts.close();
         if (audio != null) audio.close();
@@ -832,6 +842,39 @@ public class MainActivity extends ComponentActivity {
         }
         if (transition) { root.setAlpha(0f); root.animate().alpha(1f).setDuration(260).start(); }
         host.requestApplyInsets();
+        if (radioBubble != null) radioBubble.bringToFront();
+    }
+
+    private void showRadioTrack(String title) {
+        if (isDestroyed() || host == null) return;
+        if (radioTrackLabel != null) radioTrackLabel.setText("Now playing · " + title);
+        clearRadioBubble();
+        TextView bubble = new TextView(this);
+        bubble.setText("♫  " + title + "\nD.G.S. Radio");
+        bubble.setTextSize(13); bubble.setTextColor(INK);
+        bubble.setPadding(dp(16), dp(11), dp(16), dp(11));
+        bubble.setMaxWidth(dp(240));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(PANEL); background.setCornerRadius(dp(22));
+        background.setStroke(dp(1), GREEN);
+        bubble.setBackground(background); bubble.setElevation(dp(8));
+        bubble.setClickable(false); bubble.setFocusable(false);
+        bubble.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        FrameLayout.LayoutParams placement = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        placement.setMargins(dp(16), safeInsets.top + dp(92), safeInsets.right + dp(18), 0);
+        radioBubble = bubble;
+        host.addView(bubble, placement);
+        bubble.setAlpha(0f); bubble.animate().alpha(1f).setDuration(350).start();
+        uiHandler.postDelayed(fadeRadioBubble, 3800);
+    }
+
+    private void clearRadioBubble() {
+        uiHandler.removeCallbacks(fadeRadioBubble);
+        if (radioBubble != null) {
+            radioBubble.animate().cancel();
+            if (host != null) host.removeView(radioBubble);
+            radioBubble = null;
+        }
     }
 
     private String photoDate(Photo photo) {
@@ -1135,9 +1178,26 @@ public class MainActivity extends ComponentActivity {
             soundEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled", value).apply();
             if (value) playEffect(true);
         });
-        settingSwitch(list, "Dreamy Sweep music", "A gentle original loop for every theme", musicEnabled, value -> {
+        settingSwitch(list, "D.G.S. Radio", "Lo-fi beats and dreamscape synths", musicEnabled, value -> {
             musicEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled", value).apply(); updateMusic();
+            if (radioTrackLabel != null) radioTrackLabel.setText((value ? "Now playing · " : "Track · ") + audio.currentTitle());
+            if (!value) clearRadioBubble();
         });
+        radioTrackLabel = new TextView(this);
+        radioTrackLabel.setText((musicEnabled ? "Now playing · " : "Track · ") + audio.currentTitle());
+        radioTrackLabel.setTextColor(INK); radioTrackLabel.setTextSize(16);
+        radioTrackLabel.setPadding(0, dp(14), 0, dp(8));
+        list.addView(radioTrackLabel, new LinearLayout.LayoutParams(-1, -2));
+        button(list, "Next track →", PANEL, INK, () -> {
+            audio.nextTrack();
+            if (!musicEnabled) {
+                musicEnabled = true;
+                getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled", true).apply();
+                updateMusic();
+                render();
+            }
+        });
+        settingSwitch(list, "Loop current track", "Repeat this song instead of changing tracks", audio.isRepeatTrack(), audio::setRepeatTrack);
         TextView volume = new TextView(this); volume.setText("Music volume  ·  " + musicVolume + "%");
         volume.setTextColor(INK); volume.setTextSize(16);
         LinearLayout.LayoutParams volumeLp = new LinearLayout.LayoutParams(-1, -2); volumeLp.topMargin = dp(17); list.addView(volume, volumeLp);

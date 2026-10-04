@@ -1,6 +1,7 @@
 package com.dominic.photosweep;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -8,12 +9,14 @@ import android.media.MediaPlayer;
 import android.media.SoundPool;
 import android.os.Handler;
 import android.os.Looper;
+import java.io.IOException;
+import java.util.function.Consumer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** One reusable player and a small effect pool; navigation never restarts music. */
+/** Local radio with one current/one prepared next track; menus never restart playback. */
 final class AudioController implements AutoCloseable {
     private final Context context;
     private final AudioManager manager;
@@ -23,12 +26,24 @@ final class AudioController implements AutoCloseable {
     private final Set<Integer> loaded = new HashSet<>();
     private final int[] streams = new int[4];
     private int nextStream;
-    private MediaPlayer music;
+    private static final int[] TRACKS = {R.raw.dreamy_sweep, R.raw.paper_lantern,
+            R.raw.nebula_drift, R.raw.midnight_polaroid};
+    private static final String[] TITLES = {"Dreamy Sweep", "Paper Lantern", "Nebula Drift", "Midnight Polaroid"};
+    private final Consumer<String> trackChanged;
+    private final SharedPreferences preferences;
+    private MediaPlayer music, nextMusic;
+    private boolean musicPrepared, nextPrepared, announced, repeatTrack;
+    private int track, restorePosition;
     private boolean foreground, enabled, focused, ducked, closed;
     private float volume;
 
-    AudioController(Context context) {
+    AudioController(Context context, Consumer<String> trackChanged) {
         this.context = context.getApplicationContext();
+        this.trackChanged = trackChanged;
+        preferences = this.context.getSharedPreferences("radio", Context.MODE_PRIVATE);
+        track = Math.floorMod(preferences.getInt("track", 0), TRACKS.length);
+        restorePosition = Math.max(0, preferences.getInt("position", 0));
+        repeatTrack = preferences.getBoolean("repeat", false);
         manager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         AudioAttributes musicAttributes = new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -70,32 +85,110 @@ final class AudioController implements AutoCloseable {
         if (focused) startPlayer();
     }
 
+    private boolean canPlay() {
+        return !closed && foreground && enabled && volume > 0 && focused;
+    }
+
     private void startPlayer() {
-        if (closed || !foreground || !enabled || volume == 0 || !focused) return;
+        if (!canPlay()) return;
         try {
-            if (music == null) {
-                music = MediaPlayer.create(context, R.raw.dreamy_sweep);
-                if (music == null) return;
-                music.setLooping(true);
-                music.setOnErrorListener((player, what, extra) -> {
-                    releasePlayer();
-                    abandonFocus();
-                    return true;
-                });
-            }
+            if (music == null) { music = preparePlayer(track); return; }
+            if (!musicPrepared) return;
             applyVolume();
+            music.setLooping(repeatTrack);
             if (!music.isPlaying()) music.start();
+            if (!announced) { announced = true; trackChanged.accept(currentTitle()); }
+            prepareNext();
         } catch (IllegalStateException ignored) {
-            releasePlayer();
-            abandonFocus();
+            releasePlayer(); abandonFocus();
         }
     }
 
-    private void applyVolume() {
-        if (music != null) {
-            float level = volume * (ducked ? .2f : 1f);
-            music.setVolume(level, level);
+    private MediaPlayer preparePlayer(int index) {
+        MediaPlayer player = new MediaPlayer();
+        player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+        player.setOnPreparedListener(ready -> {
+            if (closed || (ready != music && ready != nextMusic)) { ready.release(); return; }
+            if (ready == music) {
+                musicPrepared = true;
+                if (restorePosition > 0) {
+                    ready.seekTo(Math.min(restorePosition, Math.max(0, ready.getDuration()-1)));
+                    restorePosition = 0;
+                }
+                startPlayer();
+            } else { nextPrepared = true; linkNext(); }
+        });
+        player.setOnCompletionListener(this::completed);
+        player.setOnErrorListener((failed, what, extra) -> {
+            if (failed == music) { releasePlayer(); abandonFocus(); }
+            else if (failed == nextMusic) releaseNext();
+            return true;
+        });
+        try (android.content.res.AssetFileDescriptor asset = context.getResources().openRawResourceFd(TRACKS[index])) {
+            player.setDataSource(asset.getFileDescriptor(), asset.getStartOffset(), asset.getLength());
+            player.prepareAsync();
+            return player;
+        } catch (IOException | RuntimeException error) { player.release(); return null; }
+    }
+
+    private void prepareNext() {
+        if (repeatTrack || music == null || !musicPrepared) return;
+        if (nextMusic == null) nextMusic = preparePlayer((track+1)%TRACKS.length);
+        linkNext();
+    }
+
+    private void linkNext() {
+        if (musicPrepared && nextPrepared && music != null && nextMusic != null && !repeatTrack) {
+            applyVolume();
+            music.setNextMediaPlayer(nextMusic);
         }
+    }
+
+    private void completed(MediaPlayer finished) {
+        if (closed || finished != music || repeatTrack) return;
+        finished.setNextMediaPlayer(null);
+        finished.release();
+        music = nextMusic; musicPrepared = nextPrepared;
+        nextMusic = null; nextPrepared = false;
+        track = (track+1)%TRACKS.length; announced = false; restorePosition = 0;
+        if (!canPlay()) pausePlayer();
+        savePosition();
+        startPlayer();
+    }
+
+    String currentTitle() { return TITLES[track]; }
+    boolean isRepeatTrack() { return repeatTrack; }
+
+    void setRepeatTrack(boolean repeat) {
+        if (closed) return;
+        repeatTrack = repeat;
+        preferences.edit().putBoolean("repeat", repeat).apply();
+        if (music != null && musicPrepared) {
+            music.setNextMediaPlayer(null);
+            music.setLooping(repeat);
+        }
+        if (repeat) releaseNext(); else prepareNext();
+    }
+
+    void nextTrack() {
+        if (closed) return;
+        releasePlayer(); track = (track+1)%TRACKS.length;
+        restorePosition = 0; announced = false;
+        savePosition(); startPlayer();
+    }
+
+    private void applyVolume() {
+        float level = volume * (ducked ? .2f : 1f);
+        if (music != null && musicPrepared) music.setVolume(level, level);
+        if (nextMusic != null && nextPrepared) nextMusic.setVolume(level, level);
+    }
+
+    private void savePosition() {
+        int position = restorePosition;
+        if (music != null && musicPrepared) try { position = music.getCurrentPosition(); }
+        catch (IllegalStateException ignored) { }
+        preferences.edit().putInt("track", track).putInt("position", position).apply();
     }
 
     private void focusChanged(int change) {
@@ -131,6 +224,7 @@ final class AudioController implements AutoCloseable {
     void pause() {
         foreground = false;
         pausePlayer();
+        savePosition();
         abandonFocus();
         for (int i = 0; i < streams.length; i++) {
             pool.stop(streams[i]); streams[i] = 0;
@@ -138,7 +232,9 @@ final class AudioController implements AutoCloseable {
     }
 
     private void pausePlayer() {
-        if (music != null) try { if (music.isPlaying()) music.pause(); }
+        if (nextMusic != null && nextPrepared) try { if (nextMusic.isPlaying()) nextMusic.pause(); }
+        catch (IllegalStateException ignored) { releaseNext(); }
+        if (music != null && musicPrepared) try { if (music.isPlaying()) music.pause(); }
         catch (IllegalStateException ignored) { releasePlayer(); }
     }
 
@@ -147,8 +243,17 @@ final class AudioController implements AutoCloseable {
         focused = false; ducked = false;
     }
 
+    private void releaseNext() {
+        if (music != null && musicPrepared) try { music.setNextMediaPlayer(null); }
+        catch (IllegalStateException ignored) { }
+        if (nextMusic != null) { nextMusic.release(); nextMusic = null; }
+        nextPrepared = false;
+    }
+
     private void releasePlayer() {
+        releaseNext();
         if (music != null) { music.release(); music = null; }
+        musicPrepared = false;
     }
 
     @Override public void close() {
