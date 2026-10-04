@@ -103,7 +103,7 @@ public class TenSessionSmokeTest {
             back(); awaitDescription("Full-screen photo review with swiping");
             dragPhoto(-.40f, false); acceptSystemPhotoPrompt(); awaitText("1 of 2 left to review");
             clickText("Undo last photo"); acceptSystemPhotoPrompt(); awaitText("2 of 2 left to review");
-            back(); back(); back(); awaitText("Your photos");
+            back(); back(); awaitText("Your photos");
             assertEquals("Theme survives the session", THEMES[index], preferences.getInt("theme", -1));
         } finally {
             if (scenario != null) {
