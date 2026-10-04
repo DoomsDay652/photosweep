@@ -255,6 +255,7 @@ public class TenSessionSmokeTest {
     }
     private void send(long down, int action, float x, float y) {
         MotionEvent e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0);
+        e.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
         try { assertTrue("Swipe input delivered", instrumentation.getUiAutomation().injectInputEvent(e, true)); }
         finally { e.recycle(); }
     }
