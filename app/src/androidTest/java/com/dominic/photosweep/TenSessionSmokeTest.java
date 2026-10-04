@@ -99,6 +99,11 @@ public class TenSessionSmokeTest {
             tapPhoto(false, false);
             awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
             scenario.recreate(); awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
+            await(v -> v instanceof android.widget.ImageView
+                    && "Full-screen photo. Pinch to zoom; double tap to exit".contentEquals(v.getContentDescription() == null ? "" : v.getContentDescription())
+                    && ((android.widget.ImageView) v).getDrawable() != null, "Decoded full-screen photo");
+            instrumentation.waitForIdleSync();
+            SystemClock.sleep(350);
             assertImmersive();
             captureEvidence("fullscreen-" + (index + 1));
             pinchAndPan();
@@ -363,7 +368,7 @@ public class TenSessionSmokeTest {
     }
     private void acceptSystemPhotoPrompt() {
         UiDevice device = UiDevice.getInstance(instrumentation);
-        long end = SystemClock.uptimeMillis()+2500;
+        long end = SystemClock.uptimeMillis()+15000;
         do {
             UiObject2 positive = device.findObject(By.res("android:id/button1"));
             if (positive != null) { positive.click(); return; }
