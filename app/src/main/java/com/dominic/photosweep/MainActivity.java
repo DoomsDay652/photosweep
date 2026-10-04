@@ -583,6 +583,8 @@ public class MainActivity extends ComponentActivity {
         else if (showingSettings && optionsSection != 0) { optionsSection = 0; render(); }
         else if (showingSettings) { showingSettings = false; render(); }
         else if (showingTrash) { showingTrash = false; render(); }
+        else if (reviewing) { reviewing = false; fullScreenReview = false; render(); }
+        else if (selectedYear != -1) { selectedYear = -1; selectedMonth = null; render(); }
         else return false;
         return true;
     }
@@ -967,26 +969,16 @@ public class MainActivity extends ComponentActivity {
 
     private void yearsScreen() {
         LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(57)));
-        TextView brand = new TextView(this); brand.setText("PHOTO SWEEP"); brand.setLetterSpacing(.13f);
-        brand.setTextColor(GREEN); brand.setTextSize(15); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(64)));
+        TextView brand = new TextView(this); brand.setText("PHOTO SWEEP"); brand.setLetterSpacing(.08f);
+        brand.setTextColor(GREEN); brand.setTextSize(12); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView themes = new TextView(this); themes.setText("✦"); themes.setTextSize(27); themes.setTextColor(GREEN);
-        themes.setGravity(Gravity.CENTER); themes.setContentDescription("Themes and animation settings");
-        themes.setBackground(themeButton(PANEL, 16));
-        LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(dp(52), dp(52)); themeLp.rightMargin = dp(8);
-        top.addView(themes, themeLp);
-        themes.setOnClickListener(v -> { showingThemes = true; render(); });
-        TextView trash = new TextView(this); trash.setText("🗑"); trash.setTextSize(25); trash.setTextColor(GOLD);
-        trash.setGravity(Gravity.CENTER); trash.setContentDescription("Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()));
-        trash.setBackground(themeButton(PANEL, 16));
-        LinearLayout.LayoutParams trashLp = new LinearLayout.LayoutParams(dp(52), dp(52)); trashLp.rightMargin = dp(8);
-        top.addView(trash, trashLp);
-        trash.setOnClickListener(v -> { showingTrash = true; render(); });
-        TextView gear = new TextView(this); gear.setText("⚙"); gear.setTextSize(28); gear.setTextColor(INK);
-        gear.setGravity(Gravity.CENTER); gear.setContentDescription("Options and sound settings");
-        gear.setBackground(themeButton(PANEL, 16)); top.addView(gear, new LinearLayout.LayoutParams(dp(52), dp(52)));
-        gear.setOnClickListener(v -> { showingSettings = true; render(); });
+        topAction(top, "✦", "Themes", GREEN, "Themes and animation settings",
+                () -> { showingThemes = true; render(); });
+        topAction(top, "⚙", "Settings", INK, "Options and sound settings",
+                () -> { showingSettings = true; render(); });
+        topAction(top, "🗑", "Trash", GOLD, "Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()),
+                () -> { showingTrash = true; render(); });
         label(accounts == null ? "Your photos" : accounts.photosHeading(), 28, INK, true); spacer(13);
         LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
         statsToggle.setPadding(dp(16), dp(8), dp(16), dp(8)); statsToggle.setBackground(rounded(PANEL, 17));
@@ -1033,6 +1025,25 @@ public class MainActivity extends ComponentActivity {
             int year = entry.getKey(); int[] count = entry.getValue();
             tile(list, Integer.toString(year), ReviewNavigation.photoCount(count[0]) + "  •  " + count[1] + " to review", () -> { selectedYear = year; render(); });
         }
+    }
+
+    private void topAction(LinearLayout row, String symbol, String title, int color,
+                           String description, Runnable action) {
+        LinearLayout button = new LinearLayout(this);
+        button.setOrientation(LinearLayout.VERTICAL); button.setGravity(Gravity.CENTER);
+        button.setBackground(themeButton(PANEL, 16));
+        button.setContentDescription(description); button.setFocusable(true);
+        TextView icon = new TextView(this); icon.setText(symbol); icon.setTextSize(23);
+        icon.setTextColor(color); icon.setGravity(Gravity.CENTER);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        button.addView(icon, new LinearLayout.LayoutParams(-1, dp(29)));
+        TextView name = new TextView(this); name.setText(title); name.setTextSize(11);
+        name.setTextColor(color); name.setGravity(Gravity.CENTER); name.setMaxLines(1);
+        name.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        button.addView(name, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(64), dp(58));
+        lp.leftMargin = dp(7); row.addView(button, lp);
+        button.setOnClickListener(v -> action.run());
     }
 
     private void levelPanel() {
