@@ -107,7 +107,7 @@ public class TenSessionSmokeTest {
             assertEquals("Theme survives the session", THEMES[index], preferences.getInt("theme", -1));
         } finally {
             if (scenario != null) {
-                java.io.File evidence = new java.io.File(context.getExternalFilesDir(null), "smoke-evidence");
+                java.io.File evidence = new java.io.File(context.getFilesDir(), "smoke-evidence");
                 evidence.mkdirs();
                 Bitmap screen = instrumentation.getUiAutomation().takeScreenshot();
                 if (screen != null) {
@@ -119,7 +119,10 @@ public class TenSessionSmokeTest {
                 // Copy evidence out before Gradle uninstalls the app. Keep it
                 // outside shared media so later sessions never import it.
                 shell("mkdir -p /data/local/tmp/PhotoSweepSmoke");
-                shell("cp " + evidence.getAbsolutePath() + "/session-" + (index+1) + ".* /data/local/tmp/PhotoSweepSmoke/");
+                for (String extension : new String[]{"png", "xml"}) {
+                    String name = "session-" + (index+1) + "." + extension;
+                    shell("run-as " + context.getPackageName() + " cat " + evidence.getAbsolutePath() + "/" + name + " > /data/local/tmp/PhotoSweepSmoke/" + name);
+                }
                 scenario.close(); scenario = null;
             }
             android.os.Bundle cleanup = new android.os.Bundle();
@@ -231,6 +234,14 @@ public class TenSessionSmokeTest {
         scenario.onActivity(a -> assertEquals(name, value, ((SeekBar)find(a.getWindow().getDecorView(), description(name))).getProgress()));
     }
     private void dragPhoto(float fraction, boolean full) {
+        long focusDeadline = SystemClock.uptimeMillis() + 10000;
+        AtomicBoolean focused = new AtomicBoolean();
+        do {
+            scenario.onActivity(a -> focused.set(a.hasWindowFocus()));
+            if (focused.get()) break;
+            SystemClock.sleep(100);
+        } while (SystemClock.uptimeMillis() < focusDeadline);
+        assertTrue("Photo window has focus", focused.get());
         AtomicReference<Rect> position = new AtomicReference<>();
         scenario.onActivity(a -> {
             View photo = find(a.getWindow().getDecorView(), description(full ? "Whole photo. Swipe right to Keep or left to Trash" : "Photo. Tap for full-screen review, swipe left to Trash or right to Keep"));
@@ -244,7 +255,8 @@ public class TenSessionSmokeTest {
     }
     private void send(long down, int action, float x, float y) {
         MotionEvent e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0);
-        instrumentation.sendPointerSync(e); e.recycle();
+        try { assertTrue("Swipe input delivered", instrumentation.getUiAutomation().injectInputEvent(e, true)); }
+        finally { e.recycle(); }
     }
     private void acceptSystemPhotoPrompt() {
         UiDevice device = UiDevice.getInstance(instrumentation);
