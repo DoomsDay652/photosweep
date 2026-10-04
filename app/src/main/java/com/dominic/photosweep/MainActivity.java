@@ -523,8 +523,9 @@ public class MainActivity extends ComponentActivity {
         restoredCount = getPreferences(MODE_PRIVATE).getInt("restored_count", 0);
         loadTrashEntries();
         scheduleCleanup();
-        render();
-        if (hasAccess()) loadPhotos();
+        // Start loading before the first render so saved review state is not
+        // mistaken for an empty, completed month during Activity recreation.
+        if (hasAccess()) loadPhotos(); else render();
     }
 
     @Override protected void onResume() {
