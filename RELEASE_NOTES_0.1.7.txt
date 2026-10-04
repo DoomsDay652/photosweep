@@ -1,0 +1,8 @@
+Photo Sweep 0.1.7
+
+- Improved text readability across themes.
+- Drag the radio track bubble to choose its position.
+- Added gentle scrolling sounds.
+- Tap a photo for full screen; double tap to return.
+- Pinch to zoom and drag to inspect photos without changing their review status.
+- Removed full-screen buttons, toolbars and black panels.

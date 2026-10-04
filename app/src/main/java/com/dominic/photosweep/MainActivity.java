@@ -411,6 +411,7 @@ public class MainActivity extends ComponentActivity {
     private SwipeEffect swipePreviewEffect;
     private AudioController audio;
     private TextView radioBubble, radioTrackLabel;
+    private long lastScrollPop;
     private final Runnable fadeRadioBubble = () -> {
         TextView bubble = radioBubble;
         if (bubble != null) bubble.animate().alpha(0f).setDuration(2400).withEndAction(() -> {
@@ -635,7 +636,19 @@ public class MainActivity extends ComponentActivity {
         activeScrollPage = page;
         int position = scrollPositions.getOrDefault(page, 0);
         scroll.post(() -> { if (activeScroll == scroll) scroll.scrollTo(0, position); });
-        scroll.setOnScrollChangeListener((view, x, y, oldX, oldY) -> scrollPositions.put(page, y));
+        final int[] soundAnchor = {position};
+        final long[] touched = {0};
+        scroll.setOnTouchListener((view, event) -> { touched[0] = android.os.SystemClock.uptimeMillis(); return false; });
+        scroll.setOnScrollChangeListener((view, x, y, oldX, oldY) -> {
+            scrollPositions.put(page, y);
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - touched[0] < 900) {
+                if (Math.abs(y - soundAnchor[0]) >= dp(64) && now - lastScrollPop >= 180) {
+                    soundAnchor[0] = y; lastScrollPop = now;
+                    if (scroll.isShown() && scroll.hasWindowFocus()) playSound(R.raw.bubble_tap, .045f);
+                }
+            }
+        });
     }
 
     private void applyTheme() {
@@ -781,8 +794,16 @@ public class MainActivity extends ComponentActivity {
     private void applyContentInsets() {
         if (root == null) return;
         boolean full = reviewing && fullScreenReview && !showingSettings && !showingThemes && !showingTrash;
-        root.setPadding(safeInsets.left + (full ? 0 : dp(22)), safeInsets.top + (full ? 0 : dp(20)),
-                safeInsets.right + (full ? 0 : dp(22)), safeInsets.bottom + (full ? 0 : dp(16)));
+        android.view.WindowInsetsController bars = getWindow().getInsetsController();
+        if (bars != null) {
+            bars.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            if (full) bars.hide(android.view.WindowInsets.Type.systemBars());
+            else bars.show(android.view.WindowInsets.Type.systemBars());
+        }
+        if (full) root.setPadding(0, 0, 0, 0);
+        else root.setPadding(safeInsets.left + dp(22), safeInsets.top + dp(20),
+                safeInsets.right + dp(22), safeInsets.bottom + dp(16));
+        if (radioBubble != null) radioBubble.setVisibility(full ? View.GONE : View.VISIBLE);
     }
     private void render() {
         if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
@@ -864,14 +885,51 @@ public class MainActivity extends ComponentActivity {
         background.setColor(PANEL); background.setCornerRadius(dp(22));
         background.setStroke(dp(1), GREEN);
         bubble.setBackground(background); bubble.setElevation(dp(8));
-        bubble.setClickable(false); bubble.setFocusable(false);
+        bubble.setClickable(true); bubble.setFocusable(true);
+        bubble.setContentDescription("Radio track. Drag to move");
         bubble.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         FrameLayout.LayoutParams placement = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         placement.setMargins(dp(16), safeInsets.top + dp(92), safeInsets.right + dp(18), 0);
         radioBubble = bubble;
         host.addView(bubble, placement);
+        bubble.post(() -> positionRadioBubble(bubble));
+        bubble.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l != or - ol || b - t != ob - ot) positionRadioBubble(bubble);
+        });
+        final float[] drag = new float[4];
+        bubble.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    bubble.animate().cancel(); bubble.setAlpha(1f);
+                    uiHandler.removeCallbacks(fadeRadioBubble);
+                    drag[0] = event.getRawX(); drag[1] = event.getRawY();
+                    drag[2] = bubble.getX(); drag[3] = bubble.getY(); return true;
+                case MotionEvent.ACTION_MOVE:
+                    float x = Math.max(safeInsets.left, Math.min(host.getWidth() - safeInsets.right - bubble.getWidth(), drag[2] + event.getRawX() - drag[0]));
+                    float y = Math.max(safeInsets.top, Math.min(host.getHeight() - safeInsets.bottom - bubble.getHeight(), drag[3] + event.getRawY() - drag[1]));
+                    bubble.setX(x); bubble.setY(y); return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    getPreferences(MODE_PRIVATE).edit()
+                            .putFloat("radio_x", bubble.getX() / Math.max(1f, host.getWidth() - bubble.getWidth()))
+                            .putFloat("radio_y", bubble.getY() / Math.max(1f, host.getHeight() - bubble.getHeight())).apply();
+                    uiHandler.postDelayed(fadeRadioBubble, 3800); return true;
+            }
+            return true;
+        });
+        bubble.setVisibility(fullScreenReview && reviewing ? View.GONE : View.VISIBLE);
         bubble.setAlpha(0f); bubble.animate().alpha(1f).setDuration(350).start();
         uiHandler.postDelayed(fadeRadioBubble, 3800);
+    }
+
+    private void positionRadioBubble(TextView bubble) {
+        if (radioBubble != bubble || host == null) return;
+        android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        if (!prefs.contains("radio_x")) return;
+        bubble.setX(Math.max(safeInsets.left, Math.min(host.getWidth() - safeInsets.right - bubble.getWidth(),
+                prefs.getFloat("radio_x", .8f) * (host.getWidth() - bubble.getWidth()))));
+        bubble.setY(Math.max(safeInsets.top, Math.min(host.getHeight() - safeInsets.bottom - bubble.getHeight(),
+                prefs.getFloat("radio_y", .15f) * (host.getHeight() - bubble.getHeight()))));
     }
 
     private void clearRadioBubble() {
@@ -899,15 +957,15 @@ public class MainActivity extends ComponentActivity {
             remaining++; if (current == null) current = photo;
         }
         if (current == null) return false;
-        page.date.setText(photoDate(current));
-        page.count.setText(page.full ? remaining + "/" + month.size() + " left"
+        if (page.date != null) page.date.setText(photoDate(current));
+        if (page.count != null) page.count.setText(page.full ? remaining + "/" + month.size() + " left"
                 : remaining + " of " + month.size() + " left to review");
         if (page.fill != null) {
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) page.fill.getLayoutParams();
             lp.width = Math.round(page.progress.getWidth() * (month.size() - remaining) / (float) month.size());
             page.fill.setLayoutParams(lp);
         }
-        page.undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE);
+        if (page.undo != null) page.undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE);
         if (page.duplicate != null) page.duplicate.setVisibility(duplicates.contains(current.id) ? View.VISIBLE : View.GONE);
         if (page.scanning != null) page.scanning.setVisibility(duplicateScanning ? View.VISIBLE : View.GONE);
         if (page.photoId != current.id) {
@@ -915,6 +973,7 @@ public class MainActivity extends ComponentActivity {
             page.card.setTranslationX(0); page.card.setRotation(0); page.card.setAlpha(1f);
             page.effect.cancel();
             if (page.border != null) page.border.stop();
+            if (page.image instanceof ReviewZoomImage) ((ReviewZoomImage) page.image).resetZoom();
             page.image.setImageDrawable(null);
             loadReviewPhoto(current, page.image);
             attachSwipeGesture(page.card, page.stage, page.effect, page.border, current,
@@ -928,7 +987,7 @@ public class MainActivity extends ComponentActivity {
         TextView version = new TextView(this);
         version.setText("v" + BuildConfig.VERSION_NAME + " · Build " + BuildConfig.VERSION_CODE);
         version.setTextSize(11);
-        version.setTextColor(MUTED);
+        version.setTextColor(MUTED); readableText(version);
         version.setGravity(Gravity.END);
         version.setPadding(0, dp(6), dp(4), 0);
         version.setContentDescription("Photo Sweep version " + BuildConfig.VERSION_NAME
@@ -1171,11 +1230,16 @@ public class MainActivity extends ComponentActivity {
     private void addAccountOptions(LinearLayout list) {
         sectionTitle(list, "ACCOUNT & SUPPORT");
         accounts.addControls(list, PANEL, INK, GREEN, MUTED, RED);
+        for (int i = 0; i < list.getChildCount(); i++) {
+            View copy = list.getChildAt(i);
+            if (copy instanceof TextView && !(copy instanceof Button) && copy.getBackground() == null)
+                readableText((TextView) copy);
+        }
         TextView account = new TextView(this); account.setText("Photos and progress stay on this device.");
-        account.setTextColor(INK); account.setTextSize(16); list.addView(account);
+        account.setTextColor(INK); account.setTextSize(16); readableText(account); list.addView(account);
         TextView support = new TextView(this);
         support.setText("Accounts are optional. Purchases use your Google Play account. Ads and payments are coming later.");
-        support.setTextColor(MUTED); support.setTextSize(14); support.setPadding(0, dp(8), 0, dp(16)); list.addView(support);
+        support.setTextColor(MUTED); support.setTextSize(14); readableText(support); list.addView(support);
         button(list, "Account & support details", PANEL, INK, this::showSupportDetails);
     }
 
@@ -1200,7 +1264,7 @@ public class MainActivity extends ComponentActivity {
         });
         radioTrackLabel = new TextView(this);
         radioTrackLabel.setText((musicEnabled ? "Now playing · " : "Track · ") + audio.currentTitle());
-        radioTrackLabel.setTextColor(INK); radioTrackLabel.setTextSize(16);
+        radioTrackLabel.setTextColor(INK); radioTrackLabel.setTextSize(16); readableText(radioTrackLabel);
         radioTrackLabel.setPadding(0, dp(14), 0, dp(8));
         list.addView(radioTrackLabel, new LinearLayout.LayoutParams(-1, -2));
         button(list, "Next track →", PANEL, INK, () -> {
@@ -1217,7 +1281,7 @@ public class MainActivity extends ComponentActivity {
         addVolumeControl(list, "Music volume", "music_volume", musicVolume, value -> musicVolume = value);
         addVolumeControl(list, "VFX sound volume", "vfx_volume", vfxVolume, value -> vfxVolume = value);
         TextView note = new TextView(this); note.setText("Sounds use your phone's media volume. Music stops when you leave Photo Sweep.");
-        note.setTextColor(MUTED); note.setTextSize(13); list.addView(note);
+        note.setTextColor(MUTED); note.setTextSize(13); readableText(note); list.addView(note);
     }
 
     private int readVolume(String key, int fallback) {
@@ -1228,7 +1292,7 @@ public class MainActivity extends ComponentActivity {
                                   java.util.function.IntConsumer changed) {
         TextView label = new TextView(this);
         label.setText(title + "  ·  " + initial + "%");
-        label.setTextColor(INK); label.setTextSize(16);
+        label.setTextColor(INK); label.setTextSize(16); readableText(label);
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
         labelLp.topMargin = dp(17); list.addView(label, labelLp);
         SeekBar slider = new SeekBar(this);
@@ -1273,6 +1337,7 @@ public class MainActivity extends ComponentActivity {
     private void sectionTitle(LinearLayout parent, String title) {
         TextView label = new TextView(this); label.setText(title); label.setTextColor(GREEN);
         label.setLetterSpacing(.12f); label.setTextSize(13); label.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        readableText(label);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(18); lp.bottomMargin = dp(12); parent.addView(label, lp);
     }
 
@@ -1363,7 +1428,7 @@ public class MainActivity extends ComponentActivity {
         TextView note = new TextView(this);
         note.setText(enabled ? "Customize " + THEME_NAMES[themeChoice] + ". " + SwipeTheme.description(SwipeTheme.forTheme(themeChoice)) + ". Each theme remembers its own swipe settings."
                 : "Choose a country, Yin Yang, or Tier 3 theme at level " + TIER_UNLOCK_LEVELS[2] + " to customize swipe effects.");
-        note.setTextColor(MUTED); note.setTextSize(13); note.setPadding(0, 0, 0, dp(8)); list.addView(note);
+        note.setTextColor(MUTED); note.setTextSize(13); readableText(note); list.addView(note);
         android.widget.Spinner picker = new android.widget.Spinner(this);
         android.widget.ArrayAdapter<String> choices = new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, SWIPE_STYLE_NAMES) {
             @Override public View getView(int position, View convertView, android.view.ViewGroup parent) {
@@ -1708,10 +1773,6 @@ public class MainActivity extends ComponentActivity {
             uiHandler.postDelayed(() -> overlay.animate().alpha(0f).setDuration(400)
                     .withEndAction(() -> overlay.setVisibility(View.GONE)).start(), 2300);
         } else overlay.setVisibility(View.GONE);
-        TextView full = pill("⤢ Full screen", INK, PANEL); full.setContentDescription("Full-screen photo review with swiping");
-        FrameLayout.LayoutParams fullLp = new FrameLayout.LayoutParams(-2, dp(44), Gravity.BOTTOM | Gravity.END);
-        fullLp.setMargins(0, 0, dp(12), dp(12)); stage.addView(full, fullLp); full.setElevation(dp(22));
-        full.setOnClickListener(v -> { if (!reviewActionRunning) { fullScreenReview = true; render(); } });
         attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> { fullScreenReview = true; render(); });
         page.card = card; page.effect = effect; page.border = fireBorder;
         {
@@ -1728,9 +1789,45 @@ public class MainActivity extends ComponentActivity {
     private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect,
                                     PhotoElementBorderView fireBorder, Photo shown, Runnable tap) {
         final boolean[] committed = {false}, multitouch = {false}; final float[] start = new float[2]; final int[] position = new int[2];
+        ReviewZoomImage zoomImage = reviewPage != null && reviewPage.card == card && reviewPage.image instanceof ReviewZoomImage
+                ? (ReviewZoomImage) reviewPage.image : null;
+        final float[] lastPan = new float[2];
+        ScaleGestureDetector scaler = zoomImage == null ? null : new ScaleGestureDetector(this,
+                new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    @Override public boolean onScale(ScaleGestureDetector detector) {
+                        zoomImage.zoomAt(detector.getScaleFactor(), detector.getFocusX(), detector.getFocusY()); return true;
+                    }
+                });
+        GestureDetector taps = zoomImage == null ? null : new GestureDetector(this,
+                new GestureDetector.SimpleOnGestureListener() {
+                    @Override public boolean onDown(MotionEvent event) { return true; }
+                    @Override public boolean onDoubleTap(MotionEvent event) {
+                        if (!reviewActionRunning) { fullScreenReview = false; render(); } return true;
+                    }
+                });
+        card.setOnClickListener(v -> {
+            if (reviewActionRunning) return;
+            if (zoomImage != null) { fullScreenReview = false; render(); }
+            else if (tap != null) tap.run();
+        });
         card.setOnTouchListener((view, event) -> {
             if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
             int action = event.getActionMasked();
+            if (zoomImage != null) {
+                taps.onTouchEvent(event); scaler.onTouchEvent(event);
+                if (!fullScreenReview) return true;
+                if (action == MotionEvent.ACTION_DOWN) { lastPan[0] = event.getX(); lastPan[1] = event.getY(); }
+                if (event.getPointerCount() > 1 || scaler.isInProgress() || zoomImage.zoom > 1.01f || multitouch[0]) {
+                    if (fireBorder != null) fireBorder.cool(); effect.cancel();
+                    card.setTranslationX(0); card.setRotation(0);
+                    if (action == MotionEvent.ACTION_POINTER_DOWN) multitouch[0] = true;
+                    if (action == MotionEvent.ACTION_MOVE && event.getPointerCount() == 1 && !scaler.isInProgress())
+                        zoomImage.pan(event.getX() - lastPan[0], event.getY() - lastPan[1]);
+                    lastPan[0] = event.getX(); lastPan[1] = event.getY();
+                    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) multitouch[0] = false;
+                    return true;
+                }
+            }
             if (action == MotionEvent.ACTION_DOWN) {
                 multitouch[0] = false;
                 start[0] = event.getRawX(); start[1] = event.getRawY(); stage.getLocationOnScreen(position);
@@ -1780,51 +1877,57 @@ public class MainActivity extends ComponentActivity {
     }
     private void fullScreenReviewScreen(Photo shown, int remaining, int total) {
         ReviewPage page = new ReviewPage(); reviewPage = page; page.photoId = shown.id;
-        FrameLayout stage = new FrameLayout(this); stage.setBackgroundColor(Color.BLACK);
+        FrameLayout stage = new FrameLayout(this);
         stage.setClipChildren(false); stage.setClipToPadding(false); page.stage = stage;
         root.addView(stage, new LinearLayout.LayoutParams(-1, -1));
         FrameLayout card = new FrameLayout(this); page.card = card;
         card.setClipChildren(false); card.setClipToPadding(false);
-        FrameLayout.LayoutParams photoArea = new FrameLayout.LayoutParams(-1, -1);
-        photoArea.setMargins(0, dp(58), 0, dp(52)); stage.addView(card, photoArea);
-        ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        image.setPadding(dp(28), dp(20), dp(28), dp(42)); page.image = image;
-        image.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
-        card.addView(new PhotoShadowView(image), new FrameLayout.LayoutParams(-1, -1));
+        card.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
+        stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
+        ReviewZoomImage image = new ReviewZoomImage(); page.image = image;
+        image.setContentDescription("Full-screen photo. Pinch to zoom; double tap to exit");
         card.addView(image, new FrameLayout.LayoutParams(-1, -1)); loadReviewPhoto(shown, image);
-        PhotoElementBorderView fireBorder = null;
+        PhotoElementBorderView border = null;
         if (hasPhotoElementBorder()) {
-            fireBorder = new PhotoElementBorderView(image, themeChoice);
-            card.addView(fireBorder, new FrameLayout.LayoutParams(-1, -1));
+            border = new PhotoElementBorderView(image, themeChoice);
+            card.addView(border, new FrameLayout.LayoutParams(-1, -1));
         }
-        SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
-        page.effect = effect; page.border = fireBorder;
-        attachSwipeGesture(card, stage, effect, fireBorder, shown, null);
-        LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6)); toolbar.setBackgroundColor(0xC0141A22); toolbar.setElevation(dp(24));
-        FrameLayout.LayoutParams top = new FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP); stage.addView(toolbar, top);
-        Button exit = new Button(this); exit.setText("Exit full screen"); exit.setTextSize(12); exit.setTextColor(INK); exit.setBackground(rounded(PANEL, 10));
-        toolbar.addView(exit, new LinearLayout.LayoutParams(dp(124), -1));
-        exit.setOnClickListener(v -> { if (!reviewActionRunning) { fullScreenReview = false; render(); } });
-        LinearLayout details = new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setGravity(Gravity.CENTER);
-        toolbar.addView(details, new LinearLayout.LayoutParams(0, -1, 1));
-        TextView date = new TextView(this); date.setText(photoDate(shown)); date.setTextColor(INK); date.setTextSize(13); details.addView(date); page.date = date;
-        TextView count = new TextView(this); count.setText(remaining + "/" + total + " left");
-        count.setTextColor(MUTED); count.setTextSize(12); details.addView(count); page.count = count;
-        Button inspect = new Button(this); inspect.setText("Zoom"); inspect.setTextSize(12); inspect.setTextColor(INK); inspect.setBackground(rounded(PANEL, 10));
-        toolbar.addView(inspect, new LinearLayout.LayoutParams(dp(65), -1));
-        inspect.setOnClickListener(v -> {
-            if (!reviewActionRunning) for (Photo photo : monthPhotos()) if (photo.id == page.photoId) { showPhotoZoom(photo); break; }
-        });
-        LinearLayout footer = new LinearLayout(this); footer.setGravity(Gravity.CENTER_VERTICAL); footer.setBackgroundColor(0xB0141A22); footer.setElevation(dp(24));
-        FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(52), Gravity.BOTTOM); stage.addView(footer, bottom);
-        TextView hint = new TextView(this); hint.setText("← Trash     Keep →"); hint.setTextColor(INK); hint.setTextSize(13); hint.setGravity(Gravity.CENTER);
-        footer.addView(hint, new LinearLayout.LayoutParams(0, -1, 1));
-        {
-            Button undo = new Button(this); undo.setText("Undo last photo");
-            page.undo = undo; undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE); undo.setTextSize(12); undo.setTextColor(INK); undo.setBackground(rounded(PANEL, 10));
-            footer.addView(undo, new LinearLayout.LayoutParams(dp(144), dp(44))); undo.setOnClickListener(v -> { if (!reviewActionRunning) undoLastPhoto(); });
+        SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18));
+        stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+        page.effect = effect; page.border = border;
+        attachSwipeGesture(card, stage, effect, border, shown, null);
+    }
+
+    /** Matrix zoom preserves the whole photo at rest and keeps pinch/pan separate from review swipes. */
+    private class ReviewZoomImage extends ImageView {
+        float zoom = 1f, panX, panY;
+        ReviewZoomImage() { super(MainActivity.this); setScaleType(ScaleType.MATRIX); }
+        void resetZoom() { zoom = 1f; panX = panY = 0; updateMatrix(); }
+        void zoomAt(float factor, float x, float y) {
+            float old = zoom; zoom = Math.max(1f, Math.min(6f, zoom * factor));
+            float ratio = zoom / old;
+            panX = ratio * panX + (1 - ratio) * (x - getWidth() / 2f);
+            panY = ratio * panY + (1 - ratio) * (y - getHeight() / 2f);
+            updateMatrix();
         }
+        void pan(float dx, float dy) { panX += dx; panY += dy; updateMatrix(); }
+        private void updateMatrix() {
+            Drawable art = getDrawable();
+            if (art == null || getWidth() == 0 || getHeight() == 0) return;
+            float w = art.getIntrinsicWidth(), h = art.getIntrinsicHeight();
+            if (w <= 0 || h <= 0) return;
+            float scale = Math.min(getWidth() / w, getHeight() / h) * zoom;
+            float maxX = Math.max(0, (w * scale - getWidth()) / 2f);
+            float maxY = Math.max(0, (h * scale - getHeight()) / 2f);
+            panX = Math.max(-maxX, Math.min(maxX, panX)); panY = Math.max(-maxY, Math.min(maxY, panY));
+            Matrix matrix = new Matrix(); matrix.setScale(scale, scale);
+            matrix.postTranslate((getWidth() - w * scale) / 2f + panX, (getHeight() - h * scale) / 2f + panY);
+            setImageMatrix(matrix); invalidatePhotoDecorations(this);
+        }
+        @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
+            super.onSizeChanged(w, h, oldW, oldH); updateMatrix();
+        }
+        @Override public void setImageDrawable(Drawable drawable) { super.setImageDrawable(drawable); updateMatrix(); }
     }
     private Bitmap decodeReviewPhoto(Photo photo) {
         Bitmap cached = reviewPhotos.get(photo.id);
@@ -3442,10 +3545,17 @@ public class MainActivity extends ComponentActivity {
         };
     }
     private void spacer(int height) { View gap = new View(this); root.addView(gap, new LinearLayout.LayoutParams(1, dp(height))); }
+    private void readableText(TextView text) {
+        GradientDrawable backing = new GradientDrawable();
+        backing.setColor(0xB8101826); backing.setCornerRadius(dp(10));
+        text.setBackground(backing);
+        text.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+        text.setPadding(dp(8), dp(5), dp(8), dp(5));
+    }
     private TextView label(String value, int size, int color, boolean bold) {
         TextView text = new TextView(this); text.setText(value); text.setTextSize(size); text.setTextColor(color);
         if (bold) text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        root.addView(text); return text;
+        readableText(text); root.addView(text); return text;
     }
     private TextView pill(String value, int bg, int color) {
         TextView text = new TextView(this); text.setText(value); text.setTextSize(13); text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
