@@ -1230,6 +1230,11 @@ public class MainActivity extends ComponentActivity {
     private void addAccountOptions(LinearLayout list) {
         sectionTitle(list, "ACCOUNT & SUPPORT");
         accounts.addControls(list, PANEL, INK, GREEN, MUTED, RED);
+        for (int i = 0; i < list.getChildCount(); i++) {
+            View copy = list.getChildAt(i);
+            if (copy instanceof TextView && !(copy instanceof Button) && copy.getBackground() == null)
+                readableText((TextView) copy);
+        }
         TextView account = new TextView(this); account.setText("Photos and progress stay on this device.");
         account.setTextColor(INK); account.setTextSize(16); readableText(account); list.addView(account);
         TextView support = new TextView(this);
@@ -1287,7 +1292,7 @@ public class MainActivity extends ComponentActivity {
                                   java.util.function.IntConsumer changed) {
         TextView label = new TextView(this);
         label.setText(title + "  ·  " + initial + "%");
-        label.setTextColor(INK); label.setTextSize(16);
+        label.setTextColor(INK); label.setTextSize(16); readableText(label);
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
         labelLp.topMargin = dp(17); list.addView(label, labelLp);
         SeekBar slider = new SeekBar(this);
@@ -1800,6 +1805,11 @@ public class MainActivity extends ComponentActivity {
                         if (!reviewActionRunning) { fullScreenReview = false; render(); } return true;
                     }
                 });
+        card.setOnClickListener(v -> {
+            if (reviewActionRunning) return;
+            if (zoomImage != null) { fullScreenReview = false; render(); }
+            else if (tap != null) tap.run();
+        });
         card.setOnTouchListener((view, event) -> {
             if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
             int action = event.getActionMasked();
