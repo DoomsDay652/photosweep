@@ -1,0 +1,38 @@
+[
+  {
+    "resource": "dreamy_sweep",
+    "title": "Dreamy Sweep",
+    "bpm": 80,
+    "seconds": 96.0,
+    "style": "dream",
+    "bytes": 523843,
+    "seam_delta": 0.011533
+  },
+  {
+    "resource": "paper_lantern",
+    "title": "Paper Lantern",
+    "bpm": 72,
+    "seconds": 106.667,
+    "style": "lofi",
+    "bytes": 1062489,
+    "seam_delta": 0.004154
+  },
+  {
+    "resource": "nebula_drift",
+    "title": "Nebula Drift",
+    "bpm": 64,
+    "seconds": 120.0,
+    "style": "space",
+    "bytes": 815478,
+    "seam_delta": 0.007599
+  },
+  {
+    "resource": "midnight_polaroid",
+    "title": "Midnight Polaroid",
+    "bpm": 76,
+    "seconds": 101.053,
+    "style": "lofi",
+    "bytes": 1001152,
+    "seam_delta": 0.009853
+  }
+]
