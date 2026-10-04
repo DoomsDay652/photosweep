@@ -802,6 +802,8 @@ public class MainActivity extends Activity {
         else if (reviewing && selectedMonth != null) reviewScreen();
         else if (selectedYear != -1) monthsScreen();
         else yearsScreen();
+        if (!showingThemes && !showingSettings && !showingTrash && !reviewing && selectedYear == -1)
+            addVersionLabel();
         if (previousRoot != null) {
             LinearLayout nextRoot = root;
             nextRoot.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
@@ -855,6 +857,18 @@ public class MainActivity extends Activity {
             page.photoId = current.id;
         }
         return true;
+    }
+
+    private void addVersionLabel() {
+        TextView version = new TextView(this);
+        version.setText("v" + BuildConfig.VERSION_NAME + " · Build " + BuildConfig.VERSION_CODE);
+        version.setTextSize(11);
+        version.setTextColor(MUTED);
+        version.setGravity(Gravity.END);
+        version.setPadding(0, dp(6), dp(4), 0);
+        version.setContentDescription("Photo Sweep version " + BuildConfig.VERSION_NAME
+                + ", build " + BuildConfig.VERSION_CODE);
+        root.addView(version, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private void intro() {
