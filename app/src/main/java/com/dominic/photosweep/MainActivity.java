@@ -405,7 +405,7 @@ public class MainActivity extends ComponentActivity {
     private boolean showingSettings, showingThemes, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private int optionsSection;
     private boolean arachnophobiaMode, animateThemeChange;
-    private int themeChoice, musicVolume;
+    private int themeChoice, musicVolume, masterVolume, vfxVolume;
     private int swipeStyle, swipeIntensity = 55, swipeSpeed = 100;
     private android.animation.ValueAnimator swipePreviewAnimator;
     private SwipeEffect swipePreviewEffect;
@@ -486,7 +486,9 @@ public class MainActivity extends ComponentActivity {
         adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
         musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
-        musicVolume = getPreferences(MODE_PRIVATE).getInt("music_volume", 18);
+        musicVolume = readVolume("music_volume", 18);
+        masterVolume = readVolume("master_volume", 100);
+        vfxVolume = readVolume("vfx_volume", 100);
         arachnophobiaMode = getPreferences(MODE_PRIVATE).getBoolean("arachnophobia_mode", false);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         reviewed = new HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("reviewed", Collections.emptySet()));
@@ -529,6 +531,7 @@ public class MainActivity extends ComponentActivity {
         super.onResume();
         playUpdates.onResume();
         if (gravitySensor != null) sensorManager.registerListener(tiltListener, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
+        audio.setMix(masterVolume / 100f, vfxVolume / 100f);
         audio.resume(musicEnabled, musicVolume / 100f);
         // onCreate already loaded the library. Android photo-action results
         // update local state before onResume; do not scan the gallery again.
@@ -1198,24 +1201,43 @@ public class MainActivity extends ComponentActivity {
             }
         });
         settingSwitch(list, "Loop current track", "Repeat this song instead of changing tracks", audio.isRepeatTrack(), audio::setRepeatTrack);
-        TextView volume = new TextView(this); volume.setText("Music volume  ·  " + musicVolume + "%");
-        volume.setTextColor(INK); volume.setTextSize(16);
-        LinearLayout.LayoutParams volumeLp = new LinearLayout.LayoutParams(-1, -2); volumeLp.topMargin = dp(17); list.addView(volume, volumeLp);
-        SeekBar slider = new SeekBar(this); slider.setMax(50); slider.setProgress(musicVolume);
+        addVolumeControl(list, "Master volume", "master_volume", masterVolume, value -> masterVolume = value);
+        addVolumeControl(list, "Music volume", "music_volume", musicVolume, value -> musicVolume = value);
+        addVolumeControl(list, "VFX sound volume", "vfx_volume", vfxVolume, value -> vfxVolume = value);
+        TextView note = new TextView(this); note.setText("Sounds use your phone's media volume. Music stops when you leave Photo Sweep.");
+        note.setTextColor(MUTED); note.setTextSize(13); list.addView(note);
+    }
+
+    private int readVolume(String key, int fallback) {
+        return Math.max(0, Math.min(100, getPreferences(MODE_PRIVATE).getInt(key, fallback)));
+    }
+
+    private void addVolumeControl(LinearLayout list, String title, String key, int initial,
+                                  java.util.function.IntConsumer changed) {
+        TextView label = new TextView(this);
+        label.setText(title + "  ·  " + initial + "%");
+        label.setTextColor(INK); label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
+        labelLp.topMargin = dp(17); list.addView(label, labelLp);
+        SeekBar slider = new SeekBar(this);
+        slider.setMax(100); slider.setProgress(initial);
+        slider.setContentDescription(title);
         slider.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN));
+        slider.setThumbTintList(android.content.res.ColorStateList.valueOf(GREEN));
         list.addView(slider, new LinearLayout.LayoutParams(-1, dp(52)));
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar bar, int value, boolean user) {
                 if (!user) return;
-                musicVolume = value; volume.setText("Music volume  ·  " + value + "%");
-                getPreferences(MODE_PRIVATE).edit().putInt("music_volume", value).apply();
+                changed.accept(value);
+                label.setText(title + "  ·  " + value + "%");
+                getPreferences(MODE_PRIVATE).edit().putInt(key, value).apply();
                 updateMusic();
             }
             @Override public void onStartTrackingTouch(SeekBar bar) { }
-            @Override public void onStopTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                if (key.equals("vfx_volume")) playEffect(true);
+            }
         });
-        TextView note = new TextView(this); note.setText("Sounds use your phone's media volume. Music stops when you leave Photo Sweep.");
-        note.setTextColor(MUTED); note.setTextSize(13); list.addView(note);
     }
 
     private void addThemeChoices(LinearLayout list, int[] choices, int level) {
@@ -2368,7 +2390,7 @@ public class MainActivity extends ComponentActivity {
                             ? COUNTRY_FLAGS[countryCollection(themeChoice)] : null,
                     selectedSwipeProfile(),
                     (!canCustomizeSwipe() || swipeStyle != 9) && !(themeChoice == 21 && swipeStyle == 0),
-                    GREEN, RED, swipeIntensity, swipeSpeed);
+                    swipeIntensity, swipeSpeed);
         }
     }
 
@@ -2594,7 +2616,10 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void updateMusic() {
-        if (audio != null) audio.configure(musicEnabled, musicVolume / 100f);
+        if (audio != null) {
+            audio.setMix(masterVolume / 100f, vfxVolume / 100f);
+            audio.configure(musicEnabled, musicVolume / 100f);
+        }
     }
 
     private void stopMusic() {

@@ -16,14 +16,14 @@ class SwipeVfxView extends View {
     private final String flag;
     private final boolean enabled;
     private final SwipeTheme.Kind kind;
-    private final int keepColor, trashColor, intensity, speed;
+    private final int intensity, speed;
     private long started, released;
     private boolean held;
     private float fingerX=-1, fingerY=-1;
     SwipeVfxView(Context context, Sprites sprites, String flag, SwipeTheme.Kind kind, boolean enabled,
-                 int keepColor, int trashColor, int intensity, int speed) {
+                 int intensity, int speed) {
         super(context); this.sprites=sprites; this.flag=flag; this.kind=kind; this.enabled=enabled;
-        this.keepColor=keepColor; this.trashColor=trashColor; this.intensity=intensity; this.speed=speed;
+        this.intensity=intensity; this.speed=speed;
         setClickable(false); setFocusable(false); setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
     void hold(float x,float y) { held=true; released=0; started=SystemClock.uptimeMillis(); progress=0; follow(x,y); }
@@ -35,7 +35,7 @@ class SwipeVfxView extends View {
     @Override protected void onDraw(Canvas canvas) {
         float amount=SwipeMotion.clamp(Math.abs(progress)), w=getWidth(), h=getHeight();
         if ((!held && amount<.015f) || w<=0 || h<=0) return;
-        boolean keep=progress>=0; int sign=keep?1:-1, action=keep?keepColor:trashColor, color=SwipeTheme.color(kind);
+        boolean keep=progress>=0; int sign=keep?1:-1, color=SwipeTheme.color(kind);
         long now=SystemClock.uptimeMillis(); if(started==0) started=now;
         float time=(now-started)/1000f*speed/100f;
         float impact=released==0?0:SwipeMotion.clamp((now-released)/(float)SwipeMotion.duration(speed));
@@ -43,8 +43,6 @@ class SwipeVfxView extends View {
         float strength=(held?.32f+.68f*SwipeMotion.ease(amount):SwipeMotion.ease(amount))*fade;
         float cx=fingerX<0?w*(keep?.7f:.3f):Math.max(w*.12f,Math.min(w*.88f,fingerX));
         float cy=fingerY<0?h*.55f:Math.max(h*.18f,Math.min(h*.82f,fingerY));
-        paint.setStyle(Paint.Style.FILL); paint.setColor(withAlpha(action,(int)(26*amount*fade)));
-        canvas.drawRect(keep?w*.8f:0,0,keep?w:w*.2f,h,paint);
         if(enabled) {
             drawStructure(canvas,w,h,cx,cy,time,impact,strength,sign,color);
             Bitmap sprite=sprites.get(keep); int count=8+intensity/6;
@@ -123,14 +121,6 @@ class SwipeVfxView extends View {
                 canvas.restore();
             }
         }
-        float labelStrength=SwipeMotion.ease(amount)*fade;
-        paint.setStyle(Paint.Style.FILL);paint.setColor(withAlpha(action,(int)(225*labelStrength)));
-        float lw=dp(132),lh=dp(42),lx=keep?w-lw-dp(12):dp(12);bounds.set(lx,h*.12f,lx+lw,h*.12f+lh);
-        canvas.drawRoundRect(bounds,dp(16),dp(16),paint);
-        paint.setColor(withAlpha(Color.WHITE,(int)(255*labelStrength)));paint.setTextSize(dp(17));
-        paint.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD));paint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText(keep?"KEEP →":"← TRASH",bounds.centerX(),bounds.centerY()-(paint.ascent()+paint.descent())/2,paint);
-        paint.setTypeface(Typeface.DEFAULT);paint.setAlpha(255);
         if(isAttachedToWindow() && (released==0 || impact<1))postInvalidateOnAnimation();
     }
     private void drawStructure(Canvas c,float w,float h,float x,float y,float time,float impact,float strength,int sign,int color) {
