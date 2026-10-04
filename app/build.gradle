@@ -19,7 +19,8 @@ android {
         publicConfig.each { key, value -> buildConfigField 'String', key, groovy.json.JsonOutput.toJson(value) }
         targetSdk 36
         versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
-        versionName '0.1.5'
+        versionName '0.1.6'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     signingConfigs {
         release {
@@ -50,6 +51,11 @@ android {
 // Present in the setup bundle so Play Console can enable product configuration.
 // Guest/offline AppServices remains active until products and verification are configured.
 dependencies {
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+
     implementation 'com.google.android.play:app-update:2.1.0'
     implementation 'androidx.activity:activity:1.10.1'
     implementation platform('org.jetbrains.kotlin:kotlin-bom:2.2.0')
