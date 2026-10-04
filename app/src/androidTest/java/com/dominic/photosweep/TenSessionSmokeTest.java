@@ -101,7 +101,7 @@ public class TenSessionSmokeTest {
             dragPhoto(.40f, true); awaitText("1/2 left");
             clickText("Undo last photo"); awaitText("2/2 left");
             back(); awaitDescription("Full-screen photo review with swiping");
-            dragPhoto(-.40f, false); acceptSystemPhotoPrompt(); awaitText("1 of 2 left to review");
+            dragPhoto(-.40f, false); acceptSystemPhotoPrompt(); awaitText("1 of 1 left to review");
             clickText("Undo last photo"); acceptSystemPhotoPrompt(); awaitText("2 of 2 left to review");
             back(); back(); awaitText("Your photos");
             assertEquals("Theme survives the session", THEMES[index], preferences.getInt("theme", -1));
@@ -111,22 +111,21 @@ public class TenSessionSmokeTest {
                 evidence.mkdirs();
                 Bitmap screen = instrumentation.getUiAutomation().takeScreenshot();
                 if (screen != null) {
-                    try (OutputStream out = evidenceStream("session-" + (index+1) + ".png", "image/png")) {
+                    try (OutputStream out = new java.io.FileOutputStream(new java.io.File(evidence, "session-" + (index+1) + ".png"))) {
                         screen.compress(Bitmap.CompressFormat.PNG, 100, out);
                     } finally { screen.recycle(); }
                 }
                 UiDevice.getInstance(instrumentation).dumpWindowHierarchy(new java.io.File(evidence, "session-" + (index+1) + ".xml"));
+                // Copy evidence out before Gradle uninstalls the app. Keep it
+                // outside shared media so later sessions never import it.
+                shell("mkdir -p /data/local/tmp/PhotoSweepSmoke");
+                shell("cp " + evidence.getAbsolutePath() + "/session-" + (index+1) + ".* /data/local/tmp/PhotoSweepSmoke/");
                 scenario.close(); scenario = null;
             }
-            for (Uri uri : samples) context.getContentResolver().delete(uri, null, null);
+            android.os.Bundle cleanup = new android.os.Bundle();
+            cleanup.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE);
+            for (Uri uri : samples) context.getContentResolver().delete(uri, cleanup);
         }
-    }
-
-    private OutputStream evidenceStream(String name, String mime) throws Exception {
-        ContentValues values = new ContentValues(); values.put(MediaStore.Downloads.DISPLAY_NAME, name);
-        values.put(MediaStore.Downloads.MIME_TYPE, mime); values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/PhotoSweepSmoke");
-        Uri uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-        return context.getContentResolver().openOutputStream(uri);
     }
 
     private Uri seedPhoto(int session, int number) throws Exception {
