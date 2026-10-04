@@ -95,12 +95,16 @@ public class TenSessionSmokeTest {
             dragPhoto(.08f, false); awaitText("2 of 2 left to review");
             dragPhoto(.40f, false); awaitText("1 of 2 left to review");
             clickText("Undo last photo"); awaitText("2 of 2 left to review");
-            clickDescription("Full-screen photo review with swiping");
+            tapPhoto(false, false);
             awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
             scenario.recreate(); awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
-            dragPhoto(.40f, true); awaitText("1/2 left");
-            clickText("Undo last photo"); awaitText("2/2 left");
-            back(); awaitDescription("Full-screen photo review with swiping");
+            assertImmersive();
+            pinchAndPan();
+            tapPhoto(true, true); awaitText("2 of 2 left to review");
+            tapPhoto(false, false); awaitDescription("Whole photo. Swipe right to Keep or left to Trash");
+            dragPhoto(.40f, true);
+            tapPhoto(true, true); awaitText("1 of 2 left to review");
+            clickText("Undo last photo"); awaitText("2 of 2 left to review");
             dragPhoto(-.40f, false); acceptSystemPhotoPrompt(); awaitText("1 of 1 left to review");
             clickText("Undo last photo"); acceptSystemPhotoPrompt(); awaitText("2 of 2 left to review");
             back(); back(); awaitText("Your photos");
@@ -244,6 +248,58 @@ public class TenSessionSmokeTest {
     }
     private void assertSlider(String name, int value) {
         scenario.onActivity(a -> assertEquals(name, value, ((SeekBar)find(a.getWindow().getDecorView(), description(name))).getProgress()));
+    }
+    private static final String NORMAL_PHOTO = "Photo. Tap for full-screen review, swipe left to Trash or right to Keep";
+    private static final String FULL_PHOTO = "Whole photo. Swipe right to Keep or left to Trash";
+    private Rect photoRect(boolean full) {
+        AtomicReference<Rect> position = new AtomicReference<>();
+        scenario.onActivity(a -> {
+            View photo = find(a.getWindow().getDecorView(), description(full ? FULL_PHOTO : NORMAL_PHOTO));
+            assertNotNull(photo); Rect r = new Rect(); assertTrue(photo.getGlobalVisibleRect(r)); position.set(r);
+        });
+        return position.get();
+    }
+    private void tapPhoto(boolean full, boolean twice) {
+        Rect r = photoRect(full);
+        for (int i = 0; i < (twice ? 2 : 1); i++) {
+            long now = SystemClock.uptimeMillis(); send(now, MotionEvent.ACTION_DOWN, r.centerX(), r.centerY());
+            SystemClock.sleep(40); send(now, MotionEvent.ACTION_UP, r.centerX(), r.centerY());
+            if (i == 0 && twice) SystemClock.sleep(80);
+        }
+        SystemClock.sleep(450);
+    }
+    private void assertImmersive() {
+        scenario.onActivity(a -> {
+            View decor = a.getWindow().getDecorView();
+            assertNull("No accidental Exit control", find(decor, text("Exit full screen")));
+            assertNull("No accidental Undo control", find(decor, text("Undo last photo")));
+            assertNull("No Zoom button", find(decor, text("Zoom")));
+            assertNull("No normal Full screen button", find(decor, text("⤢ Full screen")));
+            assertNull("No month buttons", find(decor, v -> v instanceof TextView && ((TextView)v).getText().toString().contains("Previous month")));
+            View card = find(decor, description(FULL_PHOTO));
+            assertTrue("Full screen spans display", card.getHeight() >= decor.getHeight() * .95f);
+        });
+    }
+    private void pinchAndPan() {
+        // Exercise real multi-pointer events; exiting afterward must still show both undecided photos.
+        scenario.onActivity(a -> {
+            View card = find(a.getWindow().getDecorView(), description(FULL_PHOTO));
+            long down = SystemClock.uptimeMillis(); float x = card.getWidth()/2f, y = card.getHeight()/2f;
+            MotionEvent one = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x-40, y, 0);
+            card.dispatchTouchEvent(one); one.recycle();
+            android.view.MotionEvent.PointerProperties[] properties = new android.view.MotionEvent.PointerProperties[2];
+            android.view.MotionEvent.PointerCoords[] coords = new android.view.MotionEvent.PointerCoords[2];
+            for (int i=0; i<2; i++) { properties[i] = new MotionEvent.PointerProperties(); properties[i].id=i; properties[i].toolType=MotionEvent.TOOL_TYPE_FINGER;
+                coords[i] = new MotionEvent.PointerCoords(); coords[i].pressure=1; coords[i].size=1; coords[i].y=y; }
+            for (int step=0; step<=8; step++) {
+                coords[0].x=x-40-step*15; coords[1].x=x+40+step*15;
+                MotionEvent e=MotionEvent.obtain(down,down+20+step*30,step==0 ? MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT) : MotionEvent.ACTION_MOVE,
+                        2,properties,coords,0,0,1,1,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0);
+                card.dispatchTouchEvent(e); e.recycle();
+            }
+            MotionEvent end=MotionEvent.obtain(down,down+320,MotionEvent.ACTION_CANCEL,x,y,0); card.dispatchTouchEvent(end); end.recycle();
+        });
+        dragPhoto(.40f, true); // Zoomed drag pans; must not mark a photo kept.
     }
     private void dragPhoto(float fraction, boolean full) {
         long focusDeadline = SystemClock.uptimeMillis() + 10000;
