@@ -99,7 +99,7 @@ final class AudioController implements AutoCloseable {
     }
 
     private void focusChanged(int change) {
-        if (closed) return;
+        if (closed || !foreground) return;
         switch (change) {
             case AudioManager.AUDIOFOCUS_GAIN:
                 focused = true; ducked = false;
