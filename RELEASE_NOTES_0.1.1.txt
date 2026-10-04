@@ -1,0 +1,7 @@
+<en-US>
+Added Dreamy Sweep, a gentle original music loop for every theme.
+Added soft, bubbly sounds for swiping, menu buttons, undo and completing a month.
+Added quiet Fire, Water, Toxic and Candy swipe accents.
+Music and sound effects can be adjusted separately in Options > Audio.
+Improved audio playback so menu changes do not restart the music.
+</en-US>
