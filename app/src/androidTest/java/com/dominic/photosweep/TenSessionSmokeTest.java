@@ -267,9 +267,8 @@ public class TenSessionSmokeTest {
         } catch (Exception error) { throw new AssertionError(error); }
     }
     private void verifyRadioDrag() {
-        clickText("Next track →"); awaitDescription("Radio track. Drag to move");
-        scenario.onActivity(a -> {
-            View bubble = find(a.getWindow().getDecorView(), description("Radio track. Drag to move"));
+        clickText("Next track →");
+        withRadioBubble(bubble -> {
             long now = SystemClock.uptimeMillis();
             MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,20,20,0);
             MotionEvent move=MotionEvent.obtain(now,now+100,MotionEvent.ACTION_MOVE,-110,170,0);
@@ -280,13 +279,34 @@ public class TenSessionSmokeTest {
         float x=preferences.getFloat("radio_x", -1), y=preferences.getFloat("radio_y", -1);
         assertTrue("Radio drag saves a horizontal location", x>=0 && x<=1);
         assertTrue("Radio drag saves a vertical location", y>=0 && y<=1);
-        clickText("Next track →"); awaitDescription("Radio track. Drag to move"); SystemClock.sleep(200);
-        scenario.onActivity(a -> {
-            View bubble=find(a.getWindow().getDecorView(),description("Radio track. Drag to move"));
+        clickText("Next track →");
+        withRadioBubble(bubble -> {
             View parent=(View)bubble.getParent();
             assertEquals("Next track keeps dragged x", x, bubble.getX()/Math.max(1f,parent.getWidth()-bubble.getWidth()), .03f);
             assertEquals("Next track keeps dragged y", y, bubble.getY()/Math.max(1f,parent.getHeight()-bubble.getHeight()), .03f);
         });
+    }
+    private void withRadioBubble(java.util.function.Consumer<View> check) {
+        // Find and hold the transient announcement in the same UI action: a separate
+        // await + inspection can race its intentional fade on busy theme renderers.
+        AtomicBoolean checked = new AtomicBoolean();
+        long end = SystemClock.uptimeMillis() + 10000;
+        do {
+            scenario.onActivity(a -> {
+                View bubble = find(a.getWindow().getDecorView(), description("Radio track. Drag to move"));
+                if (bubble == null || bubble.getWidth() == 0) return;
+                long now = SystemClock.uptimeMillis();
+                MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 20, 20, 0);
+                bubble.dispatchTouchEvent(down); down.recycle();
+                check.accept(bubble);
+                MotionEvent up = MotionEvent.obtain(now, now + 1, MotionEvent.ACTION_UP, 20, 20, 0);
+                bubble.dispatchTouchEvent(up); up.recycle();
+                checked.set(true);
+            });
+            if (checked.get()) return;
+            SystemClock.sleep(50);
+        } while (SystemClock.uptimeMillis() < end);
+        fail("Radio announcement was not available for drag verification");
     }
     private static final String NORMAL_PHOTO = "Photo. Tap for full-screen review, swipe left to Trash or right to Keep";
     private static final String FULL_PHOTO = "Whole photo. Swipe right to Keep or left to Trash";
