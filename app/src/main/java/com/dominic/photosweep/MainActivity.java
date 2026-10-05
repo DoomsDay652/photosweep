@@ -398,6 +398,10 @@ public class MainActivity extends ComponentActivity {
     }
     private int xp, keptCount, trashedCount, restoredCount;
     private int selectedYear = -1;
+    private int libraryYear = -1;
+    private final LruCache<Long, Bitmap> monthThumbnails = new LruCache<Long, Bitmap>(8 * 1024 * 1024) {
+        @Override protected int sizeOf(Long key, Bitmap value) { return value.getByteCount(); }
+    };
     private String selectedMonth;
     private boolean reviewing, loading, duplicateScanning, reloadPhotosPending;
     private boolean fullScreenReview, reviewActionRunning;
@@ -508,6 +512,7 @@ public class MainActivity extends ComponentActivity {
         xp = getPreferences(MODE_PRIVATE).getInt("xp", 0);
         if (state != null) {
             selectedYear = state.getInt("selectedYear", -1);
+            libraryYear = state.getInt("libraryYear", -1);
             selectedMonth = state.getString("selectedMonth");
             reviewing = state.getBoolean("reviewing");
             fullScreenReview = state.getBoolean("fullScreenReview");
@@ -607,6 +612,7 @@ public class MainActivity extends ComponentActivity {
         playUpdates.saveState(state);
         rememberScroll();
         state.putInt("selectedYear", selectedYear);
+        state.putInt("libraryYear", libraryYear);
         state.putString("selectedMonth", selectedMonth);
         state.putBoolean("reviewing", reviewing);
         state.putBoolean("fullScreenReview", fullScreenReview);
@@ -1079,29 +1085,102 @@ public class MainActivity extends ComponentActivity {
             statTile(stats, Integer.toString(restoredCount), "Restored", GOLD);
         }
         spacer(16);
-        label("Browse by year", 21, INK, true);
-        spacer(12);
         if (!canManage()) {
-            label("Enable one-time media access to swipe to Trash without repeated prompts.", 14, MUTED, false);
-            spacer(8);
             button(root, "Enable prompt-free Trash", PANEL, INK, this::requestMediaManagement);
-            spacer(16);
+            spacer(10);
         }
-        LinkedHashMap<Integer, int[]> years = new LinkedHashMap<>();
-        for (Photo p : photos) {
-            int[] counts = years.computeIfAbsent(p.year, k -> new int[2]);
-            counts[0]++;
-            if (!reviewed.contains(Long.toString(p.id))) counts[1]++;
+        java.util.TreeSet<Integer> availableYears = new java.util.TreeSet<>(Collections.reverseOrder());
+        for (Photo photo : photos) availableYears.add(photo.year);
+        if (availableYears.isEmpty()) {
+            label("No photos available. Check photo access.", 17, MUTED, false); return;
         }
-        if (years.isEmpty()) { label("No photos are available. Check your photo access.", 17, MUTED, false); }
-        ScrollView scroll = boundedScroll();
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        trackScroll(scroll, "years");
-        LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
-        for (Map.Entry<Integer, int[]> entry : years.entrySet()) {
-            int year = entry.getKey(); int[] count = entry.getValue();
-            tile(list, Integer.toString(year), ReviewNavigation.photoCount(count[0]) + "  •  " + count[1] + " to review", () -> { selectedYear = year; render(); });
+        if (!availableYears.contains(libraryYear)) libraryYear = availableYears.first();
+        ArrayList<Integer> years = new ArrayList<>(availableYears);
+        int position = years.indexOf(libraryYear);
+        LinearLayout yearRow = new LinearLayout(this); yearRow.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(yearRow, new LinearLayout.LayoutParams(-1, dp(52)));
+        Button older = button(yearRow, "‹", PANEL, INK, () -> { libraryYear = years.get(position + 1); render(); });
+        older.setLayoutParams(new LinearLayout.LayoutParams(dp(52), dp(48)));
+        older.setEnabled(position + 1 < years.size()); older.setContentDescription("Previous year");
+        TextView yearTitle = new TextView(this); yearTitle.setText(Integer.toString(libraryYear));
+        yearTitle.setTextSize(23); yearTitle.setTextColor(INK); yearTitle.setGravity(Gravity.CENTER);
+        yearTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD); readableText(yearTitle);
+        yearRow.addView(yearTitle, new LinearLayout.LayoutParams(0, -2, 1));
+        Button newer = button(yearRow, "›", PANEL, INK, () -> { libraryYear = years.get(position - 1); render(); });
+        newer.setLayoutParams(new LinearLayout.LayoutParams(dp(52), dp(48)));
+        newer.setEnabled(position > 0); newer.setContentDescription("Next year");
+        spacer(10); label("Your months", 21, INK, true); spacer(10);
+        addMonthLibrary(libraryYear, "library:" + libraryYear);
+        String resume = null;
+        if (selectedMonth != null && photosByMonth.containsKey(selectedMonth)) {
+            for (Photo photo : photosByMonth.get(selectedMonth)) if (!reviewed.contains(Long.toString(photo.id))) { resume = selectedMonth; break; }
         }
+        if (resume == null) for (Map.Entry<String, List<Photo>> entry : photosByMonth.entrySet()) {
+            boolean pending = false;
+            for (Photo photo : entry.getValue()) if (!reviewed.contains(Long.toString(photo.id))) { pending = true; break; }
+            if (pending) { resume = entry.getKey(); break; }
+        }
+        if (resume != null) {
+            final String resumeMonth = resume;
+            button(root, "Continue " + ReviewNavigation.title(resume, false) + " →", GREEN, BG, () -> openReviewMonth(resumeMonth));
+        }
+    }
+
+    private void addMonthLibrary(int year, String scrollKey) {
+        ScrollView scroll = boundedScroll(); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        trackScroll(scroll, scrollKey);
+        LinearLayout grid = new LinearLayout(this); grid.setOrientation(LinearLayout.VERTICAL); scroll.addView(grid);
+        LinearLayout row = null; int count = 0;
+        for (Map.Entry<String, List<Photo>> entry : photosByMonth.entrySet()) {
+            List<Photo> monthPhotos = entry.getValue();
+            if (monthPhotos.isEmpty() || monthPhotos.get(0).year != year) continue;
+            if (count++ % 2 == 0) {
+                row = new LinearLayout(this); row.setBaselineAligned(false);
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+                rowLp.bottomMargin = dp(12); grid.addView(row, rowLp);
+            }
+            String month = entry.getKey(); int remaining = 0;
+            Photo cover = monthPhotos.get(0);
+            for (Photo photo : monthPhotos) if (!reviewed.contains(Long.toString(photo.id))) {
+                if (remaining == 0) cover = photo; remaining++;
+            }
+            LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
+            GradientDrawable background = rounded(PANEL, 18);
+            background.setStroke(dp(selectedMonth != null && selectedMonth.equals(month) ? 2 : 1), GREEN);
+            card.setBackground(background); card.setClipToOutline(true); card.setFocusable(true); card.setClickable(true);
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (row.getChildCount() == 0) cardLp.rightMargin = dp(12); row.addView(card, cardLp);
+            ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            image.setBackgroundColor(PANEL); image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            card.addView(image, new LinearLayout.LayoutParams(-1, dp(118))); loadMonthThumbnail(cover, image);
+            TextView title = new TextView(this); title.setText(ReviewNavigation.title(month, false));
+            title.setTextSize(17); title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            title.setPadding(dp(12), dp(9), dp(12), dp(3)); card.addView(title);
+            TextView status = new TextView(this); status.setText(remaining == 0 ? "✓ All reviewed" : remaining + " left");
+            status.setTextSize(13); status.setTextColor(remaining == 0 ? GREEN : MUTED);
+            status.setPadding(dp(12), 0, dp(12), dp(12)); card.addView(status);
+            card.setContentDescription(ReviewNavigation.title(month, true) + ", " + status.getText());
+            card.setOnClickListener(v -> openReviewMonth(month));
+        }
+        if (count % 2 != 0) row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+    }
+
+    private void loadMonthThumbnail(Photo photo, ImageView image) {
+        Bitmap cached = monthThumbnails.get(photo.id);
+        if (cached != null) { image.setImageBitmap(cached); return; }
+        final FrameLayout requestedHost = host;
+        io.execute(() -> {
+            if (isDestroyed() || requestedHost != host) return;
+            try {
+                Bitmap bitmap = monthThumbnails.get(photo.id);
+                if (bitmap == null) bitmap = getContentResolver().loadThumbnail(photo.uri, new Size(320, 240), null);
+                if (bitmap == null) return;
+                if (isDestroyed()) { bitmap.recycle(); return; }
+                monthThumbnails.put(photo.id, bitmap);
+                final Bitmap thumbnail = bitmap;
+                runOnUiThread(() -> { if (!isDestroyed() && image.isAttachedToWindow()) image.setImageBitmap(thumbnail); });
+            } catch (Exception ignored) { }
+        });
     }
 
     private void topAction(LinearLayout row, String symbol, String title, int color,
@@ -1601,19 +1680,7 @@ public class MainActivity extends ComponentActivity {
     private void monthsScreen() {
         back("All years", () -> { selectedYear = -1; selectedMonth = null; render(); });
         heading(Integer.toString(selectedYear), "Choose a month");
-        LinkedHashMap<String, int[]> months = new LinkedHashMap<>();
-        for (Photo p : photos) if (p.year == selectedYear) {
-            int[] counts = months.computeIfAbsent(p.month, k -> new int[2]);
-            counts[0]++; if (!reviewed.contains(Long.toString(p.id))) counts[1]++;
-        }
-        ScrollView scroll = boundedScroll(); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        trackScroll(scroll, "months:" + selectedYear);
-        LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
-        for (Map.Entry<String, int[]> entry : months.entrySet()) {
-            String month = entry.getKey(); int[] count = entry.getValue();
-            String name = ReviewNavigation.title(month, false);
-            tile(list, name, ReviewNavigation.photoCount(count[0]) + "  •  " + count[1] + " to review", () -> { openReviewMonth(month); });
-        }
+        addMonthLibrary(selectedYear, "months:" + selectedYear);
     }
 
     private void rebuildMonthIndex() {
