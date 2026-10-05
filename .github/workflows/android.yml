@@ -6,8 +6,9 @@ on:
       sessions:
         description: Emulator sessions to run
         type: choice
-        default: All ten
+        default: Skip emulator
         options:
+          - Skip emulator
           - All ten
           - Midnight only
   push:
@@ -18,6 +19,7 @@ permissions:
 
 jobs:
   smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.sessions != 'Skip emulator' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -59,7 +61,7 @@ jobs:
 
   build:
     needs: smoke
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.sessions != 'Midnight only' }}
+    if: ${{ always() && (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') && inputs.sessions != 'Midnight only' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check out app
