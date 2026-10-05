@@ -1652,11 +1652,54 @@ public class MainActivity extends ComponentActivity {
                     Toast.makeText(this, "Progress reset · level 1", Toast.LENGTH_SHORT).show();
                 }).show();
     }
+    private Button addUndoPhotoAction(LinearLayout parent) {
+        Button undo = button(parent, "↶  Undo last photo", PANEL, GREEN, this::undoLastPhoto);
+        undo.setTextSize(14); undo.setPadding(dp(20), 0, dp(20), 0);
+        undo.setMinHeight(dp(48)); undo.setMinimumHeight(dp(48));
+        undo.setContentDescription("Undo the last photo decision");
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(48));
+        lp.gravity = Gravity.CENTER_HORIZONTAL; lp.topMargin = dp(8); lp.bottomMargin = dp(8);
+        undo.setLayoutParams(lp); return undo;
+    }
+
+    private android.app.AlertDialog.Builder themedFeedbackDialog(String title) {
+        TextView heading = new TextView(this); heading.setText(title); heading.setTextSize(22);
+        heading.setTextColor(INK); heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        heading.setPadding(dp(24), dp(22), dp(24), dp(12));
+        return new android.app.AlertDialog.Builder(this).setCustomTitle(heading);
+    }
+
+    private void showThemedFeedbackDialog(android.app.AlertDialog dialog) {
+        dialog.show();
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(themeButton(BG, 24));
+        TextView message = dialog.findViewById(android.R.id.message);
+        if (message != null) { message.setTextColor(INK); message.setTextSize(15); }
+        for (int role : new int[]{android.app.AlertDialog.BUTTON_POSITIVE, android.app.AlertDialog.BUTTON_NEGATIVE}) {
+            Button action = dialog.getButton(role);
+            if (action != null) {
+                action.setAllCaps(false); action.setTextColor(role == android.app.AlertDialog.BUTTON_POSITIVE ? GREEN : INK);
+                action.setBackgroundTintList(null); action.setBackground(themeButton(PANEL, 14));
+                action.setPadding(dp(14), dp(8), dp(14), dp(8)); action.setMinHeight(dp(48));
+            }
+        }
+    }
+
     private void showFeedbackMenu() {
-        String[] choices = {"Suggest a theme", "Suggest a feature", "Report a problem"};
-        new android.app.AlertDialog.Builder(this).setTitle("Feedback & suggestions")
-                .setItems(choices, (dialog, which) -> writeFeedback(choices[which]))
-                .setNegativeButton("Cancel", null).show();
+        LinearLayout choices = new LinearLayout(this); choices.setOrientation(LinearLayout.VERTICAL);
+        choices.setPadding(dp(18), dp(4), dp(18), dp(8));
+        ScrollView choiceScroll = new ScrollView(this); choiceScroll.setFillViewport(false); choiceScroll.addView(choices);
+        android.app.AlertDialog dialog = themedFeedbackDialog("Feedback & suggestions")
+                .setView(choiceScroll).setNegativeButton("Cancel", null).create();
+        settingsRow(choices, ICON_THEMES, "Suggest a theme", "Countries, colors, scenery and animations", () -> {
+            dialog.dismiss(); writeFeedback("Suggest a theme");
+        });
+        settingsRow(choices, "＋", "Suggest a feature", "Ideas to make Photo Sweep more useful", () -> {
+            dialog.dismiss(); writeFeedback("Suggest a feature");
+        });
+        settingsRow(choices, ICON_FEEDBACK, "Report a problem", "Tell us what happened and what you expected", () -> {
+            dialog.dismiss(); writeFeedback("Report a problem");
+        });
+        showThemedFeedbackDialog(dialog);
     }
 
     private void writeFeedback(String category) {
@@ -1668,6 +1711,9 @@ public class MainActivity extends ComponentActivity {
         android.widget.EditText message = new android.widget.EditText(this);
         message.setTextColor(INK); message.setHintTextColor(MUTED); message.setTextSize(16);
         message.setGravity(Gravity.TOP); message.setMinLines(4); message.setMaxLines(8);
+        message.setBackgroundTintList(null); message.setBackground(themeButton(PANEL, 14));
+        message.setPadding(dp(14), dp(14), dp(14), dp(14));
+        message.setHighlightColor(blend(GREEN, PANEL, .5f));
         message.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         message.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6000)});
@@ -1676,8 +1722,9 @@ public class MainActivity extends ComponentActivity {
                 : "What happened? What did you expect? How can we reproduce it?");
         LinearLayout.LayoutParams input = new LinearLayout.LayoutParams(-1, -2); input.topMargin = dp(12);
         form.addView(message, input);
-        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this).setTitle(category)
-                .setView(form).setNegativeButton("Cancel", null).setPositiveButton("Open email draft", null).create();
+        ScrollView formScroll = new ScrollView(this); formScroll.setFillViewport(false); formScroll.addView(form);
+        android.app.AlertDialog dialog = themedFeedbackDialog(category)
+                .setView(formScroll).setNegativeButton("Cancel", null).setPositiveButton("Open email draft", null).create();
         dialog.setOnShowListener(ignored -> dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String details = message.getText().toString().trim();
             if (details.isEmpty()) { message.setError("Please describe your idea or problem"); return; }
@@ -1688,17 +1735,18 @@ public class MainActivity extends ComponentActivity {
                     + "?subject=" + Uri.encode(subject) + "&body=" + Uri.encode(body)));
             try { startActivity(draft); dialog.dismiss(); }
             catch (android.content.ActivityNotFoundException noEmail) {
-                new android.app.AlertDialog.Builder(this).setTitle("No email app available")
+                android.app.AlertDialog fallback = themedFeedbackDialog("No email app available")
                         .setMessage("Send your feedback to " + SUPPORT_EMAIL + ". Copy it below to send from another email app.")
                         .setPositiveButton("Copy feedback", (d, which) -> {
                             android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Photo Sweep feedback",
                                     "To: " + SUPPORT_EMAIL + "\nSubject: " + subject + "\n\n" + body));
                             Toast.makeText(this, "Feedback copied", Toast.LENGTH_SHORT).show();
-                        }).setNegativeButton("Back", null).show();
+                        }).setNegativeButton("Back", null).create();
+                showThemedFeedbackDialog(fallback);
             }
         }));
-        dialog.show();
+        showThemedFeedbackDialog(dialog);
     }
 
     private void showSupportDetails() {
@@ -2128,7 +2176,7 @@ public class MainActivity extends ComponentActivity {
             label("This month is clear. Kept photos are still in your gallery.", 16, MUTED, false);
             if (canUndoLastPhoto()) {
                 spacer(20);
-                button(root, "Undo last photo", PANEL, GREEN, this::undoLastPhoto);
+                addUndoPhotoAction(root);
             }
             spacer(30);
             button(root, "Review this month again", GREEN, Color.WHITE, () -> {
@@ -2186,10 +2234,8 @@ public class MainActivity extends ComponentActivity {
         attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> { fullScreenReview = true; render(); });
         page.card = card; page.effect = effect; page.border = fireBorder;
         {
-            TextView undo = label("Undo last photo", 14, GREEN, true);
+            Button undo = addUndoPhotoAction(root);
             page.undo = undo; undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE);
-            undo.setPadding(0, dp(9), 0, 0);
-            undo.setOnClickListener(v -> undoLastPhoto());
         }
         addMonthNavigation();
         spacer(6); page.scanning = label("Checking for exact duplicates…", 12, MUTED, false);
