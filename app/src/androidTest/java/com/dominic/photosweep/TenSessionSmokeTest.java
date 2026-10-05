@@ -92,7 +92,6 @@ public class TenSessionSmokeTest {
             adjustVolume("Master volume", 1); assertEquals(100, preferences.getInt("master_volume", -1));
             verifyRadioDrag();
             back(); back(); awaitText("Your photos");
-            clickText(Integer.toString(fixtureMonth.getYear())); awaitText("Choose a month");
             clickText(fixtureMonth.format(java.time.format.DateTimeFormatter.ofPattern("MMMM", java.util.Locale.getDefault())));
             awaitText("2 of 2 left to review");
             dragPhoto(.08f, false); awaitText("2 of 2 left to review");
