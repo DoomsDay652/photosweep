@@ -79,6 +79,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends ComponentActivity {
+    private static final String ICON_THEMES = "✦";
+    private static final String ICON_SETTINGS = "⚙";
+    private static final String ICON_TRASH = "🗑";
+    private static final String ICON_FEEDBACK = "⚑";
+    private static final String SUPPORT_EMAIL = "dreamygamestudios.support@gmail.com";
     private static final int PERMISSION_REQUEST = 31;
     private static final int TRASH_REQUEST = 32;
     private static final int RESTORE_REQUEST = 33;
@@ -1070,14 +1075,12 @@ public class MainActivity extends ComponentActivity {
     private void yearsScreen() {
         LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(64)));
-        TextView brand = new TextView(this); brand.setText("PHOTO SWEEP"); brand.setLetterSpacing(.08f);
-        brand.setTextColor(GREEN); brand.setTextSize(12); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        topAction(top, "✦", "Themes", GREEN, "Themes and animation settings",
-                () -> { showingThemes = true; render(); });
-        topAction(top, "⚙", "Settings", INK, "Options and sound settings",
+        topAction(top, ICON_THEMES, "Themes", GREEN, "Themes and animation settings",
+                () -> { themeAnimationsOpen = false; showingThemes = true; render(); });
+        topAction(top, ICON_FEEDBACK, "Report a bug", GREEN, "Feedback: suggest a theme, suggest a feature, or report a problem", this::showFeedbackMenu);
+        topAction(top, ICON_SETTINGS, "Settings", GREEN, "Options and sound settings",
                 () -> { showingSettings = true; render(); });
-        topAction(top, "🗑", "Trash", GOLD, "Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()),
+        topAction(top, ICON_TRASH, "Trash", GOLD, "Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()),
                 () -> { showingTrash = true; render(); });
         label(accounts == null ? "Your photos" : accounts.photosHeading(), 28, INK, true); spacer(13);
         LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
@@ -1211,11 +1214,11 @@ public class MainActivity extends ComponentActivity {
         icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         button.addView(icon, new LinearLayout.LayoutParams(-1, dp(29)));
         TextView name = new TextView(this); name.setText(title); name.setTextSize(11);
-        name.setTextColor(color); name.setGravity(Gravity.CENTER); name.setMaxLines(1);
+        name.setTextColor(color); name.setGravity(Gravity.CENTER); name.setMaxLines(2);
         name.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         button.addView(name, new LinearLayout.LayoutParams(-1, -2));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(64), dp(58));
-        lp.leftMargin = dp(7); row.addView(button, lp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(58), 1);
+        if (row.getChildCount() > 0) lp.leftMargin = dp(7); row.addView(button, lp);
         button.setOnClickListener(v -> action.run());
     }
 
@@ -1274,16 +1277,17 @@ public class MainActivity extends ComponentActivity {
             heading("Settings", "Make Photo Sweep yours");
             LinearLayout list = optionsList("options");
             sectionTitle(list, "PERSONALIZE");
-            settingsRow(list, "✦", "Themes & animations", THEME_NAMES[themeChoice].split(" · ")[0], () -> {
+            settingsRow(list, ICON_THEMES, "Themes & animations", THEME_NAMES[themeChoice].split(" · ")[0], () -> {
                 showingSettings = false; showingThemes = true; themeAnimationsOpen = false; render();
             });
+            settingsRow(list, ICON_FEEDBACK, "Report a bug", "Theme ideas, feature suggestions and problems", this::showFeedbackMenu);
             settingsRow(list, "♫", "Audio & radio", "Swipe sounds, music and volume", () -> openOptionsSection(1));
             settingsRow(list, "◈", "Display & gestures", "Current theme's swipe effects and previews", () -> openOptionsSection(5));
             sectionTitle(list, "APP & ACCOUNT");
             settingsRow(list, "◎", "Account", "Manage sign-in, profile and account", () -> openOptionsSection(2));
             settingsRow(list, "◇", "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
             settingsRow(list, "?", "Help & support", "Tips, support and app information", this::showSupportDetails);
-            if (testingVisible) settingsRow(list, "⚙", "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
+            if (testingVisible) settingsRow(list, ICON_SETTINGS, "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
             TextView version = new TextView(this); version.setText("Photo Sweep · " + BuildConfig.VERSION_NAME);
             version.setTextColor(MUTED); version.setTextSize(13); version.setGravity(Gravity.CENTER);
             version.setPadding(0, dp(12), 0, dp(16)); list.addView(version);
@@ -1648,6 +1652,55 @@ public class MainActivity extends ComponentActivity {
                     Toast.makeText(this, "Progress reset · level 1", Toast.LENGTH_SHORT).show();
                 }).show();
     }
+    private void showFeedbackMenu() {
+        String[] choices = {"Suggest a theme", "Suggest a feature", "Report a problem"};
+        new android.app.AlertDialog.Builder(this).setTitle("Feedback & suggestions")
+                .setItems(choices, (dialog, which) -> writeFeedback(choices[which]))
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void writeFeedback(String category) {
+        LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(8), dp(20), dp(8));
+        TextView note = new TextView(this); note.setTextColor(INK); note.setTextSize(14);
+        note.setText("Send to " + SUPPORT_EMAIL + ". You can review the email draft before sending.");
+        form.addView(note);
+        android.widget.EditText message = new android.widget.EditText(this);
+        message.setTextColor(INK); message.setHintTextColor(MUTED); message.setTextSize(16);
+        message.setGravity(Gravity.TOP); message.setMinLines(4); message.setMaxLines(8);
+        message.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        message.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6000)});
+        message.setHint(category.equals("Suggest a theme") ? "Country, colors, scenery or animation ideas…"
+                : category.equals("Suggest a feature") ? "What would you like, and how would it help?"
+                : "What happened? What did you expect? How can we reproduce it?");
+        LinearLayout.LayoutParams input = new LinearLayout.LayoutParams(-1, -2); input.topMargin = dp(12);
+        form.addView(message, input);
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this).setTitle(category)
+                .setView(form).setNegativeButton("Cancel", null).setPositiveButton("Open email draft", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String details = message.getText().toString().trim();
+            if (details.isEmpty()) { message.setError("Please describe your idea or problem"); return; }
+            String subject = "Photo Sweep · " + category;
+            String body = details + "\n\nPhoto Sweep " + BuildConfig.VERSION_NAME + " (build " + BuildConfig.VERSION_CODE
+                    + ")\nTheme: " + THEME_NAMES[themeChoice];
+            Intent draft = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + SUPPORT_EMAIL
+                    + "?subject=" + Uri.encode(subject) + "&body=" + Uri.encode(body)));
+            try { startActivity(draft); dialog.dismiss(); }
+            catch (android.content.ActivityNotFoundException noEmail) {
+                new android.app.AlertDialog.Builder(this).setTitle("No email app available")
+                        .setMessage("Send your feedback to " + SUPPORT_EMAIL + ". Copy it below to send from another email app.")
+                        .setPositiveButton("Copy feedback", (d, which) -> {
+                            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Photo Sweep feedback",
+                                    "To: " + SUPPORT_EMAIL + "\nSubject: " + subject + "\n\n" + body));
+                            Toast.makeText(this, "Feedback copied", Toast.LENGTH_SHORT).show();
+                        }).setNegativeButton("Back", null).show();
+            }
+        }));
+        dialog.show();
+    }
+
     private void showSupportDetails() {
         new android.app.AlertDialog.Builder(this).setTitle("Account & Support")
                 .setMessage("ACCOUNTS\nUse Google or an existing email account, or continue as a guest. Photos and progress stay on this device.\n\nPURCHASES\nAd removal and support purchases are coming later. No ads or payments are active yet.\n\nRESTORE\nUse Restore purchases with the Google Play account that made the purchase. Photo Sweep sign-in does not change your Play account. Consumable support purchases cannot be restored.")
@@ -2044,17 +2097,16 @@ public class MainActivity extends ComponentActivity {
         for (Photo p : month) if (!reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
         if (fullScreenReview && current != null) { fullScreenReviewScreen(current, remaining, month.size()); return; }
         if (fullScreenReview) { fullScreenReview = false; applyContentInsets(); }
-        LinearLayout reviewToolbar = new LinearLayout(this);
-        root.addView(reviewToolbar, new LinearLayout.LayoutParams(-1, dp(52)));
-        Button months = button(reviewToolbar, "← Months", PANEL, INK, () -> {
+        LinearLayout reviewToolbar = new LinearLayout(this); reviewToolbar.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(reviewToolbar, new LinearLayout.LayoutParams(-1, dp(64)));
+        topAction(reviewToolbar, "←", "Months", GREEN, "Back to months", () -> {
             reviewing = false; fullScreenReview = false; render();
         });
-        months.setLayoutParams(new LinearLayout.LayoutParams(0, dp(48), 1));
-        Button themes = button(reviewToolbar, "✦ Themes", PANEL, INK, () -> {
+        topAction(reviewToolbar, ICON_THEMES, "Themes", GREEN, "Themes and animation settings", () -> {
             themeAnimationsOpen = false; showingThemes = true; render();
         });
-        LinearLayout.LayoutParams themesLp = new LinearLayout.LayoutParams(0, dp(48), 1);
-        themesLp.leftMargin = dp(8); themes.setLayoutParams(themesLp);
+        topAction(reviewToolbar, ICON_FEEDBACK, "Report a bug", GREEN,
+                "Feedback: suggest a theme, suggest a feature, or report a problem", this::showFeedbackMenu);
         String monthName = ReviewNavigation.title(selectedMonth, true);
         TextView dateHeading = heading(current == null ? monthName : photoDate(current), remaining + " of " + month.size() + " left to review");
         TextView remainingHeading = headingSubtitle;
@@ -3998,7 +4050,7 @@ public class MainActivity extends ComponentActivity {
         row.setBackground(themeButton(PANEL, 18)); row.setFocusable(true);
         row.setContentDescription(title + ". " + detail);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(9); parent.addView(row, lp);
-        TextView icon = new TextView(this); icon.setText(symbol); icon.setTextColor(GREEN); icon.setTextSize(27);
+        TextView icon = new TextView(this); icon.setText(symbol); icon.setTextColor(GREEN); icon.setTextSize(23);
         icon.setGravity(Gravity.CENTER); icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(48)));
         LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
