@@ -80,8 +80,9 @@ jobs:
 
       - name: Verify review logic
         run: |
-          javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java app/src/main/java/com/dominic/photosweep/SwipeTheme.java app/src/main/java/com/dominic/photosweep/PhotoFit.java app/src/main/java/com/dominic/photosweep/ResetPolicy.java app/src/main/java/com/dominic/photosweep/PlayPolicy.java tests/ReviewLogicCheck.java
+          javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java app/src/main/java/com/dominic/photosweep/SwipeTheme.java app/src/main/java/com/dominic/photosweep/PhotoFit.java app/src/main/java/com/dominic/photosweep/ResetPolicy.java app/src/main/java/com/dominic/photosweep/PlayPolicy.java app/src/main/java/com/dominic/photosweep/HolidayThemes.java tests/ReviewLogicCheck.java tests/HolidayThemesCheck.java
           java -cp /tmp/photosweep-check com.dominic.photosweep.ReviewLogicCheck
+          java -cp /tmp/photosweep-check com.dominic.photosweep.HolidayThemesCheck
 
       - name: Verify external account deletion logic
         run: node --test tests/AccountDeletionWebCheck.cjs

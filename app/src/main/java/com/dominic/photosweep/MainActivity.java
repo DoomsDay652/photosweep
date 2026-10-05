@@ -136,7 +136,31 @@ public class MainActivity extends ComponentActivity {
             "One Piece · pirate seas",
             "Naruto · hidden village",
             "DragonBall · capsule skyline",
-            "Yin Yang · ink and ivory"
+            "Yin Yang · ink and ivory",
+            "Christmas · snowy village lights",
+            "Christmas · snowy village lights · animated",
+            "Halloween · cozy pumpkin night",
+            "Halloween · cozy pumpkin night · animated",
+            "Thanksgiving · autumn harvest evening",
+            "Thanksgiving · autumn harvest evening · animated",
+            "July 4th · waterfront fireworks",
+            "July 4th · waterfront fireworks · animated",
+            "New Year's Day · midnight gold",
+            "New Year's Day · midnight gold · animated",
+            "Martin Luther King Jr. Day · peaceful bridge of light",
+            "Martin Luther King Jr. Day · peaceful bridge of light · animated",
+            "Presidents' Day · winter civic gardens",
+            "Presidents' Day · winter civic gardens · animated",
+            "Memorial Day · quiet remembrance garden",
+            "Memorial Day · quiet remembrance garden · animated",
+            "Juneteenth · community celebration",
+            "Juneteenth · community celebration · animated",
+            "Labor Day · golden summer town",
+            "Labor Day · golden summer town · animated",
+            "Columbus Day · twilight sailing horizon",
+            "Columbus Day · twilight sailing horizon · animated",
+            "Veterans Day · lanterns of gratitude",
+            "Veterans Day · lanterns of gratitude · animated"
     };
     private static final int[][] THEME_COLORS = {
             {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
@@ -200,7 +224,31 @@ public class MainActivity extends ComponentActivity {
             {0xFF133548, 0xFF28566A, 0xFF83E5F2, 0xFFFF9993, 0xFFFFD270},
             {0xFF1D3133, 0xFF3A4C45, 0xFFAFE093, 0xFFFFAB7F, 0xFFFFD579},
             {0xFF172E52, 0xFF304B71, 0xFFFFC46A, 0xFFFF9096, 0xFF90DFFF},
-            {0xFF15171D, 0xFF34363D, 0xFFE1E8E6, 0xFFD99B9F, 0xFFD8C69A}
+            {0xFF15171D, 0xFF34363D, 0xFFE1E8E6, 0xFFD99B9F, 0xFFD8C69A},
+            {0xFF102D2A, 0xFF254942, 0xFF9DE0B8, 0xFFFF959D, 0xFFFFE0A1},
+            {0xFF102D2A, 0xFF254942, 0xFF9DE0B8, 0xFFFF959D, 0xFFFFE0A1},
+            {0xFF241A36, 0xFF44304F, 0xFFF9B56F, 0xFFFFA0B2, 0xFFD1B8FF},
+            {0xFF241A36, 0xFF44304F, 0xFFF9B56F, 0xFFFFA0B2, 0xFFD1B8FF},
+            {0xFF33222A, 0xFF563A39, 0xFFECC08A, 0xFFFF9D93, 0xFFFFE0A0},
+            {0xFF33222A, 0xFF563A39, 0xFFECC08A, 0xFFFF9D93, 0xFFFFE0A0},
+            {0xFF14233E, 0xFF293A58, 0xFF8EC9FF, 0xFFFF909C, 0xFFF8E1AA},
+            {0xFF14233E, 0xFF293A58, 0xFF8EC9FF, 0xFFFF909C, 0xFFF8E1AA},
+            {0xFF171D35, 0xFF343B56, 0xFFEFD3A0, 0xFFFFA1B2, 0xFFFFF1C9},
+            {0xFF171D35, 0xFF343B56, 0xFFEFD3A0, 0xFFFFA1B2, 0xFFFFF1C9},
+            {0xFF1C2942, 0xFF344963, 0xFFBADFCC, 0xFFFFA8AD, 0xFFF2DEA6},
+            {0xFF1C2942, 0xFF344963, 0xFFBADFCC, 0xFFFFA8AD, 0xFFF2DEA6},
+            {0xFF192E49, 0xFF324B65, 0xFFAFCFFF, 0xFFFF9EA6, 0xFFEAD49A},
+            {0xFF192E49, 0xFF324B65, 0xFFAFCFFF, 0xFFFF9EA6, 0xFFEAD49A},
+            {0xFF202B3B, 0xFF394959, 0xFFCAD5C9, 0xFFF4A1A7, 0xFFE8D7B5},
+            {0xFF202B3B, 0xFF394959, 0xFFCAD5C9, 0xFFF4A1A7, 0xFFE8D7B5},
+            {0xFF1D2943, 0xFF3D4260, 0xFFA4D8FF, 0xFFFFA3AD, 0xFFFFE0A9},
+            {0xFF1D2943, 0xFF3D4260, 0xFFA4D8FF, 0xFFFFA3AD, 0xFFFFE0A9},
+            {0xFF163536, 0xFF315250, 0xFF9CE0C7, 0xFFFFB29C, 0xFFFFE0A4},
+            {0xFF163536, 0xFF315250, 0xFF9CE0C7, 0xFFFFB29C, 0xFFFFE0A4},
+            {0xFF172F43, 0xFF344D60, 0xFFAADCE8, 0xFFFFAE9C, 0xFFE6C99A},
+            {0xFF172F43, 0xFF344D60, 0xFFAADCE8, 0xFFFFAE9C, 0xFFE6C99A},
+            {0xFF1C2C3D, 0xFF344B58, 0xFFBCDCD5, 0xFFF3A2A9, 0xFFF2DEB0},
+            {0xFF1C2C3D, 0xFF344B58, 0xFFBCDCD5, 0xFFF3A2A9, 0xFFF2DEB0}
     };
     private static final int[] COLOR_THEMES = {0, 1, 2, 13, 14, 15, 16, 17};
     private static final int[] HERO_THEMES = {3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
@@ -222,6 +270,7 @@ public class MainActivity extends ComponentActivity {
         return index >= 34 && index <= 43 ? index - 31 : index;
     }
     private static int themeTier(int index) {
+        if (HolidayThemes.collection(index) >= 0) return HolidayThemes.animatedTheme(index) ? 3 : 2;
         if (isColorTheme(index)) return 1;
         if (index == 61) return 2;
         for (int hero : HERO_THEMES) if (hero == index) return 2;
@@ -274,7 +323,31 @@ public class MainActivity extends ComponentActivity {
             0,
             0,
             0,
-            R.drawable.theme_yin_yang
+            R.drawable.theme_yin_yang,
+            R.drawable.holiday_christmas,
+            R.drawable.holiday_christmas,
+            R.drawable.holiday_halloween,
+            R.drawable.holiday_halloween,
+            R.drawable.holiday_thanksgiving,
+            R.drawable.holiday_thanksgiving,
+            R.drawable.holiday_independence,
+            R.drawable.holiday_independence,
+            R.drawable.holiday_new_year,
+            R.drawable.holiday_new_year,
+            R.drawable.holiday_mlk,
+            R.drawable.holiday_mlk,
+            R.drawable.holiday_presidents,
+            R.drawable.holiday_presidents,
+            R.drawable.holiday_memorial,
+            R.drawable.holiday_memorial,
+            R.drawable.holiday_juneteenth,
+            R.drawable.holiday_juneteenth,
+            R.drawable.holiday_labor,
+            R.drawable.holiday_labor,
+            R.drawable.holiday_columbus,
+            R.drawable.holiday_columbus,
+            R.drawable.holiday_veterans,
+            R.drawable.holiday_veterans
     };
     private static final int[] THEME_FX_IDS = {
             R.drawable.fx_nebula,
@@ -338,7 +411,31 @@ public class MainActivity extends ComponentActivity {
             R.drawable.fx_water,
             R.drawable.fx_leaf,
             R.drawable.fx_solar,
-            R.drawable.fx_yin_yang
+            R.drawable.fx_yin_yang,
+            R.drawable.fx_holiday_christmas,
+            R.drawable.fx_holiday_christmas,
+            R.drawable.fx_holiday_halloween,
+            R.drawable.fx_holiday_halloween,
+            R.drawable.fx_holiday_thanksgiving,
+            R.drawable.fx_holiday_thanksgiving,
+            R.drawable.fx_holiday_independence,
+            R.drawable.fx_holiday_independence,
+            R.drawable.fx_holiday_new_year,
+            R.drawable.fx_holiday_new_year,
+            R.drawable.fx_holiday_mlk,
+            R.drawable.fx_holiday_mlk,
+            R.drawable.fx_holiday_presidents,
+            R.drawable.fx_holiday_presidents,
+            R.drawable.fx_holiday_memorial,
+            R.drawable.fx_holiday_memorial,
+            R.drawable.fx_holiday_juneteenth,
+            R.drawable.fx_holiday_juneteenth,
+            R.drawable.fx_holiday_labor,
+            R.drawable.fx_holiday_labor,
+            R.drawable.fx_holiday_columbus,
+            R.drawable.fx_holiday_columbus,
+            R.drawable.fx_holiday_veterans,
+            R.drawable.fx_holiday_veterans
     };
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
@@ -891,7 +988,7 @@ public class MainActivity extends ComponentActivity {
             }
             activeBackdrop = new TextureBackdrop();
             host.addView(activeBackdrop, 0, new FrameLayout.LayoutParams(-1, -1));
-            if (!reducedMotion && hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 19 && themeChoice != 21 && themeChoice != 22)
+            if (!reducedMotion && hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 19 && themeChoice != 21 && themeChoice != 22 && HolidayThemes.collection(themeChoice) < 0)
                 host.addView(new ThemeMotionOverlay(), 1, new FrameLayout.LayoutParams(-1, -1));
             renderedTheme = themeChoice;
         }
@@ -1334,7 +1431,7 @@ public class MainActivity extends ComponentActivity {
         tabs.setHorizontalScrollBarEnabled(false);
         LinearLayout choices = new LinearLayout(this);
         tabs.addView(choices); root.addView(tabs, new LinearLayout.LayoutParams(-1, dp(56)));
-        String[] categories = {"All", "Tier 1", "Tier 2", "Tier 3", "Countries"};
+        String[] categories = {"All", "Tier 1", "Tier 2", "Tier 3", "Countries", "Holidays"};
         for (int i = 0; i < categories.length; i++) {
             final int category = i;
             TextView tab = new TextView(this); tab.setText(categories[i]); tab.setTextSize(13);
@@ -1402,12 +1499,16 @@ public class MainActivity extends ComponentActivity {
         for (int index = 0; index < THEME_NAMES.length; index++) {
             if (!PlayPolicy.themeAllowed(index)) continue;
             int country = countryCollection(index);
+            int holiday = HolidayThemes.collection(index);
+            if (holiday >= 0 && index != HolidayThemes.still(holiday)) continue;
+            if (themeCategory == 5 && holiday < 0) continue;
             // Country variants share one card; tier tabs contain non-country themes only.
             if (country >= 0 && index != COUNTRY_STILL_THEMES[country]) continue;
             if (themeCategory == 4 && country < 0) continue;
             if (themeCategory >= 1 && themeCategory <= 3
-                    && (country >= 0 || themeTier(index) != themeCategory)) continue;
-            String searchable = country < 0 ? THEME_NAMES[index]
+                    && (country >= 0 || holiday >= 0 || themeTier(index) != themeCategory)) continue;
+            String searchable = holiday >= 0 ? (holiday == 1 ? "holiday " : "federal holiday ") + HolidayThemes.SEARCH[holiday] + " " + HolidayThemes.SCENES[holiday] + " " + HolidayThemes.MOTIONS[holiday]
+                    : country < 0 ? THEME_NAMES[index]
                     : THEME_NAMES[COUNTRY_STILL_THEMES[country]] + " "
                     + THEME_NAMES[COUNTRY_ANIMATED_THEMES[country]] + " "
                     + COUNTRY_SCENES[country] + " " + COUNTRY_MOTIONS[country];
@@ -1417,7 +1518,8 @@ public class MainActivity extends ComponentActivity {
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.bottomMargin = dp(10); list.addView(row, lp);
             }
-            int preview = country >= 0 && countryCollection(themeChoice) == country ? themeChoice : index;
+            int preview = holiday >= 0 && HolidayThemes.collection(themeChoice) == holiday ? themeChoice
+                    : country >= 0 && countryCollection(themeChoice) == country ? themeChoice : index;
             addThemePreview(row, preview, adminMode || level >= requiredThemeLevel(preview));
         }
         if (count == 0) {
@@ -1441,24 +1543,45 @@ public class MainActivity extends ComponentActivity {
         card.addView(image, new LinearLayout.LayoutParams(-1, dp(110)));
         loadThemeThumbnail(index, image);
         int country = countryCollection(index);
+        int holiday = HolidayThemes.collection(index);
         String[] parts = THEME_NAMES[index].split(" · ", 2);
         TextView title = new TextView(this);
-        title.setText((themeChoice == index ? "✓ " : "") + (country >= 0 ? COUNTRY_FLAGS[country] + " " : "") + (country >= 0 ? COUNTRY_NAMES[country] : parts[0]));
+        title.setText(holiday >= 0 ? (themeChoice == index ? "✓ " : "") + HolidayThemes.SYMBOLS[holiday] + " " + HolidayThemes.NAMES[holiday] : (themeChoice == index ? "✓ " : "") + (country >= 0 ? COUNTRY_FLAGS[country] + " " : "") + (country >= 0 ? COUNTRY_NAMES[country] : parts[0]));
         title.setTextSize(15); title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(3)); title.setMinLines(2); card.addView(title);
         TextView detail = new TextView(this);
-        detail.setText(country >= 0 ? COUNTRY_SCENES[country] : (parts.length > 1 ? parts[1] : "")); detail.setTextSize(12); detail.setTextColor(MUTED);
+        detail.setText(holiday >= 0 ? HolidayThemes.SCENES[holiday] : country >= 0 ? COUNTRY_SCENES[country] : (parts.length > 1 ? parts[1] : "")); detail.setTextSize(12); detail.setTextColor(MUTED);
         detail.setMinLines(2); card.addView(detail);
         TextView badge = new TextView(this); badge.setTextSize(12); badge.setTextColor(unlocked ? GREEN : MUTED);
-        badge.setText(country >= 0
+        badge.setText(holiday >= 0 ? "Still / Animated  ›" + (themeChoice == index ? " · " + (hasThemeMotion(index) ? "Animated" : "Still") : "") : country >= 0
                 ? "Still / Animated  ›" + (themeChoice == index ? " · " + (hasThemeMotion(index) ? "Animated" : "Still") : "")
                 : "Tier " + themeTier(index) + " · " + (unlocked ? (hasThemeMotion(index) ? "Animated" : "Still") : "🔒 Level " + requiredThemeLevel(index)));
         card.addView(badge);
         card.setContentDescription(THEME_NAMES[index] + ", " + badge.getText() + (themeChoice == index ? ", selected" : ""));
         card.setOnClickListener(v -> {
-            if (country >= 0) showCountryVariants(country);
+            if (holiday >= 0) showHolidayVariants(holiday);
+            else if (country >= 0) showCountryVariants(country);
             else selectTheme(index);
         });
+    }
+
+    private void showHolidayVariants(int holiday) {
+        LinearLayout choices = new LinearLayout(this); choices.setOrientation(LinearLayout.VERTICAL);
+        choices.setPadding(dp(18), dp(4), dp(18), dp(8));
+        android.app.AlertDialog dialog = themedFeedbackDialog(HolidayThemes.SYMBOLS[holiday] + " " + HolidayThemes.NAMES[holiday])
+                .setView(choices).setNegativeButton("Cancel", null).create();
+        for (int variant = 0; variant < 2; variant++) {
+            final int theme = HolidayThemes.still(holiday) + variant;
+            boolean unlocked = adminMode || xp / 500 + 1 >= requiredThemeLevel(theme);
+            settingsRow(choices, variant == 0 ? "▧" : ICON_THEMES,
+                    (themeChoice == theme ? "✓ " : "") + (variant == 0 ? "Still" : "Animated")
+                            + (unlocked ? "" : " · 🔒 Level " + requiredThemeLevel(theme)),
+                    variant == 0 ? HolidayThemes.SCENES[holiday] : HolidayThemes.MOTIONS[holiday], () -> {
+                        if (adminMode || xp / 500 + 1 >= requiredThemeLevel(theme)) dialog.dismiss();
+                        selectTheme(theme);
+                    });
+        }
+        showThemedFeedbackDialog(dialog);
     }
 
     private void showCountryVariants(int country) {
@@ -1498,8 +1621,12 @@ public class MainActivity extends ComponentActivity {
         io.execute(() -> {
             if (isDestroyed()) return;
             BitmapFactory.Options options = new BitmapFactory.Options(); options.inSampleSize = 8;
-            Bitmap bitmap = BitmapFactory.decodeResource(getResources(), resource, options);
-            if (bitmap == null) return;
+            Bitmap decoded = BitmapFactory.decodeResource(getResources(), resource, options);
+            if (decoded == null) return;
+            // Holiday previews show the recognizable upper scene, rather than the quiet photo area.
+            final Bitmap bitmap = HolidayThemes.collection(index) >= 0
+                    ? Bitmap.createBitmap(decoded, 0, 0, decoded.getWidth(), Math.max(1, decoded.getHeight() / 3)) : decoded;
+            if (bitmap != decoded) decoded.recycle();
             if (isDestroyed()) { bitmap.recycle(); return; }
             themeThumbnails.put(index, bitmap);
             runOnUiThread(() -> { if (!isDestroyed() && image.isAttachedToWindow()) image.setImageBitmap(bitmap); });
@@ -1756,7 +1883,7 @@ public class MainActivity extends ComponentActivity {
                 .setMessage("ACCOUNTS\nUse Google or an existing email account, or continue as a guest. Photos and progress stay on this device.\n\nPURCHASES\nAd removal and support purchases are coming later. No ads or payments are active yet.\n\nRESTORE\nUse Restore purchases with the Google Play account that made the purchase. Photo Sweep sign-in does not change your Play account. Consumable support purchases cannot be restored.")
                 .setPositiveButton("Done", null).show();
     }
-    private boolean canCustomizeSwipe() { return hasThemeMotion(themeChoice) || countryCollection(themeChoice) >= 0 || themeChoice == 61; }
+    private boolean canCustomizeSwipe() { return hasThemeMotion(themeChoice) || countryCollection(themeChoice) >= 0 || HolidayThemes.collection(themeChoice) >= 0 || themeChoice == 61; }
     private void addSwipeControls(LinearLayout list) {
         sectionTitle(list, "SWIPE ANIMATIONS");
         boolean enabled = canCustomizeSwipe();
@@ -2827,6 +2954,32 @@ public class MainActivity extends ComponentActivity {
             flamePaint.setStyle(Paint.Style.FILL); flamePaint.setAlpha(255); canvas.restoreToCount(save);
         }
 
+        private void drawHolidayBorder(Canvas canvas, int holiday, long now, float growth) {
+            if (!visiblePhotoBounds(photo, outline)) return;
+            int save = canvas.save(); clipGrowth(canvas, growth, dp(48));
+            float radius = dp(8), time = now / 1000f;
+            Path rim = new Path(); rim.addRoundRect(outline, radius, radius, Path.Direction.CW);
+            int[] colors = THEME_COLORS[element];
+            flamePaint.setShader(null); flamePaint.setStyle(Paint.Style.STROKE);
+            flamePaint.setStrokeWidth(dp(4)); flamePaint.setColor(colors[4]); flamePaint.setAlpha(220);
+            canvas.drawPath(rim, flamePaint);
+            flamePaint.setStrokeWidth(dp(2)); flamePaint.setColor(colors[2]);
+            flamePaint.setPathEffect(new android.graphics.DashPathEffect(new float[]{dp(8), dp(12)}, time * dp(4)));
+            canvas.drawPath(rim, flamePaint); flamePaint.setPathEffect(null);
+            Bitmap motif = effectSprite(element);
+            PathMeasure route = new PathMeasure(rim, false); float length = route.getLength();
+            float[] point = new float[2]; int count = HolidayThemes.reflective(holiday) ? 8 : 14;
+            flamePaint.setStyle(Paint.Style.FILL); flamePaint.setAlpha(235);
+            if (motif != null) for (int i = 0; i < count; i++) {
+                route.getPosTan(length * (i + .5f) / count, point, null);
+                float size = dp(18), height = size * motif.getHeight() / motif.getWidth();
+                canvas.save(); canvas.rotate((float)Math.sin(time + i) * 8, point[0], point[1]);
+                canvas.drawBitmap(motif, null, new RectF(point[0]-size/2, point[1]-height/2,
+                        point[0]+size/2, point[1]+height/2), flamePaint); canvas.restore();
+            }
+            flamePaint.setAlpha(255); canvas.restoreToCount(save);
+        }
+
         private int elementArt() {
             switch (element) {
                 case 18: return R.drawable.photo_border_candy;
@@ -2906,6 +3059,13 @@ public class MainActivity extends ComponentActivity {
             if (growth <= 0f) {
                 if (phase == COOLING && now - phaseStarted >= 650) stop();
                 else if (isAttachedToWindow()) postInvalidateOnAnimation();
+                return;
+            }
+            int holiday = HolidayThemes.collection(element);
+            if (holiday >= 0) {
+                if (phase == IGNITING && now - phaseStarted >= 850) { phase = BURNING; phaseStarted = now; }
+                drawHolidayBorder(canvas, holiday, now, growth);
+                if (isAttachedToWindow()) postInvalidateOnAnimation();
                 return;
             }
             int country = countryCollection(element);
@@ -3364,6 +3524,10 @@ public class MainActivity extends ComponentActivity {
             }
             canvas.drawColor(0x38000000);
             if (reducedMotion) return;
+            if (HolidayThemes.animatedTheme(themeChoice)) {
+                drawHolidayMotion(canvas, w, h, android.os.SystemClock.uptimeMillis() / 1000f);
+                if (isAttachedToWindow()) postInvalidateDelayed(50);
+            }
             if (themeChoice == 21) {
                 paint.setShader(new LinearGradient(0, h * .76f, 0, h,
                         0x00141010, 0xF0141010, Shader.TileMode.CLAMP));
@@ -3452,6 +3616,7 @@ public class MainActivity extends ComponentActivity {
         }
         private void drawGeneratedEffect(Canvas canvas, float w, float h, float time) {
             int theme = themeChoice;
+            if (HolidayThemes.collection(theme) >= 0) return;
             if (theme == 18 || theme == 21 || !hasThemeMotion(theme) || THEME_FX_IDS[theme] == 0) return; // Fire draws behind the UI.
             if (motionStyle(theme) == 3 && arachnophobiaMode) return;
             if (themeEffects[theme] == null) {
@@ -3609,6 +3774,43 @@ public class MainActivity extends ComponentActivity {
                 canvas.restore();
             }
             paint.setAlpha(255);
+        }
+
+        private void drawHolidayMotion(Canvas canvas, float w, float h, float time) {
+            int holiday = HolidayThemes.collection(themeChoice);
+            Bitmap sprite = effectSprite(themeChoice); if (sprite == null) return;
+            boolean quiet = HolidayThemes.reflective(holiday);
+            boolean fireworks = holiday == 3 || holiday == 4;
+            int count = quiet ? 5 : holiday == 0 ? 14 : 8;
+            int save = canvas.save();
+            // The decorative world stays behind controls, mostly in side margins.
+            for (int i = 0; i < count; i++) {
+                float x = (i % 2 == 0 ? .055f : .945f) * w + (float)Math.sin(time * .45f + i) * dp(10);
+                float y = h * loop(i * .167f + time * (quiet ? -.009f : holiday == 0 || holiday == 2 ? .023f : -.016f), 1.15f) - h * .08f;
+                float size = dp(holiday == 0 ? 12 + i % 3 * 3 : 18 + i % 3 * 4);
+                if (holiday == 1 || holiday == 6 || holiday == 9 || holiday == 10) {
+                    y = h * (.10f + (i / 2) * .23f) + (float)Math.sin(time * .7f + i) * dp(7);
+                }
+                if (fireworks) {
+                    float age = loop(time + i * 2.1f, 11f); if (age > 1.8f) continue;
+                    float cx = w * (.12f + (i % 4) * .25f), cy = h * (.035f + (i % 3) * .025f);
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1.5f));
+                    paint.setColor(holiday == 4 ? GOLD : i % 3 == 0 ? RED : i % 3 == 1 ? GREEN : INK);
+                    paint.setAlpha((int)(115 * (1f - age / 1.8f)));
+                    for (int ray = 0; ray < 10; ray++) {
+                        float angle = ray * .6283f, r = dp(8 + age * 28);
+                        canvas.drawLine(cx + (float)Math.cos(angle) * r * .65f, cy + (float)Math.sin(angle) * r * .65f,
+                                cx + (float)Math.cos(angle) * r, cy + (float)Math.sin(angle) * r, paint);
+                    }
+                    paint.setStyle(Paint.Style.FILL); paint.setColor(Color.WHITE);
+                    if (holiday == 3) continue;
+                }
+                paint.setColor(Color.WHITE); paint.setAlpha(quiet ? 90 : 115);
+                canvas.save(); canvas.rotate(quiet || holiday == 1 || holiday == 10 ? 0 : (float)Math.sin(time*.5f+i)*20, x, y);
+                float halfW = size/2, halfH = halfW * sprite.getHeight()/sprite.getWidth();
+                canvas.drawBitmap(sprite, null, new RectF(x-halfW, y-halfH, x+halfW, y+halfH), paint); canvas.restore();
+            }
+            paint.setStyle(Paint.Style.FILL); paint.setAlpha(255); canvas.restoreToCount(save);
         }
 
         private void drawExpandedCollectionEffects(Canvas canvas, Bitmap sprite, float w, float h, float time, int theme) {
@@ -4031,4 +4233,127 @@ public class MainActivity extends ComponentActivity {
 
     private class ThemeMotionOverlay extends View {
         ThemeMotionOverlay() { super(MainActivity.this); setClickable(false); setFocusable(false); }
-        @Override protected void onDraw(Canvas canva
+        @Override protected void onDraw(Canvas canvas) {
+            if (!reducedMotion && activeBackdrop != null && hasThemeMotion(themeChoice) && themeChoice != 18) {
+                float time = android.os.SystemClock.uptimeMillis() / 1000f;
+                activeBackdrop.drawThemeMotion(canvas, getWidth(), getHeight(), time);
+                activeBackdrop.drawGeneratedEffect(canvas, getWidth(), getHeight(), time);
+                if (isAttachedToWindow()) postInvalidateDelayed(50);
+            }
+        }
+    }
+    private int dp(float n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
+    private GradientDrawable rounded(int color, int radius) {
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{blend(color, Color.WHITE, .09f), color, blend(color, BG, .14f)});
+        bg.setCornerRadius(dp(radius));
+        bg.setStroke(dp(1), blend(GOLD, color, .68f)); return bg;
+    }
+    private int blend(int a, int b, float amount) {
+        return Color.rgb((int)(Color.red(a) * (1 - amount) + Color.red(b) * amount),
+                (int)(Color.green(a) * (1 - amount) + Color.green(b) * amount),
+                (int)(Color.blue(a) * (1 - amount) + Color.blue(b) * amount));
+    }
+    private Drawable themeButton(int color, int radius) {
+        final int selected = themeChoice;
+        return new Drawable() {
+            final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            @Override public void draw(Canvas canvas) {
+                android.graphics.Rect bounds = getBounds();
+                RectF box = new RectF(bounds);
+                Path clip = new Path(); clip.addRoundRect(box, dp(radius), dp(radius), Path.Direction.CW);
+                canvas.save(); canvas.clipPath(clip);
+                p.setColor(color); canvas.drawRect(box, p);
+                p.setShader(new LinearGradient(box.left, box.top, box.right, box.bottom,
+                        new int[]{blend(color, Color.WHITE, .20f), color, blend(color, BG, .16f)},
+                        null, Shader.TileMode.CLAMP));
+                canvas.drawRect(box, p); p.setShader(null);
+                Bitmap art = themeBackdrops[selected];
+                if (art != null && !isColorTheme(selected)) {
+                    int left = art.getWidth() / 5, top = art.getHeight() / 3;
+                    p.setAlpha(54);
+                    canvas.drawBitmap(art, new Rect(left, top, art.getWidth() - left, top + art.getHeight() / 3), box, p);
+                    p.setAlpha(255);
+                }
+                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(1.3f));
+                p.setColor(blend(GOLD, color, .45f)); canvas.drawRoundRect(box, dp(radius), dp(radius), p);
+                p.setStyle(Paint.Style.FILL); canvas.restore();
+            }
+            @Override public void setAlpha(int alpha) { p.setAlpha(alpha); invalidateSelf(); }
+            @Override public void setColorFilter(android.graphics.ColorFilter filter) { p.setColorFilter(filter); invalidateSelf(); }
+            @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        };
+    }
+    private void spacer(int height) { View gap = new View(this); root.addView(gap, new LinearLayout.LayoutParams(1, dp(height))); }
+    private void readableText(TextView text) {
+        GradientDrawable backing = new GradientDrawable();
+        backing.setColor(0xB8101826); backing.setCornerRadius(dp(10));
+        text.setBackground(backing);
+        text.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+        text.setPadding(dp(8), dp(5), dp(8), dp(5));
+    }
+    private TextView label(String value, int size, int color, boolean bold) {
+        TextView text = new TextView(this); text.setText(value); text.setTextSize(size); text.setTextColor(color);
+        if (bold) text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        readableText(text); root.addView(text); return text;
+    }
+    private TextView pill(String value, int bg, int color) {
+        TextView text = new TextView(this); text.setText(value); text.setTextSize(13); text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        text.setTextColor(color); text.setPadding(dp(13), dp(8), dp(13), dp(8)); text.setBackground(rounded(bg, 30)); return text;
+    }
+    private TextView swipeOverlayLabel(String value, int color) {
+        TextView text = new TextView(this); text.setText(value); text.setTextSize(21);
+        text.setTextColor(color); text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        text.setGravity(Gravity.CENTER); text.setShadowLayer(dp(6), 0, dp(2), Color.BLACK);
+        return text;
+    }
+    private Button button(LinearLayout parent, String value, int bg, int color, Runnable action) {
+        Button button = new Button(this); button.setText(value); button.setAllCaps(false); button.setTextSize(16);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(themeButton(bg, 18));
+        button.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
+        parent.addView(button, new LinearLayout.LayoutParams(-1, dp(55))); return button;
+    }
+    private void back(String value, Runnable action) {
+        TextView back = label("←  " + value, 18, INK, true);
+        back.setGravity(Gravity.CENTER_VERTICAL);
+        back.setPadding(dp(18), 0, dp(18), 0);
+        back.setMinWidth(dp(150)); back.setHeight(dp(56));
+        back.setBackground(themeButton(PANEL, 18));
+        back.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
+        spacer(15);
+    }
+    private void tile(LinearLayout parent, String title, String detail, Runnable action) {
+        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(13), dp(17), dp(13)); row.setBackground(rounded(PANEL, 18));
+        row.setElevation(dp(2));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(12); parent.addView(row, lp);
+        View accent = new View(this); accent.setBackground(rounded(GREEN, 5));
+        LinearLayout.LayoutParams accentLp = new LinearLayout.LayoutParams(dp(7), dp(57)); accentLp.rightMargin = dp(17); row.addView(accent, accentLp);
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView name = new TextView(this); name.setText(title); name.setTextSize(22); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); name.setTextColor(INK); copy.addView(name);
+        TextView sub = new TextView(this); sub.setText(detail); sub.setTextSize(14); sub.setTextColor(MUTED);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2); subLp.topMargin = dp(4); copy.addView(sub, subLp);
+        TextView arrow = new TextView(this); arrow.setText("›"); arrow.setTextColor(GREEN); arrow.setTextSize(28); row.addView(arrow);
+        row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
+    }
+
+    private void settingsRow(LinearLayout parent, String symbol, String title, String detail, Runnable action) {
+        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(16), dp(16), dp(16)); row.setMinimumHeight(dp(80));
+        row.setBackground(themeButton(PANEL, 18)); row.setFocusable(true);
+        row.setContentDescription(title + ". " + detail);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(9); parent.addView(row, lp);
+        TextView icon = new TextView(this); icon.setText(symbol); icon.setTextColor(GREEN); icon.setTextSize(23);
+        icon.setGravity(Gravity.CENTER); icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(48)));
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
+        copy.setPadding(dp(12), 0, dp(8), 0); row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView name = new TextView(this); name.setText(title); name.setTextSize(17); name.setTextColor(INK);
+        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); copy.addView(name);
+        TextView sub = new TextView(this); sub.setText(detail); sub.setTextSize(13); sub.setTextColor(MUTED);
+        sub.setPadding(0, dp(4), 0, 0); copy.addView(sub);
+        TextView arrow = new TextView(this); arrow.setText("›"); arrow.setTextColor(MUTED); arrow.setTextSize(25);
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); row.addView(arrow);
+        row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
+    }
+}

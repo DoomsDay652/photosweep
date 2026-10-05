@@ -5,8 +5,10 @@ final class SwipeTheme {
     enum Kind { SPARKLE, FIRE, WATER, ICE, EARTH, LIGHTNING, CANDY, TOXIC, SPACE,
         WEB, GOLD, THUNDER, GAMMA, SHIELD, COSMIC, SCARLET, STEALTH, NEBULA, SOLAR,
         SAKURA, SKY, WISPS, JAPAN, MEXICO, USA, SPAIN, BRAZIL, FRANCE, ITALY, KOREA,
-        MY_HERO, BLEACH, ONE_PIECE, NARUTO, DRAGONBALL, YIN_YANG }
+        MY_HERO, BLEACH, ONE_PIECE, NARUTO, DRAGONBALL, YIN_YANG, CHRISTMAS, HALLOWEEN, THANKSGIVING, INDEPENDENCE, NEW_YEAR, MLK, PRESIDENTS, MEMORIAL, JUNETEENTH, LABOR, COLUMBUS, VETERANS }
     static Kind forTheme(int theme) {
+        int holiday = HolidayThemes.collection(theme);
+        if (holiday >= 0) return Kind.values()[Kind.CHRISTMAS.ordinal() + holiday];
         switch(theme) {
             case 18:return Kind.CANDY; case 19:return Kind.TOXIC; case 20:return Kind.SPACE;
             case 21:return Kind.FIRE; case 22:return Kind.WATER; case 23:return Kind.ICE;
@@ -25,6 +27,11 @@ final class SwipeTheme {
         }
     }
     static int color(Kind kind) {
+        if (kind.ordinal() >= Kind.CHRISTMAS.ordinal()) {
+            int holiday = kind.ordinal() - Kind.CHRISTMAS.ordinal();
+            int[] accents = {0xFFFFE0A1, 0xFFD1B8FF, 0xFFFFE0A0, 0xFFF8E1AA, 0xFFFFF1C9, 0xFFF2DEA6, 0xFFEAD49A, 0xFFE8D7B5, 0xFFFFE0A9, 0xFFFFE0A4, 0xFFE6C99A, 0xFFF2DEB0};
+            return accents[holiday];
+        }
         switch(kind) {
             case FIRE:case SOLAR:case DRAGONBALL:return 0xFFFFA642;
             case WATER:case ONE_PIECE:case SHIELD:return 0xFF83DFFF;
@@ -38,6 +45,21 @@ final class SwipeTheme {
         }
     }
     static String description(Kind kind) {
+        switch (kind) {
+            case CHRISTMAS: return "Hold gathering snow · release a winter flurry";
+            case HALLOWEEN: return "Hold bobbing pumpkin lights · release a pumpkin swirl";
+            case THANKSGIVING: return "Hold swirling harvest leaves · release an autumn gust";
+            case INDEPENDENCE: return "Hold gathering stars · release red, white and blue fireworks";
+            case NEW_YEAR: return "Hold golden confetti · release a midnight sparkle";
+            case MLK: return "Hold floating doves · release a peaceful breeze";
+            case PRESIDENTS: return "Hold sapphire and gold glints · release a laurel flourish";
+            case MEMORIAL: return "Hold remembrance poppies · release a gentle petal drift";
+            case JUNETEENTH: return "Hold rising stars · release a celebration bloom";
+            case LABOR: return "Hold summer blossoms · release a warm breeze";
+            case COLUMBUS: return "Hold softly sailing emblems · release an ocean sweep";
+            case VETERANS: return "Hold laurel lights · release a gentle gratitude trail";
+            default: break;
+        }
         switch(kind) {
             case FIRE:return "Hold to burn · release a flame burst";
             case WATER:return "Hold flowing waves · release a splash";
