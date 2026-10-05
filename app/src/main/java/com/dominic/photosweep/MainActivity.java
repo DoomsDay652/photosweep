@@ -402,6 +402,12 @@ public class MainActivity extends ComponentActivity {
     private boolean reviewing, loading, duplicateScanning, reloadPhotosPending;
     private boolean fullScreenReview, reviewActionRunning;
     private boolean showingTrash, deletingOld;
+    private int themeCategory;
+    private String themeQuery = "";
+    private boolean themeAnimationsOpen;
+    private final LruCache<Integer, Bitmap> themeThumbnails = new LruCache<Integer, Bitmap>(8 * 1024 * 1024) {
+        @Override protected int sizeOf(Integer key, Bitmap value) { return value.getByteCount(); }
+    };
     private boolean showingSettings, showingThemes, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private int optionsSection;
     private boolean arachnophobiaMode, animateThemeChange;
@@ -507,6 +513,9 @@ public class MainActivity extends ComponentActivity {
             fullScreenReview = state.getBoolean("fullScreenReview");
             showingSettings = state.getBoolean("showingSettings");
             showingThemes = state.getBoolean("showingThemes");
+            themeCategory = state.getInt("themeCategory");
+            themeQuery = state.getString("themeQuery", "");
+            themeAnimationsOpen = state.getBoolean("themeAnimationsOpen");
             optionsSection = state.getInt("optionsSection");
             showingTrash = state.getBoolean("showingTrash");
             pendingTrash = state.getLong("pendingTrash", -1);
@@ -581,7 +590,10 @@ public class MainActivity extends ComponentActivity {
         if (reviewActionRunning) return true;
         if (zoomOverlay != null) closePhotoZoom();
         else if (fullScreenReview) { fullScreenReview = false; render(); }
-        else if (showingThemes) { showingThemes = false; render(); }
+        else if (showingThemes) {
+            if (themeAnimationsOpen) themeAnimationsOpen = false; else showingThemes = false;
+            render();
+        }
         else if (showingSettings && optionsSection != 0) { optionsSection = 0; render(); }
         else if (showingSettings) { showingSettings = false; render(); }
         else if (showingTrash) { showingTrash = false; render(); }
@@ -600,6 +612,9 @@ public class MainActivity extends ComponentActivity {
         state.putBoolean("fullScreenReview", fullScreenReview);
         state.putBoolean("showingSettings", showingSettings);
         state.putBoolean("showingThemes", showingThemes);
+        state.putInt("themeCategory", themeCategory);
+        state.putString("themeQuery", themeQuery);
+        state.putBoolean("themeAnimationsOpen", themeAnimationsOpen);
         state.putInt("optionsSection", optionsSection);
         state.putBoolean("showingTrash", showingTrash);
         state.putLong("pendingTrash", pendingTrash);
@@ -1182,11 +1197,52 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void themesScreen() {
-        back("Photo Sweep", () -> { showingThemes = false; render(); });
-        heading("Themes", "Choose your look and swipe animations");
-        LinearLayout list = optionsList("themes");
-        addSwipeControls(list);
-        addThemeOptions(list);
+        back(reviewing ? "Photos" : "Photo Sweep", () -> {
+            if (themeAnimationsOpen) themeAnimationsOpen = false; else showingThemes = false;
+            render();
+        });
+        heading("Themes", "Level " + (xp / 500 + 1) + " · " + xp + " XP");
+        if (themeAnimationsOpen) {
+            LinearLayout controls = optionsList("theme-animations");
+            addSwipeControls(controls);
+            return;
+        }
+        android.widget.EditText search = new android.widget.EditText(this);
+        search.setSingleLine(true); search.setHint("Search themes"); search.setText(themeQuery);
+        search.setTextSize(15); search.setTextColor(INK); search.setHintTextColor(MUTED);
+        search.setPadding(dp(14), 0, dp(14), 0); search.setBackground(rounded(PANEL, 14));
+        root.addView(search, new LinearLayout.LayoutParams(-1, dp(48)));
+        android.widget.HorizontalScrollView tabs = new android.widget.HorizontalScrollView(this);
+        tabs.setHorizontalScrollBarEnabled(false);
+        LinearLayout choices = new LinearLayout(this);
+        tabs.addView(choices); root.addView(tabs, new LinearLayout.LayoutParams(-1, dp(56)));
+        String[] categories = {"All", "Tier 1", "Tier 2", "Tier 3", "Countries"};
+        for (int i = 0; i < categories.length; i++) {
+            final int category = i;
+            TextView tab = new TextView(this); tab.setText(categories[i]); tab.setTextSize(13);
+            tab.setGravity(Gravity.CENTER); tab.setTextColor(i == themeCategory ? BG : INK);
+            tab.setPadding(dp(12), 0, dp(12), 0); tab.setMinWidth(dp(48));
+            tab.setBackground(rounded(i == themeCategory ? GREEN : PANEL, 12));
+            tab.setSelected(i == themeCategory); tab.setFocusable(true);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(48));
+            lp.topMargin = dp(4); lp.rightMargin = dp(5); choices.addView(tab, lp);
+            tab.setOnClickListener(v -> {
+                themeCategory = category; scrollPositions.remove("themes-library"); render();
+            });
+        }
+        LinearLayout grid = optionsList("themes-library");
+        addThemeOptions(grid);
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+                themeQuery = text.toString(); grid.removeAllViews(); addThemeOptions(grid);
+                if (activeScroll != null) activeScroll.scrollTo(0, 0);
+            }
+            public void afterTextChanged(android.text.Editable text) { }
+        });
+        button(root, "Current theme · " + THEME_NAMES[themeChoice].split(" · ")[0] + "  ›", PANEL, INK, () -> {
+            themeAnimationsOpen = true; render();
+        }).setContentDescription("Current theme and swipe animations");
     }
 
     private void addTestingOptions(LinearLayout list) {
@@ -1208,25 +1264,79 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void addThemeOptions(LinearLayout list) {
-        sectionTitle(list, "THEMES");
         int level = xp / 500 + 1;
-        LinearLayout tier1 = themeGroup(list, "tier1", "TIER 1 · COLORS",
-                "Level " + TIER_UNLOCK_LEVELS[0] + " · color palettes", isColorTheme(themeChoice));
-        addThemeChoices(tier1, COLOR_THEMES, level);
-        LinearLayout tier2 = themeGroup(list, "tier2", "TIER 2 · DISTINCTIVE",
-                "Level " + TIER_UNLOCK_LEVELS[1] + " · still illustrated artwork", themeTier(themeChoice) == 2);
-        LinearLayout heroes = themeGroup(tier2, "heroes", "HERO & FANTASY", "Still hero and fantasy artwork", true);
-        addThemeChoices(heroes, HERO_THEMES, level);
-        addThemeChoices(themeGroup(tier2, "balance", "BALANCE", "Ink and ivory koi garden", themeChoice == 61), new int[]{61}, level);
-        addCountryThemes(tier2, false, level);
-        LinearLayout tier3 = themeGroup(list, "tier3", "TIER 3 · ANIMATED",
-                "Level " + TIER_UNLOCK_LEVELS[2] + " · moving worlds and effects", themeTier(themeChoice) == 3);
-        addThemeChoices(themeGroup(tier3, "heroes3", "HERO & FANTASY", "Animated hero powers", themeChoice >= 34 && themeChoice <= 43), HERO_ANIMATED_THEMES, level);
-        LinearLayout worlds = themeGroup(tier3, "worlds", "WORLDS & ELEMENTS", "Animated settings", true);
-        addThemeChoices(worlds, ANIMATED_THEMES, level);
-        addThemeChoices(worlds, new int[]{27, 30, 31}, level);
+        String query = themeQuery.trim().toLowerCase(Locale.ROOT);
+        LinearLayout row = null; int count = 0;
+        for (int index = 0; index < THEME_NAMES.length; index++) {
+            if (!PlayPolicy.themeAllowed(index)) continue;
+            boolean country = countryCollection(index) >= 0;
+            if (themeCategory == 4 && !country) continue;
+            if (themeCategory >= 1 && themeCategory <= 3 && themeTier(index) != themeCategory) continue;
+            if (!THEME_NAMES[index].toLowerCase(Locale.ROOT).contains(query)) continue;
+            if (count++ % 2 == 0) {
+                row = new LinearLayout(this); row.setBaselineAligned(false);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+                lp.bottomMargin = dp(10); list.addView(row, lp);
+            }
+            addThemePreview(row, index, adminMode || level >= requiredThemeLevel(index));
+        }
+        if (count == 0) {
+            TextView empty = new TextView(this); empty.setText("No matching themes");
+            empty.setTextColor(INK); readableText(empty); list.addView(empty);
+        } else if (count % 2 != 0) row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+    }
 
-        addCountryThemes(tier3, true, level);
+    private void addThemePreview(LinearLayout row, int index, boolean unlocked) {
+        LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(8), dp(8), dp(8), dp(10));
+        GradientDrawable frame = rounded(PANEL, 16);
+        frame.setStroke(dp(themeChoice == index ? 2 : 1), themeChoice == index ? GREEN : MUTED);
+        card.setBackground(frame); card.setClipToOutline(true); card.setFocusable(true); card.setClickable(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+        if (row.getChildCount() == 0) lp.rightMargin = dp(8); row.addView(card, lp);
+        ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        image.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{THEME_COLORS[index][0], THEME_COLORS[index][2]}));
+        card.addView(image, new LinearLayout.LayoutParams(-1, dp(110)));
+        loadThemeThumbnail(index, image);
+        int country = countryCollection(index);
+        String[] parts = THEME_NAMES[index].split(" · ", 2);
+        TextView title = new TextView(this);
+        title.setText((themeChoice == index ? "✓ " : "") + (country >= 0 ? COUNTRY_FLAGS[country] + " " : "") + parts[0]);
+        title.setTextSize(15); title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setPadding(0, dp(7), 0, dp(3)); title.setMinLines(2); card.addView(title);
+        TextView detail = new TextView(this);
+        detail.setText(parts.length > 1 ? parts[1] : ""); detail.setTextSize(12); detail.setTextColor(MUTED);
+        detail.setMinLines(2); card.addView(detail);
+        TextView badge = new TextView(this); badge.setTextSize(12); badge.setTextColor(unlocked ? GREEN : MUTED);
+        badge.setText("Tier " + themeTier(index) + " · " + (unlocked ? (hasThemeMotion(index) ? "Animated" : "Still") : "🔒 Level " + requiredThemeLevel(index)));
+        card.addView(badge);
+        card.setContentDescription(THEME_NAMES[index] + ", " + badge.getText() + (themeChoice == index ? ", selected" : ""));
+        card.setOnClickListener(v -> {
+            if (!unlocked) { Toast.makeText(this, "Unlock at level " + requiredThemeLevel(index), Toast.LENGTH_SHORT).show(); return; }
+            themeChoice = index; getPreferences(MODE_PRIVATE).edit().putInt("theme", index).apply();
+            playSound(R.raw.bubble_tap, .16f); applyTheme(); animateThemeChange = true;
+            // Review state and selected month remain intact; only the presentation changes.
+            if (reviewing) showingThemes = false;
+            render();
+        });
+    }
+
+    private void loadThemeThumbnail(int index, ImageView image) {
+        int resource = THEME_BACKDROP_IDS[index];
+        if (resource == 0) return;
+        Bitmap cached = themeThumbnails.get(index);
+        if (cached != null) { image.setImageBitmap(cached); return; }
+        io.execute(() -> {
+            if (isDestroyed()) return;
+            BitmapFactory.Options options = new BitmapFactory.Options(); options.inSampleSize = 8;
+            Bitmap bitmap = BitmapFactory.decodeResource(getResources(), resource, options);
+            if (bitmap == null) return;
+            if (isDestroyed()) { bitmap.recycle(); return; }
+            themeThumbnails.put(index, bitmap);
+            runOnUiThread(() -> { if (!isDestroyed() && image.isAttachedToWindow()) image.setImageBitmap(bitmap); });
+        });
     }
 
     private void addAccountOptions(LinearLayout list) {
@@ -1318,23 +1428,7 @@ public class MainActivity extends ComponentActivity {
         });
     }
 
-    private void addThemeChoices(LinearLayout list, int[] choices, int level) {
-        for (int choice : choices) {
-            if (!PlayPolicy.themeAllowed(choice)) continue;
-            int requiredLevel = requiredThemeLevel(choice);
-            boolean unlocked = adminMode || level >= requiredLevel;
-            themeTile(list, choice, unlocked, requiredLevel, () -> {
-                if (!unlocked) return;
-                themeChoice = choice; getPreferences(MODE_PRIVATE).edit().putInt("theme", choice).apply();
-                applyTheme(); animateThemeChange = true; render();
-            });
-            if (choice == 34) settingSwitch(list, "Arachnophobia mode", "Hide the spider in animated Web Hero", arachnophobiaMode, value -> {
-                arachnophobiaMode = value;
-                getPreferences(MODE_PRIVATE).edit().putBoolean("arachnophobia_mode", value).apply();
-                if (activeBackdrop != null) activeBackdrop.resetSpider();
-            });
-        }
-    }
+
 
     private void sectionTitle(LinearLayout parent, String title) {
         TextView label = new TextView(this); label.setText(title); label.setTextColor(GREEN);
@@ -1343,32 +1437,7 @@ public class MainActivity extends ComponentActivity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(18); lp.bottomMargin = dp(12); parent.addView(label, lp);
     }
 
-    private LinearLayout themeGroup(LinearLayout parent, String key, String title, String description, boolean openByDefault) {
-        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(10), dp(14), dp(10)); header.setBackground(rounded(PANEL, 16));
-        LinearLayout.LayoutParams headerLp = new LinearLayout.LayoutParams(-1, dp(68));
-        headerLp.bottomMargin = dp(8); parent.addView(header, headerLp);
-        LinearLayout labels = new LinearLayout(this); labels.setOrientation(LinearLayout.VERTICAL);
-        header.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView name = new TextView(this); name.setText(title); name.setTextColor(GREEN);
-        name.setTextSize(14); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); labels.addView(name);
-        TextView detail = new TextView(this); detail.setText(description); detail.setTextColor(MUTED);
-        detail.setTextSize(12); labels.addView(detail);
-        TextView arrow = new TextView(this); arrow.setTextColor(INK); arrow.setTextSize(23);
-        header.addView(arrow);
-        LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(10), 0, 0, dp(6)); parent.addView(content);
-        boolean expanded = getPreferences(MODE_PRIVATE).getBoolean("theme_group_" + key, openByDefault);
-        content.setVisibility(expanded ? View.VISIBLE : View.GONE);
-        arrow.setText(expanded ? "⌃" : "⌄");
-        header.setOnClickListener(v -> {
-            boolean show = content.getVisibility() != View.VISIBLE;
-            content.setVisibility(show ? View.VISIBLE : View.GONE);
-            arrow.setText(show ? "⌃" : "⌄");
-            getPreferences(MODE_PRIVATE).edit().putBoolean("theme_group_" + key, show).apply();
-        });
-        return content;
-    }
+
 
     private static int countryCollection(int theme) {
         for (int i = 0; i < COUNTRY_NAMES.length; i++)
@@ -1510,38 +1579,9 @@ public class MainActivity extends ComponentActivity {
         swipePreviewAnimator = animation; animation.start();
     }
 
-    private void addCountryThemes(LinearLayout parent, boolean animated, int level) {
-        String suffix = animated ? "3" : "2";
-        LinearLayout countries = themeGroup(parent, "countries" + suffix, "COUNTRIES",
-                COUNTRY_NAMES.length + " country collections", countryCollection(themeChoice) >= 0);
-        for (int i = 0; i < COUNTRY_NAMES.length; i++) {
-            int choice = animated ? COUNTRY_ANIMATED_THEMES[i] : COUNTRY_STILL_THEMES[i];
-            addThemeChoices(themeGroup(countries, COUNTRY_KEYS[i] + suffix, COUNTRY_NAMES[i].toUpperCase(Locale.ROOT),
-                    animated ? COUNTRY_MOTIONS[i] : COUNTRY_SCENES[i], themeChoice == choice), new int[]{choice}, level);
-        }
-    }
 
-    private void themeTile(LinearLayout parent, int index, boolean unlocked, int requiredLevel, Runnable action) {
-        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(14), dp(8), dp(14), dp(8)); row.setBackground(rounded(PANEL, 16));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(70)); lp.bottomMargin = dp(8); parent.addView(row, lp);
-        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
-        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView name = new TextView(this); name.setText((themeChoice == index ? "✓  " : "") + THEME_NAMES[index]);
-        name.setTextSize(16); name.setTextColor(INK); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); copy.addView(name);
-        TextView detail = new TextView(this); detail.setText(unlocked ? "Tier " + themeTier(index) + " · " + (hasThemeMotion(index) ? "Animated effects" : themeTier(index) == 1 ? "Color palette" : "Illustrated background") : "Unlock at level " + requiredLevel);
-        detail.setTextSize(12); detail.setTextColor(unlocked ? GREEN : MUTED); copy.addView(detail);
-        if (unlocked) {
-            for (int color : new int[]{THEME_COLORS[index][2], THEME_COLORS[index][3], THEME_COLORS[index][4]}) {
-                View swatch = new View(this); swatch.setBackground(rounded(color, 15));
-                LinearLayout.LayoutParams circle = new LinearLayout.LayoutParams(dp(13), dp(13));
-                circle.leftMargin = dp(3); row.addView(swatch, circle);
-            }
-        } else {
-            TextView lock = new TextView(this); lock.setText("🔒"); lock.setTextSize(16); row.addView(lock);
-        }
-        row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
-    }
+
+
 
     private interface ToggleAction { void changed(boolean enabled); }
     private void settingSwitch(LinearLayout parent, String title, String detail, boolean checked, ToggleAction action) {
@@ -1698,7 +1738,17 @@ public class MainActivity extends ComponentActivity {
         for (Photo p : month) if (!reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
         if (fullScreenReview && current != null) { fullScreenReviewScreen(current, remaining, month.size()); return; }
         if (fullScreenReview) { fullScreenReview = false; applyContentInsets(); }
-        back("Months", () -> { reviewing = false; fullScreenReview = false; render(); });
+        LinearLayout reviewToolbar = new LinearLayout(this);
+        root.addView(reviewToolbar, new LinearLayout.LayoutParams(-1, dp(52)));
+        Button months = button(reviewToolbar, "← Months", PANEL, INK, () -> {
+            reviewing = false; fullScreenReview = false; render();
+        });
+        months.setLayoutParams(new LinearLayout.LayoutParams(0, dp(48), 1));
+        Button themes = button(reviewToolbar, "✦ Themes", PANEL, INK, () -> {
+            themeAnimationsOpen = false; showingThemes = true; render();
+        });
+        LinearLayout.LayoutParams themesLp = new LinearLayout.LayoutParams(0, dp(48), 1);
+        themesLp.leftMargin = dp(8); themes.setLayoutParams(themesLp);
         String monthName = ReviewNavigation.title(selectedMonth, true);
         TextView dateHeading = heading(current == null ? monthName : photoDate(current), remaining + " of " + month.size() + " left to review");
         TextView remainingHeading = headingSubtitle;
