@@ -1,0 +1,185 @@
+{
+  "format": "PhotoSweep existing theme catalogue: BG/PANEL/GREEN/RED/GOLD; one holiday card with still/animated variants; append-only indices; Tier 2 level 3; Tier 3 level 6",
+  "holidays": [
+    {
+      "key": "christmas",
+      "name": "Christmas",
+      "still_id": 62,
+      "animated_id": 63,
+      "palette": [
+        "102D2A",
+        "254942",
+        "9DE0B8",
+        "FF959D",
+        "FFE0A1"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_christmas.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_christmas.png"
+    },
+    {
+      "key": "halloween",
+      "name": "Halloween",
+      "still_id": 64,
+      "animated_id": 65,
+      "palette": [
+        "241A36",
+        "44304F",
+        "F9B56F",
+        "FFA0B2",
+        "D1B8FF"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_halloween.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_halloween.png"
+    },
+    {
+      "key": "thanksgiving",
+      "name": "Thanksgiving",
+      "still_id": 66,
+      "animated_id": 67,
+      "palette": [
+        "33222A",
+        "563A39",
+        "ECC08A",
+        "FF9D93",
+        "FFE0A0"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_thanksgiving.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_thanksgiving.png"
+    },
+    {
+      "key": "independence",
+      "name": "July 4th",
+      "still_id": 68,
+      "animated_id": 69,
+      "palette": [
+        "14233E",
+        "293A58",
+        "8EC9FF",
+        "FF909C",
+        "F8E1AA"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_independence.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_independence.png"
+    },
+    {
+      "key": "new_year",
+      "name": "New Year's Day",
+      "still_id": 70,
+      "animated_id": 71,
+      "palette": [
+        "171D35",
+        "343B56",
+        "EFD3A0",
+        "FFA1B2",
+        "FFF1C9"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_new_year.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_new_year.png"
+    },
+    {
+      "key": "mlk",
+      "name": "Martin Luther King Jr. Day",
+      "still_id": 72,
+      "animated_id": 73,
+      "palette": [
+        "1C2942",
+        "344963",
+        "BADFCC",
+        "FFA8AD",
+        "F2DEA6"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_mlk.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_mlk.png"
+    },
+    {
+      "key": "presidents",
+      "name": "Presidents' Day",
+      "still_id": 74,
+      "animated_id": 75,
+      "palette": [
+        "192E49",
+        "324B65",
+        "AFCFFF",
+        "FF9EA6",
+        "EAD49A"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_presidents.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_presidents.png"
+    },
+    {
+      "key": "memorial",
+      "name": "Memorial Day",
+      "still_id": 76,
+      "animated_id": 77,
+      "palette": [
+        "202B3B",
+        "394959",
+        "CAD5C9",
+        "F4A1A7",
+        "E8D7B5"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_memorial.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_memorial.png"
+    },
+    {
+      "key": "juneteenth",
+      "name": "Juneteenth",
+      "still_id": 78,
+      "animated_id": 79,
+      "palette": [
+        "1D2943",
+        "3D4260",
+        "A4D8FF",
+        "FFA3AD",
+        "FFE0A9"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_juneteenth.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_juneteenth.png"
+    },
+    {
+      "key": "labor",
+      "name": "Labor Day",
+      "still_id": 80,
+      "animated_id": 81,
+      "palette": [
+        "163536",
+        "315250",
+        "9CE0C7",
+        "FFB29C",
+        "FFE0A4"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_labor.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_labor.png"
+    },
+    {
+      "key": "columbus",
+      "name": "Columbus Day",
+      "still_id": 82,
+      "animated_id": 83,
+      "palette": [
+        "172F43",
+        "344D60",
+        "AADCE8",
+        "FFAE9C",
+        "E6C99A"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_columbus.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_columbus.png"
+    },
+    {
+      "key": "veterans",
+      "name": "Veterans Day",
+      "still_id": 84,
+      "animated_id": 85,
+      "palette": [
+        "1C2C3D",
+        "344B58",
+        "BCDCD5",
+        "F3A2A9",
+        "F2DEB0"
+      ],
+      "background": "app/src/main/res/drawable-nodpi/holiday_veterans.png",
+      "sprite": "app/src/main/res/drawable-nodpi/fx_holiday_veterans.png"
+    }
+  ]
+}
