@@ -45,13 +45,15 @@ class SwipeVfxView extends View {
         float cy=fingerY<0?h*.55f:Math.max(h*.18f,Math.min(h*.82f,fingerY));
         if(enabled) {
             drawStructure(canvas,w,h,cx,cy,time,impact,strength,sign,color);
-            Bitmap sprite=sprites.get(keep); int count=8+intensity/6;
+            Bitmap sprite=sprites.get(keep);
+            boolean quiet=kind==SwipeTheme.Kind.MLK || kind==SwipeTheme.Kind.MEMORIAL || kind==SwipeTheme.Kind.VETERANS;
+            int count=quiet ? 6 : 8+intensity/6;
             for(int i=0;i<count;i++) {
                 float phase=loop(time*.6f+i*.618034f), theta=i*2.399963f+time*.35f;
                 float lane=((i*37)%101)/100f, x=cx, y=cy, rotation=sign*(phase*65+i*19);
                 float radius=dp(13+i%4*5)*(.7f+.4f*amount);
                 if(released!=0) {
-                    float spread=SwipeMotion.ease(impact)*(Math.min(w,h)*.48f+dp(30));
+                    float spread=SwipeMotion.ease(impact)*(Math.min(w,h)*(quiet ? .18f : .48f)+dp(30));
                     x=cx+(float)Math.cos(theta)*spread+sign*impact*w*.18f;
                     y=cy+(float)Math.sin(theta)*spread;
                     radius*=1+impact*.7f;
@@ -61,6 +63,11 @@ class SwipeVfxView extends View {
                     if(kind==SwipeTheme.Kind.ONE_PIECE || kind==SwipeTheme.Kind.WATER) { x=cx+sign*impact*w*.6f; y=cy+dp((i-count/2)*10)+(float)Math.sin(theta)*dp(25); }
                 } else {
                     switch(kind) {
+                        case CHRISTMAS:case HALLOWEEN:case THANKSGIVING:case MLK:case MEMORIAL:case LABOR:case COLUMBUS:case VETERANS:
+                            x=loop(lane+sign*time*.045f)*w; y=h*(.12f+phase*.76f)+(float)Math.sin(time+i)*dp(8);
+                            rotation=kind==SwipeTheme.Kind.MLK || kind==SwipeTheme.Kind.COLUMBUS ? 0 : (float)Math.sin(time+i)*18;break;
+                        case INDEPENDENCE:case NEW_YEAR:case PRESIDENTS:case JUNETEENTH:
+                            x=cx+(float)Math.cos(theta+time*.4f)*dp(30+lane*75); y=cy+(float)Math.sin(theta+time*.4f)*dp(30+lane*75);rotation=time*20+i*18;break;
                         case FIRE:
                             x=i%3==0?(i%2==0?dp(14):w-dp(14)):w*lane+sign*phase*dp(18)*amount;
                             y=i%3==0?h*(.2f+lane*.6f):h-phase*h*.3f;
@@ -81,7 +88,11 @@ class SwipeVfxView extends View {
                             y=cy+(float)Math.sin(theta)*dp(42+lane*70);radius*=.7f+Math.abs((float)Math.sin(time*8+i))*.6f;rotation=i*67;break;
                         case SPACE:
                             x=cx+(float)Math.cos(theta)*dp(35+lane*100); y=cy+(float)Math.sin(theta)*dp(20+lane*65);rotation=theta*57.3f-135;break;
-                        case WEB:
+                        case INDEPENDENCE:case NEW_YEAR:
+                for(int i=0;i<12;i++){float a=i*.524f;c.drawLine(x+(float)Math.cos(a)*r*.65f,y+(float)Math.sin(a)*r*.65f,x+(float)Math.cos(a)*r,y+(float)Math.sin(a)*r,paint);}break;
+            case MLK:case MEMORIAL:case VETERANS:
+                paint.setAlpha(0);break;
+            case WEB:
                             x=i%2==0?dp(20):w-dp(20);y=h*(.15f+lane*.6f)+(float)Math.sin(time+i)*dp(12);radius*=.7f;rotation=0;break;
                         case GOLD:case SOLAR:
                             x=cx+(float)Math.cos(theta)*dp(40+lane*90);y=cy+(float)Math.sin(theta)*dp(40+lane*90);radius*=.7f+.4f*(float)Math.sin(time*3+i);break;

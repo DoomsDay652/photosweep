@@ -3,7 +3,7 @@ package com.dominic.photosweep;
 final class PlayPolicy {
     private PlayPolicy() {}
     static boolean themeAllowed(int index) {
-        return index >= 0 && index < 62 && !(index >= 3 && index <= 10)
+        return index >= 0 && index < HolidayThemes.end() && !(index >= 3 && index <= 10)
                 && !(index >= 34 && index <= 41) && !(index >= 56 && index <= 60) && index != 26;
     }
     static boolean accountReady(String apiKey, String appId, String projectId, String privacy, String deletion) {
