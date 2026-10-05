@@ -82,6 +82,8 @@ public class MainActivity extends ComponentActivity {
     private static final int PERMISSION_REQUEST = 31;
     private static final int TRASH_REQUEST = 32;
     private static final int RESTORE_REQUEST = 33;
+    private static final int RESTORE_SELECTION_REQUEST = 34;
+    private static final int DELETE_SELECTION_REQUEST = 35;
     private static final long SEVEN_DAYS = 7L * 24 * 60 * 60 * 1000;
     private static final int TRASH_LIMIT = 20;
     private static final String[] THEME_NAMES = {
@@ -348,6 +350,7 @@ public class MainActivity extends ComponentActivity {
 
     private static class TrashEntry {
         long id, trashedAt, timestamp;
+        long bytes = -1;
         Uri uri;
         TrashEntry(long id, long trashedAt, long timestamp) {
             this.id = id; this.trashedAt = trashedAt; this.timestamp = timestamp;
@@ -366,6 +369,9 @@ public class MainActivity extends ComponentActivity {
     private AccountController accounts;
     private final HashSet<Long> duplicates = new HashSet<>();
     private final ArrayList<TrashEntry> trashEntries = new ArrayList<>();
+    private final HashSet<Long> selectedTrash = new HashSet<>();
+    private final ArrayList<Long> pendingTrashSelection = new ArrayList<>();
+    private boolean trashSelecting;
     private final ArrayList<TrashEntry> evictionQueue = new ArrayList<>();
     private Set<String> reviewed = new HashSet<>();
     private Set<String> rewarded = new HashSet<>();
@@ -415,6 +421,7 @@ public class MainActivity extends ComponentActivity {
     private boolean showingSettings, showingThemes, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private int optionsSection;
     private boolean arachnophobiaMode, animateThemeChange;
+    private boolean reducedMotion, testingVisible, trashSizesLoading;
     private int themeChoice, musicVolume, masterVolume, vfxVolume;
     private int swipeStyle, swipeIntensity = 55, swipeSpeed = 100;
     private android.animation.ValueAnimator swipePreviewAnimator;
@@ -495,6 +502,8 @@ public class MainActivity extends ComponentActivity {
         }
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
         adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
+        testingVisible = adminMode || getPreferences(MODE_PRIVATE).getBoolean("testing_visible", false);
+        reducedMotion = getPreferences(MODE_PRIVATE).getBoolean("reduced_motion", false);
         soundEnabled = getPreferences(MODE_PRIVATE).getBoolean("sound_enabled", true);
         musicEnabled = getPreferences(MODE_PRIVATE).getBoolean("music_enabled", false);
         musicVolume = readVolume("music_volume", 18);
@@ -526,6 +535,11 @@ public class MainActivity extends ComponentActivity {
             pendingTrash = state.getLong("pendingTrash", -1);
             pendingRestore = state.getLong("pendingRestore", -1);
             pendingRestoreUndo = state.getBoolean("pendingRestoreUndo");
+            trashSelecting = state.getBoolean("trashSelecting");
+            long[] selected = state.getLongArray("selectedTrash");
+            if (selected != null) for (long id : selected) selectedTrash.add(id);
+            long[] pending = state.getLongArray("pendingTrashSelection");
+            if (pending != null) for (long id : pending) pendingTrashSelection.add(id);
             lastUndo = readUndoState(state.getBundle("lastUndo"));
             pendingTrashUndo = readUndoState(state.getBundle("pendingTrashUndo"));
             Bundle savedScroll = state.getBundle("scrollPositions");
@@ -626,6 +640,9 @@ public class MainActivity extends ComponentActivity {
         state.putLong("pendingTrash", pendingTrash);
         state.putLong("pendingRestore", pendingRestore);
         state.putBoolean("pendingRestoreUndo", pendingRestoreUndo);
+        state.putBoolean("trashSelecting", trashSelecting);
+        state.putLongArray("selectedTrash", selectedTrash.stream().mapToLong(Long::longValue).toArray());
+        state.putLongArray("pendingTrashSelection", pendingTrashSelection.stream().mapToLong(Long::longValue).toArray());
         if (lastUndo != null) state.putBundle("lastUndo", undoState(lastUndo));
         if (pendingTrashUndo != null) state.putBundle("pendingTrashUndo", undoState(pendingTrashUndo));
         Bundle savedScroll = new Bundle();
@@ -857,7 +874,7 @@ public class MainActivity extends ComponentActivity {
             }
             activeBackdrop = new TextureBackdrop();
             host.addView(activeBackdrop, 0, new FrameLayout.LayoutParams(-1, -1));
-            if (hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 19 && themeChoice != 21 && themeChoice != 22)
+            if (!reducedMotion && hasThemeMotion(themeChoice) && themeChoice != 18 && themeChoice != 19 && themeChoice != 21 && themeChoice != 22)
                 host.addView(new ThemeMotionOverlay(), 1, new FrameLayout.LayoutParams(-1, -1));
             renderedTheme = themeChoice;
         }
@@ -890,7 +907,7 @@ public class MainActivity extends ComponentActivity {
                 }
             });
         }
-        if (transition) { root.setAlpha(0f); root.animate().alpha(1f).setDuration(260).start(); }
+        if (transition && !reducedMotion) { root.setAlpha(0f); root.animate().alpha(1f).setDuration(260).start(); }
         host.requestApplyInsets();
         if (radioBubble != null) radioBubble.bringToFront();
     }
@@ -1254,16 +1271,31 @@ public class MainActivity extends ComponentActivity {
     private void settingsScreen() {
         if (optionsSection == 0) {
             back("Photo Sweep", () -> { showingSettings = false; render(); });
-            heading("Options", "Choose what you want to adjust");
+            heading("Settings", "Make Photo Sweep yours");
             LinearLayout list = optionsList("options");
-            tile(list, "Account & support", "Sign in, support and app information", () -> openOptionsSection(2));
-            tile(list, "Audio", "Swipe sounds and music", () -> openOptionsSection(1));
-            tile(list, "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
-            tile(list, "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
+            settingsRow(list, "◎", "Account", "Manage sign-in, profile and account", () -> openOptionsSection(2));
+            sectionTitle(list, "PERSONALIZE");
+            settingsRow(list, "✦", "Themes & animations", THEME_NAMES[themeChoice].split(" · ")[0], () -> {
+                showingSettings = false; showingThemes = true; themeAnimationsOpen = false; render();
+            });
+            settingsRow(list, "♫", "Audio & radio", "Swipe sounds, music and volume", () -> openOptionsSection(1));
+            settingsRow(list, "◈", "Display & gestures", "Current theme's swipe effects and previews", () -> openOptionsSection(5));
+            sectionTitle(list, "APP & ACCOUNT");
+            settingsRow(list, "◇", "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
+            settingsRow(list, "?", "Help & support", "Tips, support and app information", this::showSupportDetails);
+            if (testingVisible) settingsRow(list, "⚙", "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
+            TextView version = new TextView(this); version.setText("Photo Sweep · " + BuildConfig.VERSION_NAME);
+            version.setTextColor(MUTED); version.setTextSize(13); version.setGravity(Gravity.CENTER);
+            version.setPadding(0, dp(12), 0, dp(16)); list.addView(version);
+            version.setOnLongClickListener(v -> {
+                testingVisible = true; getPreferences(MODE_PRIVATE).edit().putBoolean("testing_visible", true).apply();
+                Toast.makeText(this, "Testing controls shown in Settings", Toast.LENGTH_SHORT).show(); render(); return true;
+            });
             return;
         }
-        String[] titles = {"", "Audio", "Account & support", "Privacy & permissions", "Testing & progress"};
-        back("Options", () -> { optionsSection = 0; render(); });
+        String[] titles = {"", "Audio & radio", "Account & support", "Privacy & permissions", "Testing & progress", "Display & gestures"};
+        if (optionsSection < 0 || optionsSection >= titles.length) { optionsSection = 0; render(); return; }
+        back("Settings", () -> { optionsSection = 0; render(); });
         heading(titles[optionsSection], "Photo Sweep options");
         LinearLayout list = optionsList("options:" + optionsSection);
         switch (optionsSection) {
@@ -1271,6 +1303,7 @@ public class MainActivity extends ComponentActivity {
             case 2: addAccountOptions(list); break;
             case 3: addPrivacyOptions(list); break;
             case 4: addTestingOptions(list); break;
+            case 5: addDisplayOptions(list); break;
             default: optionsSection = 0; render(); break;
         }
     }
@@ -1340,6 +1373,20 @@ public class MainActivity extends ComponentActivity {
         Button reset = new Button(this); reset.setText("Reset local progress"); reset.setTextColor(INK);
         reset.setBackground(rounded(PANEL, 12)); list.addView(reset, new LinearLayout.LayoutParams(-1, dp(52)));
         reset.setOnClickListener(v -> confirmProgressReset());
+        button(list, "Hide testing controls", PANEL, MUTED, () -> {
+            if (adminMode) { Toast.makeText(this, "Turn off Admin mode before hiding testing controls", Toast.LENGTH_SHORT).show(); return; }
+            testingVisible = false; getPreferences(MODE_PRIVATE).edit().putBoolean("testing_visible", false).apply();
+            optionsSection = 0; render();
+        });
+    }
+
+    private void addDisplayOptions(LinearLayout list) {
+        sectionTitle(list, "DISPLAY");
+        settingSwitch(list, "Reduced motion", "Keep theme artwork; stop decorative motion and shorten swipe transitions", reducedMotion, value -> {
+            reducedMotion = value; getPreferences(MODE_PRIVATE).edit().putBoolean("reduced_motion", value).apply();
+            renderedTheme = -1; render();
+        });
+        addSwipeControls(list);
     }
 
     private void addThemeOptions(LinearLayout list) {
@@ -1763,40 +1810,197 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void trashScreen() {
-        back("Photo Sweep", () -> { showingTrash = false; render(); });
-        heading("Recently trashed", "7-day recovery window · Android controls final removal");
-        label("Photo Sweep tracks the latest 20 photos for up to 7 days. With Manage media enabled, expired or older entries can be permanently removed. Without it, Android controls final removal.", 13, MUTED, false);
+        back("Photo Sweep", () -> { showingTrash = false; trashSelecting = false; selectedTrash.clear(); render(); });
+        selectedTrash.removeIf(id -> trashEntries.stream().noneMatch(entry -> entry.id == id));
+        LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = new TextView(this); title.setText("Trash"); title.setTextColor(INK);
+        title.setTextSize(28); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        Button select = button(toolbar, trashSelecting ? "Done" : "Select", PANEL, GREEN, () -> {
+            trashSelecting = !trashSelecting; selectedTrash.clear(); render();
+        });
+        select.setLayoutParams(new LinearLayout.LayoutParams(dp(96), dp(48)));
+        select.setEnabled(pendingRestore == -1 && pendingTrash == -1 && !trashEntries.isEmpty());
+        root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
+        label(trashEntries.size() + (trashEntries.size() == 1 ? " photo" : " photos"), 16, INK, false);
+        label("Latest 20 photos · recover for up to 7 days", 13, MUTED, false);
+        label("Android permissions control final removal.", 12, MUTED, false);
+        addTrashStorageSummary();
         if (trashEntries.isEmpty()) {
+            selectedTrash.clear(); trashSelecting = false;
             spacer(36); label("Trash is empty", 21, INK, true);
+            label("Photos you move to Trash will appear here.", 15, MUTED, false);
             return;
         }
         ScrollView scroll = boundedScroll();
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         trackScroll(scroll, "trash");
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); scroll.addView(list);
+        LinearLayout row = null; int count = 0;
+        int columns = getResources().getConfiguration().screenWidthDp >= 600 ? 4 : 3;
         for (TrashEntry entry : new ArrayList<>(trashEntries)) {
-            LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), dp(10), dp(10), dp(10)); row.setBackground(rounded(PANEL, 20));
-            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(100)); rowLp.bottomMargin = dp(10); list.addView(row, rowLp);
+            if (count++ % columns == 0) {
+                row = new LinearLayout(this); row.setBaselineAligned(false);
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+                rowLp.topMargin = dp(12); list.addView(row, rowLp);
+            }
+            boolean selected = selectedTrash.contains(entry.id);
+            LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
+            GradientDrawable outline = rounded(PANEL, 14);
+            outline.setStroke(dp(selected ? 2 : 1), selected ? GREEN : PANEL); card.setBackground(outline);
+            card.setPadding(dp(3), dp(3), dp(3), dp(6)); card.setClipToOutline(true);
+            card.setFocusable(true); card.setSelected(selected);
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (row.getChildCount() > 0) cardLp.leftMargin = dp(8); row.addView(card, cardLp);
+            FrameLayout imageFrame = new FrameLayout(this);
+            card.addView(imageFrame, new LinearLayout.LayoutParams(-1, dp(112)));
             ImageView thumbnail = new ImageView(this); thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            thumbnail.setBackground(rounded(PANEL, 12)); row.addView(thumbnail, new LinearLayout.LayoutParams(dp(80), dp(80)));
+            thumbnail.setContentDescription("Trashed photo");
+            imageFrame.addView(thumbnail, new FrameLayout.LayoutParams(-1, -1));
             loadPreview(entry.id, entry.uri, thumbnail);
-            LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL);
-            info.setPadding(dp(12), 0, dp(4), 0); row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
-            TextView title = new TextView(this); title.setText(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp)));
-            title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD); title.setTextSize(14); info.addView(title);
-            TextView days = new TextView(this);
+            if (trashSelecting) {
+                TextView check = new TextView(this); check.setText(selected ? "✓" : "○");
+                check.setGravity(Gravity.CENTER); check.setTextSize(19); check.setTextColor(selected ? BG : INK);
+                check.setBackground(rounded(selected ? GREEN : PANEL, 20));
+                FrameLayout.LayoutParams checkLp = new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP | Gravity.END);
+                checkLp.setMargins(dp(4), dp(4), dp(4), dp(4)); imageFrame.addView(check, checkLp);
+                check.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            }
             long timeLeft = Math.max(0, SEVEN_DAYS - (System.currentTimeMillis() - entry.trashedAt));
-            days.setText(ReviewNavigation.expiry(timeLeft));
-            days.setTextColor(MUTED); days.setTextSize(12); info.addView(days);
-            Button restore = new Button(this); restore.setText("Restore"); restore.setAllCaps(false);
-            restore.setTextColor(INK); restore.setTextSize(13); restore.setBackground(themeButton(PANEL, 12));
-            restore.setOnClickListener(v -> restore(entry)); row.addView(restore, new LinearLayout.LayoutParams(dp(90), dp(46)));
+            TextView days = new TextView(this); days.setText(ReviewNavigation.expiry(timeLeft));
+            days.setTextColor(0xffffcf83); days.setTextSize(12); days.setGravity(Gravity.CENTER);
+            days.setPadding(dp(2), dp(7), dp(2), dp(4)); card.addView(days);
+            card.setContentDescription(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))
+                    + ". " + days.getText() + (selected ? ". Selected" : "")
+                    + (trashSelecting ? ". Tap to toggle selection" : ". Tap to inspect"));
+            card.setOnClickListener(v -> {
+                if (pendingRestore != -1 || pendingTrash != -1) return;
+                if (trashSelecting) {
+                    if (!selectedTrash.add(entry.id)) selectedTrash.remove(entry.id);
+                    render();
+                } else inspectTrash(entry);
+            });
+            card.setOnLongClickListener(v -> {
+                if (pendingRestore != -1 || pendingTrash != -1) return true;
+                trashSelecting = true; selectedTrash.add(entry.id); render(); return true;
+            });
+        }
+        if (count % columns != 0) {
+            for (int i = count % columns; i < columns; i++) {
+                LinearLayout.LayoutParams fillerLp = new LinearLayout.LayoutParams(0, 1, 1);
+                fillerLp.leftMargin = dp(8); row.addView(new View(this), fillerLp);
+            }
+        }
+        if (trashSelecting) {
+            label(selectedTrash.size() + " selected", 15, INK, true);
+            LinearLayout actions = new LinearLayout(this);
+            Button restore = button(actions, "Restore", GREEN, BG, () -> requestTrashSelection(false));
+            restore.setLayoutParams(new LinearLayout.LayoutParams(0, dp(55), 1));
+            Button delete = button(actions, "Delete", PANEL, RED, () -> requestTrashSelection(true));
+            LinearLayout.LayoutParams deleteLp = new LinearLayout.LayoutParams(0, dp(55), 1);
+            deleteLp.leftMargin = dp(10); delete.setLayoutParams(deleteLp);
+            boolean enabled = !selectedTrash.isEmpty() && pendingRestore == -1 && pendingTrash == -1;
+            restore.setEnabled(enabled); delete.setEnabled(enabled);
+            restore.setAlpha(enabled ? 1f : .45f); delete.setAlpha(enabled ? 1f : .45f);
+            root.addView(actions);
+            label("Confirm before permanent deletion", 12, MUTED, false);
         }
     }
 
+    private void inspectTrash(TrashEntry entry) {
+        ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        image.setBackgroundColor(BG);
+        image.setLayoutParams(new android.view.ViewGroup.LayoutParams(-1, dp(320)));
+        loadPreview(entry.id, entry.uri, image);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp)))
+                .setView(image).setNegativeButton("Close", null)
+                .setPositiveButton("Restore", (dialog, which) -> restore(entry))
+                .setNeutralButton("Select", (dialog, which) -> {
+                    trashSelecting = true; selectedTrash.add(entry.id); render();
+                }).show();
+    }
+
+    private void addTrashStorageSummary() {
+        long total = 0; boolean complete = true;
+        for (TrashEntry entry : trashEntries) {
+            if (entry.bytes < 0) complete = false; else total += entry.bytes;
+        }
+        label((complete ? "In Trash · " : "Known in Trash · ") + android.text.format.Formatter.formatFileSize(this, total)
+                + " · not freed yet", 13, GOLD, false);
+        long freed = getPreferences(MODE_PRIVATE).getLong("confirmed_freed_bytes", 0);
+        label("Freed · " + android.text.format.Formatter.formatFileSize(this, freed)
+                + " · confirmed deletions since tracking began", 12, MUTED, false);
+        if (complete || trashSizesLoading) return;
+        trashSizesLoading = true;
+        ArrayList<TrashEntry> pending = new ArrayList<>(trashEntries);
+        io.execute(() -> {
+            HashMap<Long, Long> sizes = new HashMap<>();
+            for (TrashEntry entry : pending) if (entry.bytes < 0) {
+                long bytes = mediaBytes(getContentResolver(), entry.uri);
+                if (bytes >= 0) sizes.put(entry.id, bytes);
+            }
+            runOnUiThread(() -> {
+                trashSizesLoading = false;
+                if (isDestroyed() || sizes.isEmpty()) return;
+                for (TrashEntry entry : trashEntries) if (sizes.containsKey(entry.id)) entry.bytes = sizes.get(entry.id);
+                saveTrashEntries(); if (showingTrash) render();
+            });
+        });
+    }
+
+    private static long mediaBytes(android.content.ContentResolver resolver, Uri uri) {
+        try {
+            Bundle args = new Bundle();
+            args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE);
+            try (Cursor cursor = resolver.query(uri, new String[]{MediaStore.Images.Media.SIZE}, args, null)) {
+                if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) return Math.max(0, cursor.getLong(0));
+            }
+        } catch (Exception ignored) { }
+        return -1;
+    }
+
+    private static synchronized void recordFreed(android.content.Context context, long id, long bytes) {
+        if (bytes < 0) return;
+        android.content.SharedPreferences prefs = context.getSharedPreferences("MainActivity", MODE_PRIVATE);
+        HashSet<String> recorded = new HashSet<>(prefs.getStringSet("confirmed_freed_ids", Collections.emptySet()));
+        if (!recorded.add(Long.toString(id))) return;
+        long total = prefs.getLong("confirmed_freed_bytes", 0);
+        prefs.edit().putLong("confirmed_freed_bytes", total + bytes).putStringSet("confirmed_freed_ids", recorded).apply();
+    }
+
+    private void requestTrashSelection(boolean delete) {
+        if (pendingRestore != -1 || pendingTrash != -1 || selectedTrash.isEmpty()) return;
+        final ArrayList<TrashEntry> entries = new ArrayList<>();
+        for (TrashEntry entry : trashEntries) if (selectedTrash.contains(entry.id)) entries.add(entry);
+        if (entries.isEmpty()) return;
+        Runnable request = () -> {
+            if (pendingRestore != -1 || pendingTrash != -1) return;
+            try {
+                ArrayList<Uri> uris = new ArrayList<>();
+                pendingTrashSelection.clear();
+                for (TrashEntry entry : entries) { uris.add(entry.uri); pendingTrashSelection.add(entry.id); }
+                // Reuse the existing media-operation gate while Android's confirmation is open.
+                pendingRestore = entries.get(0).id;
+                PendingIntent intent = delete ? MediaStore.createDeleteRequest(getContentResolver(), uris)
+                        : MediaStore.createTrashRequest(getContentResolver(), uris, false);
+                startIntentSenderForResult(intent.getIntentSender(),
+                        delete ? DELETE_SELECTION_REQUEST : RESTORE_SELECTION_REQUEST, null, 0, 0, 0);
+            } catch (Exception e) {
+                pendingRestore = -1; pendingTrashSelection.clear(); skipMediaReloadOnResume = false;
+                Toast.makeText(this, delete ? "Could not delete selected photos" : "Could not restore selected photos", Toast.LENGTH_SHORT).show();
+                render();
+            }
+        };
+        if (delete) new android.app.AlertDialog.Builder(this)
+                .setTitle("Permanently delete " + entries.size() + (entries.size() == 1 ? " photo?" : " photos?"))
+                .setMessage("These photos will be permanently removed from your device. You cannot restore them from Trash afterward.")
+                .setNegativeButton("Cancel", null).setPositiveButton("Delete permanently", (dialog, which) -> request.run()).show();
+        else request.run();
+    }
+
     private boolean hasPhotoElementBorder() {
-        return (themeTier(themeChoice) == 3 || countryCollection(themeChoice) >= 0) && swipeStyle != 9;
+        return !reducedMotion && (themeTier(themeChoice) == 3 || countryCollection(themeChoice) >= 0) && swipeStyle != 9;
     }
 
     private void reviewScreen() {
@@ -1975,7 +2179,7 @@ public class MainActivity extends ComponentActivity {
                         if (fireBorder != null) fireBorder.flare(dx > 0);
                         effect.release(dx > 0);
                         card.animate().translationX((dx > 0 ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
-                                .rotation(dx > 0 ? 16 : -16).setDuration(SwipeMotion.duration(swipeSpeed))
+                                .rotation(reducedMotion ? 0 : dx > 0 ? 16 : -16).setDuration(reducedMotion ? 80 : SwipeMotion.duration(swipeSpeed))
                                 .withEndAction(() -> {
                                     effect.cancel();
                                     if (fireBorder != null) fireBorder.stop();
@@ -2623,7 +2827,7 @@ public class MainActivity extends ComponentActivity {
                     countryCollection(themeChoice) >= 0 && (swipeStyle == 0 || swipeStyle == 8)
                             ? COUNTRY_FLAGS[countryCollection(themeChoice)] : null,
                     selectedSwipeProfile(),
-                    (!canCustomizeSwipe() || swipeStyle != 9) && !(themeChoice == 21 && swipeStyle == 0),
+                    !reducedMotion && (!canCustomizeSwipe() || swipeStyle != 9) && !(themeChoice == 21 && swipeStyle == 0),
                     swipeIntensity, swipeSpeed);
         }
     }
@@ -2654,6 +2858,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void floatXp(int gained) {
+        if (reducedMotion) return;
         if (host == null) return;
         final FrameLayout currentHost = host;
         TextView badge = pill("✦  +" + gained + " XP", GREEN, Color.rgb(11, 47, 52));
@@ -2697,12 +2902,14 @@ public class MainActivity extends ComponentActivity {
             JSONArray array = new JSONArray(getPreferences(MODE_PRIVATE).getString("trash_entries", "[]"));
             for (int i = 0; i < array.length(); i++) {
                 JSONObject item = array.getJSONObject(i);
-                trashEntries.add(new TrashEntry(item.getLong("id"), item.getLong("at"), item.getLong("date")));
+                TrashEntry entry = new TrashEntry(item.getLong("id"), item.getLong("at"), item.getLong("date"));
+                entry.bytes = item.optLong("bytes", -1); trashEntries.add(entry);
             }
             JSONArray evicted = new JSONArray(getPreferences(MODE_PRIVATE).getString("trash_evictions", "[]"));
             for (int i = 0; i < evicted.length(); i++) {
                 JSONObject item = evicted.getJSONObject(i);
-                evictionQueue.add(new TrashEntry(item.getLong("id"), item.getLong("at"), item.getLong("date")));
+                TrashEntry entry = new TrashEntry(item.getLong("id"), item.getLong("at"), item.getLong("date"));
+                entry.bytes = item.optLong("bytes", -1); evictionQueue.add(entry);
             }
         } catch (Exception ignored) { }
         trimRecoveryWindow();
@@ -2732,11 +2939,13 @@ public class MainActivity extends ComponentActivity {
             for (TrashEntry entry : trashEntries) {
                 JSONObject item = new JSONObject();
                 item.put("id", entry.id); item.put("at", entry.trashedAt); item.put("date", entry.timestamp);
+                item.put("bytes", entry.bytes);
                 array.put(item);
             }
             for (TrashEntry entry : evictionQueue) {
                 JSONObject item = new JSONObject();
                 item.put("id", entry.id); item.put("at", entry.trashedAt); item.put("date", entry.timestamp);
+                item.put("bytes", entry.bytes);
                 evicted.put(item);
             }
         } catch (Exception ignored) { }
@@ -2763,7 +2972,13 @@ public class MainActivity extends ComponentActivity {
             for (TrashEntry entry : expired) {
                 try {
                     int state = TrashPolicy.state(getContentResolver(), entry.uri);
-                    if (state == 0 || (state == 1 && getContentResolver().delete(entry.uri, null, null) > 0)) deleted.add(entry.id);
+                    if (state == 0) deleted.add(entry.id);
+                    else if (state == 1) {
+                        long bytes = entry.bytes >= 0 ? entry.bytes : mediaBytes(getContentResolver(), entry.uri);
+                        if (getContentResolver().delete(entry.uri, null, null) > 0) {
+                            recordFreed(this, entry.id, bytes); deleted.add(entry.id);
+                        }
+                    }
                 } catch (Exception ignored) { }
             }
             runOnUiThread(() -> {
@@ -2786,7 +3001,9 @@ public class MainActivity extends ComponentActivity {
                 playEffect(false);
                 if (action != null) {
                     lastUndo = action;
-                    trashEntries.add(0, new TrashEntry(id, System.currentTimeMillis(), action.timestamp));
+                    TrashEntry entry = new TrashEntry(id, System.currentTimeMillis(), action.timestamp);
+                    for (Photo photo : photos) if (photo.id == id) { entry.bytes = photo.size; break; }
+                    trashEntries.add(0, entry);
                     trimRecoveryWindow(); saveTrashEntries();
                 }
                 photos.removeIf(p -> p.id == id); rebuildMonthIndex();
@@ -2810,6 +3027,23 @@ public class MainActivity extends ComponentActivity {
                 saveStats();
                 loadPhotos();
             }
+            render();
+        } else if (requestCode == RESTORE_SELECTION_REQUEST || requestCode == DELETE_SELECTION_REQUEST) {
+            pendingRestore = -1;
+            if (resultCode == RESULT_OK) {
+                HashSet<Long> completed = new HashSet<>(pendingTrashSelection);
+                if (requestCode == DELETE_SELECTION_REQUEST) {
+                    for (TrashEntry entry : trashEntries) if (completed.contains(entry.id)) recordFreed(this, entry.id, entry.bytes);
+                    for (TrashEntry entry : evictionQueue) if (completed.contains(entry.id)) recordFreed(this, entry.id, entry.bytes);
+                }
+                trashEntries.removeIf(entry -> completed.contains(entry.id));
+                evictionQueue.removeIf(entry -> completed.contains(entry.id));
+                selectedTrash.removeAll(completed);
+                if (requestCode == RESTORE_SELECTION_REQUEST) restoredCount += completed.size();
+                else if (lastUndo != null && completed.contains(lastUndo.id)) lastUndo = null;
+                saveTrashEntries(); saveStats(); loadPhotos();
+            }
+            pendingTrashSelection.clear();
             render();
         }
     }
@@ -2835,7 +3069,13 @@ public class MainActivity extends ComponentActivity {
                             Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, item.getLong("id"));
                             try {
                                 int state = TrashPolicy.state(getContentResolver(), uri);
-                                if (state < 0 || (state == 1 && getContentResolver().delete(uri, null, null) <= 0)) retry.put(item);
+                                if (state < 0) retry.put(item);
+                                else if (state == 1) {
+                                    long bytes = item.optLong("bytes", -1);
+                                    if (bytes < 0) bytes = mediaBytes(getContentResolver(), uri);
+                                    if (getContentResolver().delete(uri, null, null) > 0) recordFreed(this, item.getLong("id"), bytes);
+                                    else retry.put(item);
+                                }
                             } catch (Exception e) { retry.put(item); }
                         }
                         prefs.edit().putString("trash_entries", remaining.toString())
@@ -2945,6 +3185,7 @@ public class MainActivity extends ComponentActivity {
                 canvas.drawBitmap(art, null, new RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), paint);
             }
             canvas.drawColor(0x38000000);
+            if (reducedMotion) return;
             if (themeChoice == 21) {
                 paint.setShader(new LinearGradient(0, h * .76f, 0, h,
                         0x00141010, 0xF0141010, Shader.TileMode.CLAMP));
@@ -3613,7 +3854,7 @@ public class MainActivity extends ComponentActivity {
     private class ThemeMotionOverlay extends View {
         ThemeMotionOverlay() { super(MainActivity.this); setClickable(false); setFocusable(false); }
         @Override protected void onDraw(Canvas canvas) {
-            if (activeBackdrop != null && hasThemeMotion(themeChoice) && themeChoice != 18) {
+            if (!reducedMotion && activeBackdrop != null && hasThemeMotion(themeChoice) && themeChoice != 18) {
                 float time = android.os.SystemClock.uptimeMillis() / 1000f;
                 activeBackdrop.drawThemeMotion(canvas, getWidth(), getHeight(), time);
                 activeBackdrop.drawGeneratedEffect(canvas, getWidth(), getHeight(), time);
@@ -3713,6 +3954,26 @@ public class MainActivity extends ComponentActivity {
         TextView sub = new TextView(this); sub.setText(detail); sub.setTextSize(14); sub.setTextColor(MUTED);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2); subLp.topMargin = dp(4); copy.addView(sub, subLp);
         TextView arrow = new TextView(this); arrow.setText("›"); arrow.setTextColor(GREEN); arrow.setTextSize(28); row.addView(arrow);
+        row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
+    }
+
+    private void settingsRow(LinearLayout parent, String symbol, String title, String detail, Runnable action) {
+        LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(16), dp(16), dp(16)); row.setMinimumHeight(dp(80));
+        row.setBackground(themeButton(PANEL, 18)); row.setFocusable(true);
+        row.setContentDescription(title + ". " + detail);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(9); parent.addView(row, lp);
+        TextView icon = new TextView(this); icon.setText(symbol); icon.setTextColor(GREEN); icon.setTextSize(27);
+        icon.setGravity(Gravity.CENTER); icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(48)));
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
+        copy.setPadding(dp(12), 0, dp(8), 0); row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView name = new TextView(this); name.setText(title); name.setTextSize(17); name.setTextColor(INK);
+        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); copy.addView(name);
+        TextView sub = new TextView(this); sub.setText(detail); sub.setTextSize(13); sub.setTextColor(MUTED);
+        sub.setPadding(0, dp(4), 0, 0); copy.addView(sub);
+        TextView arrow = new TextView(this); arrow.setText("›"); arrow.setTextColor(MUTED); arrow.setTextSize(25);
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); row.addView(arrow);
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
