@@ -1395,16 +1395,24 @@ public class MainActivity extends ComponentActivity {
         LinearLayout row = null; int count = 0;
         for (int index = 0; index < THEME_NAMES.length; index++) {
             if (!PlayPolicy.themeAllowed(index)) continue;
-            boolean country = countryCollection(index) >= 0;
-            if (themeCategory == 4 && !country) continue;
-            if (themeCategory >= 1 && themeCategory <= 3 && themeTier(index) != themeCategory) continue;
-            if (!THEME_NAMES[index].toLowerCase(Locale.ROOT).contains(query)) continue;
+            int country = countryCollection(index);
+            // Country variants share one card; tier tabs contain non-country themes only.
+            if (country >= 0 && index != COUNTRY_STILL_THEMES[country]) continue;
+            if (themeCategory == 4 && country < 0) continue;
+            if (themeCategory >= 1 && themeCategory <= 3
+                    && (country >= 0 || themeTier(index) != themeCategory)) continue;
+            String searchable = country < 0 ? THEME_NAMES[index]
+                    : THEME_NAMES[COUNTRY_STILL_THEMES[country]] + " "
+                    + THEME_NAMES[COUNTRY_ANIMATED_THEMES[country]] + " "
+                    + COUNTRY_SCENES[country] + " " + COUNTRY_MOTIONS[country];
+            if (!searchable.toLowerCase(Locale.ROOT).contains(query)) continue;
             if (count++ % 2 == 0) {
                 row = new LinearLayout(this); row.setBaselineAligned(false);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.bottomMargin = dp(10); list.addView(row, lp);
             }
-            addThemePreview(row, index, adminMode || level >= requiredThemeLevel(index));
+            int preview = country >= 0 && countryCollection(themeChoice) == country ? themeChoice : index;
+            addThemePreview(row, preview, adminMode || level >= requiredThemeLevel(preview));
         }
         if (count == 0) {
             TextView empty = new TextView(this); empty.setText("No matching themes");
@@ -1429,24 +1437,51 @@ public class MainActivity extends ComponentActivity {
         int country = countryCollection(index);
         String[] parts = THEME_NAMES[index].split(" · ", 2);
         TextView title = new TextView(this);
-        title.setText((themeChoice == index ? "✓ " : "") + (country >= 0 ? COUNTRY_FLAGS[country] + " " : "") + parts[0]);
+        title.setText((themeChoice == index ? "✓ " : "") + (country >= 0 ? COUNTRY_FLAGS[country] + " " : "") + (country >= 0 ? COUNTRY_NAMES[country] : parts[0]));
         title.setTextSize(15); title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(3)); title.setMinLines(2); card.addView(title);
         TextView detail = new TextView(this);
-        detail.setText(parts.length > 1 ? parts[1] : ""); detail.setTextSize(12); detail.setTextColor(MUTED);
+        detail.setText(country >= 0 ? COUNTRY_SCENES[country] : (parts.length > 1 ? parts[1] : "")); detail.setTextSize(12); detail.setTextColor(MUTED);
         detail.setMinLines(2); card.addView(detail);
         TextView badge = new TextView(this); badge.setTextSize(12); badge.setTextColor(unlocked ? GREEN : MUTED);
-        badge.setText("Tier " + themeTier(index) + " · " + (unlocked ? (hasThemeMotion(index) ? "Animated" : "Still") : "🔒 Level " + requiredThemeLevel(index)));
+        badge.setText(country >= 0
+                ? "Still / Animated  ›" + (themeChoice == index ? " · " + (hasThemeMotion(index) ? "Animated" : "Still") : "")
+                : "Tier " + themeTier(index) + " · " + (unlocked ? (hasThemeMotion(index) ? "Animated" : "Still") : "🔒 Level " + requiredThemeLevel(index)));
         card.addView(badge);
         card.setContentDescription(THEME_NAMES[index] + ", " + badge.getText() + (themeChoice == index ? ", selected" : ""));
         card.setOnClickListener(v -> {
-            if (!unlocked) { Toast.makeText(this, "Unlock at level " + requiredThemeLevel(index), Toast.LENGTH_SHORT).show(); return; }
-            themeChoice = index; getPreferences(MODE_PRIVATE).edit().putInt("theme", index).apply();
-            playSound(R.raw.bubble_tap, .16f); applyTheme(); animateThemeChange = true;
-            // Review state and selected month remain intact; only the presentation changes.
-            if (reviewing) showingThemes = false;
-            render();
+            if (country >= 0) showCountryVariants(country);
+            else selectTheme(index);
         });
+    }
+
+    private void showCountryVariants(int country) {
+        final int[] variants = {COUNTRY_STILL_THEMES[country], COUNTRY_ANIMATED_THEMES[country]};
+        String[] labels = new String[variants.length];
+        for (int i = 0; i < variants.length; i++) {
+            int theme = variants[i];
+            boolean unlocked = adminMode || xp / 500 + 1 >= requiredThemeLevel(theme);
+            labels[i] = (themeChoice == theme ? "✓ " : "") + (i == 0 ? "Still" : "Animated")
+                    + " · " + (i == 0 ? COUNTRY_SCENES[country] : COUNTRY_MOTIONS[country])
+                    + (unlocked ? "" : " · 🔒 Level " + requiredThemeLevel(theme));
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(COUNTRY_FLAGS[country] + " " + COUNTRY_NAMES[country])
+                .setItems(labels, (dialog, which) -> selectTheme(variants[which]))
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void selectTheme(int index) {
+        if (!PlayPolicy.themeAllowed(index)) return;
+        if (!adminMode && xp / 500 + 1 < requiredThemeLevel(index)) {
+            Toast.makeText(this, "Unlock at level " + requiredThemeLevel(index), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        themeChoice = index; getPreferences(MODE_PRIVATE).edit().putInt("theme", index).apply();
+        playSound(R.raw.bubble_tap, .16f); applyTheme(); animateThemeChange = true;
+        // Review state and selected month remain intact; only the presentation changes.
+        if (reviewing) showingThemes = false;
+        render();
     }
 
     private void loadThemeThumbnail(int index, ImageView image) {
