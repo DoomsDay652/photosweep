@@ -1115,7 +1115,7 @@ public class MainActivity extends ComponentActivity {
         if (selectedMonth != null && photosByMonth.containsKey(selectedMonth)) {
             for (Photo photo : photosByMonth.get(selectedMonth)) if (!reviewed.contains(Long.toString(photo.id))) { resume = selectedMonth; break; }
         }
-        if (resume == null) for (Map.Entry<String, List<Photo>> entry : photosByMonth.entrySet()) {
+        if (resume == null) for (Map.Entry<String, ArrayList<Photo>> entry : photosByMonth.entrySet()) {
             boolean pending = false;
             for (Photo photo : entry.getValue()) if (!reviewed.contains(Long.toString(photo.id))) { pending = true; break; }
             if (pending) { resume = entry.getKey(); break; }
@@ -1131,7 +1131,7 @@ public class MainActivity extends ComponentActivity {
         trackScroll(scroll, scrollKey);
         LinearLayout grid = new LinearLayout(this); grid.setOrientation(LinearLayout.VERTICAL); scroll.addView(grid);
         LinearLayout row = null; int count = 0;
-        for (Map.Entry<String, List<Photo>> entry : photosByMonth.entrySet()) {
+        for (Map.Entry<String, ArrayList<Photo>> entry : photosByMonth.entrySet()) {
             List<Photo> monthPhotos = entry.getValue();
             if (monthPhotos.isEmpty() || monthPhotos.get(0).year != year) continue;
             if (count++ % 2 == 0) {
