@@ -1273,7 +1273,6 @@ public class MainActivity extends ComponentActivity {
             back("Photo Sweep", () -> { showingSettings = false; render(); });
             heading("Settings", "Make Photo Sweep yours");
             LinearLayout list = optionsList("options");
-            settingsRow(list, "◎", "Account", "Manage sign-in, profile and account", () -> openOptionsSection(2));
             sectionTitle(list, "PERSONALIZE");
             settingsRow(list, "✦", "Themes & animations", THEME_NAMES[themeChoice].split(" · ")[0], () -> {
                 showingSettings = false; showingThemes = true; themeAnimationsOpen = false; render();
@@ -1281,6 +1280,7 @@ public class MainActivity extends ComponentActivity {
             settingsRow(list, "♫", "Audio & radio", "Swipe sounds, music and volume", () -> openOptionsSection(1));
             settingsRow(list, "◈", "Display & gestures", "Current theme's swipe effects and previews", () -> openOptionsSection(5));
             sectionTitle(list, "APP & ACCOUNT");
+            settingsRow(list, "◎", "Account", "Manage sign-in, profile and account", () -> openOptionsSection(2));
             settingsRow(list, "◇", "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
             settingsRow(list, "?", "Help & support", "Tips, support and app information", this::showSupportDetails);
             if (testingVisible) settingsRow(list, "⚙", "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
