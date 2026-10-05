@@ -1,6 +1,8 @@
 package com.dominic.photosweep;
 
 import android.Manifest;
+import android.animation.ValueAnimator;
+import android.view.animation.LinearInterpolator;
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
 import android.app.PendingIntent;
@@ -388,6 +390,10 @@ public class MainActivity extends ComponentActivity {
     private int renderedTheme = -1;
     private boolean hasResumed, skipMediaReloadOnResume;
     private ReviewPage reviewPage;
+    private ValueAnimator photoIdleAnimator;
+    private FrameLayout photoIdleCard;
+    private Runnable photoIdleStart;
+    private boolean photoIdleResumed;
     private final LruCache<Long, Bitmap> reviewPhotos = new LruCache<Long, Bitmap>(32 * 1024) {
         @Override protected int sizeOf(Long key, Bitmap value) {
             return Math.max(1, (value.getByteCount() + 1023) / 1024);
@@ -564,6 +570,8 @@ public class MainActivity extends ComponentActivity {
 
     @Override protected void onResume() {
         super.onResume();
+        photoIdleResumed = true;
+        if (reviewPage != null) schedulePhotoIdle(reviewPage.card);
         playUpdates.onResume();
         if (gravitySensor != null) sensorManager.registerListener(tiltListener, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
         audio.setMix(masterVolume / 100f, vfxVolume / 100f);
@@ -581,6 +589,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onPause() {
+        photoIdleResumed = false;
+        stopPhotoIdle();
         clearRadioBubble();
         skipMediaReloadOnResume = pendingTrash != -1 || pendingRestore != -1 || playUpdates.isFlowActive();
         playUpdates.onPause();
@@ -591,6 +601,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override public void onDestroy() {
+        stopPhotoIdle();
         clearRadioBubble();
         if (playUpdates != null) playUpdates.close();
         if (accounts != null) accounts.close();
@@ -851,6 +862,7 @@ public class MainActivity extends ComponentActivity {
     private void render() {
         if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
         if (updateReviewPage()) return;
+        stopPhotoIdle();
         reviewPage = null;
         clearSwipePreview();
         rememberScroll();
@@ -1014,6 +1026,7 @@ public class MainActivity extends ComponentActivity {
         if (page.duplicate != null) page.duplicate.setVisibility(duplicates.contains(current.id) ? View.VISIBLE : View.GONE);
         if (page.scanning != null) page.scanning.setVisibility(duplicateScanning ? View.VISIBLE : View.GONE);
         if (page.photoId != current.id) {
+            stopPhotoIdle();
             page.card.animate().cancel();
             page.card.setTranslationX(0); page.card.setRotation(0); page.card.setAlpha(1f);
             page.effect.cancel();
@@ -1024,6 +1037,7 @@ public class MainActivity extends ComponentActivity {
             attachSwipeGesture(page.card, page.stage, page.effect, page.border, current,
                     page.full ? null : () -> { fullScreenReview = true; render(); });
             page.photoId = current.id;
+            schedulePhotoIdle(page.card);
         }
         return true;
     }
@@ -2233,6 +2247,7 @@ public class MainActivity extends ComponentActivity {
         } else overlay.setVisibility(View.GONE);
         attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> { fullScreenReview = true; render(); });
         page.card = card; page.effect = effect; page.border = fireBorder;
+        schedulePhotoIdle(card);
         {
             Button undo = addUndoPhotoAction(root);
             page.undo = undo; undo.setVisibility(canUndoLastPhoto() ? View.VISIBLE : View.INVISIBLE);
@@ -2240,6 +2255,44 @@ public class MainActivity extends ComponentActivity {
         addMonthNavigation();
         spacer(6); page.scanning = label("Checking for exact duplicates…", 12, MUTED, false);
         page.scanning.setVisibility(duplicateScanning ? View.VISIBLE : View.GONE);
+    }
+
+    /** A small playful sway; touch always takes ownership of the card immediately. */
+    private void schedulePhotoIdle(FrameLayout card) {
+        stopPhotoIdle();
+        if (card == null || reducedMotion || !photoIdleResumed || fullScreenReview) return;
+        photoIdleCard = card;
+        photoIdleStart = () -> {
+            photoIdleStart = null;
+            if (photoIdleCard != card || reviewPage == null || reviewPage.card != card
+                    || !reviewing || !photoIdleResumed || reducedMotion || fullScreenReview
+                    || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1
+                    || !card.isAttachedToWindow()) { stopPhotoIdle(); return; }
+            photoIdleAnimator = ValueAnimator.ofFloat(0f, (float) (Math.PI * 2));
+            photoIdleAnimator.setDuration(2800);
+            photoIdleAnimator.setRepeatCount(ValueAnimator.INFINITE);
+            photoIdleAnimator.setInterpolator(new LinearInterpolator());
+            photoIdleAnimator.addUpdateListener(animation -> {
+                float phase = (float) animation.getAnimatedValue();
+                float sway = (float) Math.sin(phase);
+                card.setTranslationX(dp(4) * sway);
+                card.setTranslationY(-dp(2) * sway * sway);
+                card.setRotation(.55f * sway);
+            });
+            photoIdleAnimator.start();
+        };
+        uiHandler.postDelayed(photoIdleStart, 1200);
+    }
+
+    private void stopPhotoIdle() {
+        if (photoIdleStart != null) uiHandler.removeCallbacks(photoIdleStart);
+        photoIdleStart = null;
+        if (photoIdleAnimator != null) photoIdleAnimator.cancel();
+        photoIdleAnimator = null;
+        if (photoIdleCard != null) {
+            photoIdleCard.setTranslationX(0); photoIdleCard.setTranslationY(0); photoIdleCard.setRotation(0);
+        }
+        photoIdleCard = null;
     }
 
     private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect,
@@ -2269,6 +2322,7 @@ public class MainActivity extends ComponentActivity {
         card.setOnTouchListener((view, event) -> {
             if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
             int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) { stopPhotoIdle(); card.animate().cancel(); }
             if (zoomImage != null) {
                 taps.onTouchEvent(event); scaler.onTouchEvent(event);
                 if (!fullScreenReview) return true;
@@ -2294,10 +2348,12 @@ public class MainActivity extends ComponentActivity {
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
                 multitouch[0] = action == MotionEvent.ACTION_POINTER_DOWN;
                 if (fireBorder != null) fireBorder.cool();
-                effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
+                effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start();
+                if (action == MotionEvent.ACTION_CANCEL) schedulePhotoIdle(card);
+                return true;
             }
             if (multitouch[0]) {
-                if (action == MotionEvent.ACTION_UP) multitouch[0] = false;
+                if (action == MotionEvent.ACTION_UP) { multitouch[0] = false; schedulePhotoIdle(card); }
                 return true;
             }
             if (action == MotionEvent.ACTION_MOVE) {
@@ -2324,6 +2380,7 @@ public class MainActivity extends ComponentActivity {
                 } else {
                     if (fireBorder != null) fireBorder.cool();
                     effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(200).start();
+                    schedulePhotoIdle(card);
                     if (tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
                 }
                 return true;
