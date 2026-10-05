@@ -88,11 +88,7 @@ class SwipeVfxView extends View {
                             y=cy+(float)Math.sin(theta)*dp(42+lane*70);radius*=.7f+Math.abs((float)Math.sin(time*8+i))*.6f;rotation=i*67;break;
                         case SPACE:
                             x=cx+(float)Math.cos(theta)*dp(35+lane*100); y=cy+(float)Math.sin(theta)*dp(20+lane*65);rotation=theta*57.3f-135;break;
-                        case INDEPENDENCE:case NEW_YEAR:
-                for(int i=0;i<12;i++){float a=i*.524f;c.drawLine(x+(float)Math.cos(a)*r*.65f,y+(float)Math.sin(a)*r*.65f,x+(float)Math.cos(a)*r,y+(float)Math.sin(a)*r,paint);}break;
-            case MLK:case MEMORIAL:case VETERANS:
-                paint.setAlpha(0);break;
-            case WEB:
+                        case WEB:
                             x=i%2==0?dp(20):w-dp(20);y=h*(.15f+lane*.6f)+(float)Math.sin(time+i)*dp(12);radius*=.7f;rotation=0;break;
                         case GOLD:case SOLAR:
                             x=cx+(float)Math.cos(theta)*dp(40+lane*90);y=cy+(float)Math.sin(theta)*dp(40+lane*90);radius*=.7f+.4f*(float)Math.sin(time*3+i);break;
@@ -139,6 +135,10 @@ class SwipeVfxView extends View {
         paint.setColor(withAlpha(color,(int)(145*strength)));
         float r=dp(38+impact*125),pulse=dp(4*(float)Math.sin(time*3));
         switch(kind) {
+            case INDEPENDENCE:case NEW_YEAR:
+                for(int i=0;i<12;i++){float a=i*.524f;c.drawLine(x+(float)Math.cos(a)*r*.65f,y+(float)Math.sin(a)*r*.65f,x+(float)Math.cos(a)*r,y+(float)Math.sin(a)*r,paint);}break;
+            case MLK:case MEMORIAL:case VETERANS:
+                paint.setAlpha(0);break;
             case WEB:
                 for(int i=0;i<9;i++) { float a=i*.698f;c.drawLine(x,y,x+(float)Math.cos(a)*w,y+(float)Math.sin(a)*h,paint); }
                 for(int i=1;i<4;i++)c.drawCircle(x,y,r*i*.55f,paint);break;
