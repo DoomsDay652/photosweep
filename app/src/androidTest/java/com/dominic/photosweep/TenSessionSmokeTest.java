@@ -71,8 +71,10 @@ public class TenSessionSmokeTest {
             scenario = ActivityScenario.launch(MainActivity.class);
             awaitText("Your photos");
             assertLabelFits("Themes"); assertLabelFits("Settings"); assertLabelFits("Trash");
-            clickText("Themes"); awaitText("Choose your look and swipe animations");
-            clickText("Preview Keep →"); back(); awaitText("Your photos");
+            clickText("Themes"); awaitText("Countries");
+            clickDescription("Current theme and swipe animations");
+            clickText("Preview Keep →"); back(); awaitText("Countries");
+            back(); awaitText("Your photos");
             clickText("Trash"); awaitText("Trash is empty"); back(); awaitText("Your photos");
             clickText("Settings"); awaitText("Choose what you want to adjust");
             clickText("Audio"); awaitDescription("Master volume");
