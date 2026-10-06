@@ -483,6 +483,9 @@ public class MainActivity extends ComponentActivity {
     private Set<String> trashedIds = new HashSet<>();
     private LinearLayout root;
     private TextView headingSubtitle;
+    private FrameLayout tutorialLayer;
+    private int tutorialStep = -1;
+    private boolean tutorialPromptShowing;
     private FrameLayout host;
     private int renderedTheme = -1;
     private boolean hasResumed, skipMediaReloadOnResume;
@@ -654,6 +657,7 @@ public class MainActivity extends ComponentActivity {
             if (savedScroll != null) for (String key : savedScroll.keySet())
                 scrollPositions.put(key, savedScroll.getInt(key));
         }
+        tutorialStep = getPreferences(MODE_PRIVATE).getInt("tutorial_step", -1);
         applyTheme();
         keptCount = keptIds.size();
         trashedCount = trashedIds.size();
@@ -719,6 +723,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean handleAppBack() {
+        if (tutorialStep >= 0) return true;
         if (reviewActionRunning) return true;
         if (zoomOverlay != null) closePhotoZoom();
         else if (fullScreenReview) { fullScreenReview = false; render(); }
@@ -809,7 +814,7 @@ public class MainActivity extends ComponentActivity {
             getPreferences(MODE_PRIVATE).edit().putInt("theme", themeChoice).apply();
         }
         if (!PlayPolicy.themeAllowed(themeChoice) || themeChoice < 0 || themeChoice >= THEME_COLORS.length ||
-                (!adminMode && xp / 500 + 1 < requiredThemeLevel(themeChoice))) themeChoice = 0;
+                !themeUnlocked(themeChoice)) themeChoice = 0;
         for (int i = 0; i < themeBackdrops.length; i++) if (i != themeChoice) {
             if (themeBackdrops[i] != null) { themeBackdrops[i].recycle(); themeBackdrops[i] = null; }
             if (themeEffects[i] != null) { themeEffects[i].recycle(); themeEffects[i] = null; }
@@ -1024,6 +1029,7 @@ public class MainActivity extends ComponentActivity {
         if (transition && !reducedMotion) { root.setAlpha(0f); root.animate().alpha(1f).setDuration(260).start(); }
         host.requestApplyInsets();
         if (radioBubble != null) radioBubble.bringToFront();
+        refreshTutorial();
     }
 
     private void showRadioTrack(String title) {
@@ -1385,6 +1391,7 @@ public class MainActivity extends ComponentActivity {
             sectionTitle(list, "APP & ACCOUNT");
             settingsRow(list, "◎", "Account", "Manage sign-in, profile and account", () -> openOptionsSection(2));
             settingsRow(list, "◇", "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
+            settingsRow(list, "?", "Replay tutorial", "Practice with sample photos", this::startTutorial);
             settingsRow(list, "?", "Help & support", "Tips, support and app information", this::showSupportDetails);
             if (testingVisible) settingsRow(list, ICON_SETTINGS, "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
             TextView version = new TextView(this); version.setText("Photo Sweep · " + BuildConfig.VERSION_NAME);
@@ -1466,7 +1473,7 @@ public class MainActivity extends ComponentActivity {
             if (value) getPreferences(MODE_PRIVATE).edit().putInt("theme_before_admin", themeChoice).apply();
             adminMode = value;
             getPreferences(MODE_PRIVATE).edit().putBoolean("admin_mode", value).apply();
-            if (!value && xp / 500 + 1 < requiredThemeLevel(themeChoice)) {
+            if (!value && !themeUnlocked(themeChoice)) {
                 themeChoice = getPreferences(MODE_PRIVATE).getInt("theme_before_admin", 0);
                 getPreferences(MODE_PRIVATE).edit().putInt("theme", themeChoice).apply();
             }
@@ -1520,7 +1527,7 @@ public class MainActivity extends ComponentActivity {
             }
             int preview = holiday >= 0 && HolidayThemes.collection(themeChoice) == holiday ? themeChoice
                     : country >= 0 && countryCollection(themeChoice) == country ? themeChoice : index;
-            addThemePreview(row, preview, adminMode || level >= requiredThemeLevel(preview));
+            addThemePreview(row, preview, themeUnlocked(preview));
         }
         if (count == 0) {
             TextView empty = new TextView(this); empty.setText("No matching themes");
@@ -1572,12 +1579,12 @@ public class MainActivity extends ComponentActivity {
                 .setView(choices).setNegativeButton("Cancel", null).create();
         for (int variant = 0; variant < 2; variant++) {
             final int theme = HolidayThemes.still(holiday) + variant;
-            boolean unlocked = adminMode || xp / 500 + 1 >= requiredThemeLevel(theme);
+            boolean unlocked = themeUnlocked(theme);
             settingsRow(choices, variant == 0 ? "▧" : ICON_THEMES,
                     (themeChoice == theme ? "✓ " : "") + (variant == 0 ? "Still" : "Animated")
                             + (unlocked ? "" : " · 🔒 Level " + requiredThemeLevel(theme)),
                     variant == 0 ? HolidayThemes.SCENES[holiday] : HolidayThemes.MOTIONS[holiday], () -> {
-                        if (adminMode || xp / 500 + 1 >= requiredThemeLevel(theme)) dialog.dismiss();
+                        if (themeUnlocked(theme)) dialog.dismiss();
                         selectTheme(theme);
                     });
         }
@@ -1589,7 +1596,7 @@ public class MainActivity extends ComponentActivity {
         String[] labels = new String[variants.length];
         for (int i = 0; i < variants.length; i++) {
             int theme = variants[i];
-            boolean unlocked = adminMode || xp / 500 + 1 >= requiredThemeLevel(theme);
+            boolean unlocked = themeUnlocked(theme);
             labels[i] = (themeChoice == theme ? "✓ " : "") + (i == 0 ? "Still" : "Animated")
                     + " · " + (i == 0 ? COUNTRY_SCENES[country] : COUNTRY_MOTIONS[country])
                     + (unlocked ? "" : " · 🔒 Level " + requiredThemeLevel(theme));
@@ -1602,7 +1609,7 @@ public class MainActivity extends ComponentActivity {
 
     private void selectTheme(int index) {
         if (!PlayPolicy.themeAllowed(index)) return;
-        if (!adminMode && xp / 500 + 1 < requiredThemeLevel(index)) {
+        if (!themeUnlocked(index)) {
             Toast.makeText(this, "Unlock at level " + requiredThemeLevel(index), Toast.LENGTH_SHORT).show();
             return;
         }
@@ -1876,6 +1883,155 @@ public class MainActivity extends ComponentActivity {
             }
         }));
         showThemedFeedbackDialog(dialog);
+    }
+
+
+    private boolean themeUnlocked(int index) {
+        return adminMode || xp / 500 + 1 >= requiredThemeLevel(index)
+                || getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index;
+    }
+
+    private void startTutorial() {
+        tutorialStep = 0;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_prompt_seen", true)
+                .putInt("tutorial_step", tutorialStep).apply();
+        refreshTutorial();
+    }
+
+    private void advanceTutorial() {
+        tutorialStep++;
+        getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", tutorialStep).apply();
+        refreshTutorial();
+    }
+
+    private void endTutorial(boolean completed) {
+        tutorialStep = -1;
+        getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", -1)
+                .putBoolean("tutorial_prompt_seen", true).apply();
+        if (tutorialLayer != null) { host.removeView(tutorialLayer); tutorialLayer = null; }
+        if (completed) {
+            getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_completed", true).apply();
+            if (getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) < 0) chooseTutorialReward();
+            else Toast.makeText(this, "Tutorial complete! Your theme reward is already unlocked.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void chooseTutorialReward() {
+        tutorialPromptShowing = true;
+        java.util.ArrayList<Integer> themes = new java.util.ArrayList<>();
+        java.util.ArrayList<String> names = new java.util.ArrayList<>();
+        for (int i = 0; i < THEME_NAMES.length; i++) {
+            if (themeTier(i) == 2 && PlayPolicy.themeAllowed(i)) { themes.add(i); names.add(THEME_NAMES[i]); }
+        }
+        new android.app.AlertDialog.Builder(this).setTitle("Choose your free Tier 2 theme")
+                .setItems(names.toArray(new String[0]), (dialog, which) -> {
+                    int chosen = themes.get(which);
+                    getPreferences(MODE_PRIVATE).edit().putInt("tutorial_reward_theme", chosen).apply();
+                    tutorialPromptShowing = false;
+                    selectTheme(chosen);
+                }).setCancelable(false).show();
+    }
+
+    private void refreshTutorial() {
+        if (host == null || isDestroyed()) return;
+        if (tutorialStep < 0) {
+            if (!tutorialPromptShowing && !getPreferences(MODE_PRIVATE).getBoolean("tutorial_prompt_seen", false)) {
+                tutorialPromptShowing = true;
+                new android.app.AlertDialog.Builder(this).setTitle("Welcome to Photo Sweep")
+                        .setMessage("Practice with sample photos and earn one free Tier 2 theme of your choice.")
+                        .setPositiveButton("Start tutorial", (dialog, which) -> { tutorialPromptShowing = false; startTutorial(); })
+                        .setNegativeButton("Skip tutorial", (dialog, which) -> { tutorialPromptShowing = false; endTutorial(false); })
+                        .setCancelable(false).show();
+            } else if (getPreferences(MODE_PRIVATE).getBoolean("tutorial_completed", false)
+                    && getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) < 0 && !tutorialPromptShowing) {
+                tutorialPromptShowing = true;
+                chooseTutorialReward();
+            }
+            return;
+        }
+        if (tutorialStep >= 8) { endTutorial(true); return; }
+        if (tutorialLayer != null) host.removeView(tutorialLayer);
+        tutorialLayer = new FrameLayout(this);
+        tutorialLayer.setBackgroundColor(BG);
+        host.addView(tutorialLayer, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24), safeInsets.top + dp(24), dp(24), safeInsets.bottom + dp(180));
+        tutorialLayer.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        TextView title = new TextView(this); title.setText("Photo Sweep · Practice"); title.setTextSize(24);
+        title.setTextColor(INK); content.addView(title);
+        TextView note = new TextView(this); note.setText("Sample pictures only · Your gallery stays untouched");
+        note.setTextColor(MUTED); note.setPadding(0, dp(10), 0, dp(20)); content.addView(note);
+        final int step = tutorialStep;
+        View target;
+        if (step == 1 || step == 2) {
+            View photo = new View(this) {
+                final android.graphics.Paint paint = new android.graphics.Paint(3);
+                @Override protected void onDraw(Canvas canvas) {
+                    paint.setColor(0xff9ed8ee); canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
+                    paint.setColor(0xffffdc87); canvas.drawCircle(getWidth()*.75f, getHeight()*.22f, dp(30), paint);
+                    paint.setColor(0xff5b9975); android.graphics.Path hill = new android.graphics.Path();
+                    hill.moveTo(0, getHeight()); hill.lineTo(0, getHeight()*.65f);
+                    hill.lineTo(getWidth()*.35f, getHeight()*.4f); hill.lineTo(getWidth(), getHeight()*.85f);
+                    hill.lineTo(getWidth(), getHeight()); hill.close(); canvas.drawPath(hill, paint);
+                }
+            };
+            content.addView(photo, new LinearLayout.LayoutParams(-1, 0, 1));
+            photo.setContentDescription(step == 1 ? "Sample photo: swipe right to keep" : "Sample photo: swipe left to Trash");
+            photo.setOnTouchListener(new View.OnTouchListener() {
+                float start;
+                @Override public boolean onTouch(View view, MotionEvent event) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN) { start = event.getRawX(); return true; }
+                    if (event.getActionMasked() == MotionEvent.ACTION_MOVE) { view.setTranslationX(event.getRawX()-start); tutorialLayer.getChildAt(1).invalidate(); return true; }
+                    if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                        float distance = event.getRawX()-start;
+                        view.setTranslationX(0);
+                        if ((step == 1 && distance > dp(70)) || (step == 2 && distance < -dp(70))) advanceTutorial();
+                        return true;
+                    }
+                    if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) { view.setTranslationX(0); return true; }
+                    return true;
+                }
+            });
+            target = photo;
+        } else {
+            String[] actions = {"July · 2 sample photos", "", "", "↶ Undo last photo", "Trash", "Restore sample photo", "✦ Themes", "⚑ Report a bug"};
+            target = button(content, actions[step], PANEL, GREEN, this::advanceTutorial);
+        }
+        String[] instructions = {"Tap a month to see its photos.", "Swipe the sample photo RIGHT to keep it.",
+                "Swipe the sample photo LEFT to move it to Trash.", "Tap Undo to bring the last photo back.",
+                "Open Trash: the latest 20 photos stay for up to 7 days; older photos auto-delete.", "Tap Restore to bring the sample photo back.",
+                "Tap Themes; you can change them while reviewing photos.", "Tap Report a bug to find problem reports, theme requests and feature suggestions."};
+        final View brightTarget = target;
+        View shade = new View(this) {
+            final android.graphics.Paint paint = new android.graphics.Paint(3);
+            final android.graphics.RectF hole = new android.graphics.RectF();
+            void locate() {
+                int[] a = new int[2], b = new int[2]; brightTarget.getLocationOnScreen(a); getLocationOnScreen(b);
+                hole.set(a[0]-b[0]-dp(5), a[1]-b[1]-dp(5), a[0]-b[0]+brightTarget.getWidth()+dp(5), a[1]-b[1]+brightTarget.getHeight()+dp(5));
+            }
+            @Override protected void onDraw(Canvas canvas) {
+                locate(); android.graphics.Path dim = new android.graphics.Path(); dim.setFillType(android.graphics.Path.FillType.EVEN_ODD);
+                dim.addRect(0, 0, getWidth(), getHeight(), android.graphics.Path.Direction.CW);
+                dim.addRoundRect(hole, dp(16), dp(16), android.graphics.Path.Direction.CW);
+                paint.setColor(0xa6000000); canvas.drawPath(dim, paint);
+                paint.setColor(GREEN); paint.setStyle(android.graphics.Paint.Style.STROKE); paint.setStrokeWidth(dp(2));
+                canvas.drawRoundRect(hole, dp(16), dp(16), paint); paint.setStyle(android.graphics.Paint.Style.FILL);
+            }
+            @Override public boolean onTouchEvent(MotionEvent event) { locate(); return !hole.contains(event.getX(), event.getY()); }
+        };
+        tutorialLayer.addView(shade, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout guidance = new LinearLayout(this); guidance.setOrientation(LinearLayout.VERTICAL);
+        guidance.setPadding(dp(18), dp(12), dp(18), dp(12)); guidance.setBackground(rounded(PANEL, 16));
+        FrameLayout.LayoutParams placement = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        placement.setMargins(dp(16), 0, dp(16), safeInsets.bottom + dp(12)); tutorialLayer.addView(guidance, placement);
+        TextView instruction = new TextView(this); instruction.setText((step+1)+" / 8 · "+instructions[step]);
+        instruction.setTextColor(INK); instruction.setTextSize(16); guidance.addView(instruction);
+        guidance.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int needed = view.getHeight() + safeInsets.bottom + dp(24);
+            if (content.getPaddingBottom() != needed) content.setPadding(dp(24), safeInsets.top + dp(24), dp(24), needed);
+        });
+        button(guidance, "Skip tutorial", PANEL, GREEN, () -> endTutorial(false));
+        shade.post(shade::invalidate);
     }
 
     private void showSupportDetails() {
@@ -4357,3 +4513,4 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+

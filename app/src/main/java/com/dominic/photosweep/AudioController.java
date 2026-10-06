@@ -36,6 +36,18 @@ final class AudioController implements AutoCloseable {
     private boolean musicPrepared, nextPrepared, announced, repeatTrack;
     private int track, restorePosition;
     private boolean foreground, enabled, focused, ducked, closed;
+    private final Handler fadeHandler = new Handler(Looper.getMainLooper());
+    private float fadeGain;
+    private long fadeStarted;
+    private final Runnable fadeTick = new Runnable() {
+        @Override public void run() {
+            if (!canPlay() || music == null || !musicPrepared) return;
+            float elapsed = Math.min(1f, (android.os.SystemClock.uptimeMillis()-fadeStarted)/3000f);
+            fadeGain = elapsed * elapsed * (3f-2f*elapsed);
+            applyVolume();
+            if (elapsed < 1f) fadeHandler.postDelayed(this, 40);
+        }
+    };
     private float volume, masterVolume = 1f, effectsVolume = 1f;
 
     AudioController(Context context, Consumer<String> trackChanged) {
@@ -97,7 +109,11 @@ final class AudioController implements AutoCloseable {
             if (!musicPrepared) return;
             applyVolume();
             music.setLooping(repeatTrack);
-            if (!music.isPlaying()) music.start();
+            if (!music.isPlaying()) {
+                fadeHandler.removeCallbacks(fadeTick); fadeGain = 0f; applyVolume();
+                music.start(); fadeStarted = android.os.SystemClock.uptimeMillis();
+                fadeHandler.post(fadeTick);
+            }
             if (!announced) { announced = true; trackChanged.accept(currentTitle()); }
             prepareNext();
         } catch (IllegalStateException ignored) {
@@ -180,7 +196,7 @@ final class AudioController implements AutoCloseable {
     }
 
     private void applyVolume() {
-        float level = volume * masterVolume * (ducked ? .2f : 1f);
+        float level = volume * masterVolume * fadeGain * (ducked ? .2f : 1f);
         if (music != null && musicPrepared) music.setVolume(level, level);
         if (nextMusic != null && nextPrepared) nextMusic.setVolume(level, level);
     }
@@ -245,6 +261,7 @@ final class AudioController implements AutoCloseable {
     }
 
     private void pausePlayer() {
+        fadeHandler.removeCallbacks(fadeTick); fadeGain = 0f;
         if (nextMusic != null && nextPrepared) try { if (nextMusic.isPlaying()) nextMusic.pause(); }
         catch (IllegalStateException ignored) { releaseNext(); }
         if (music != null && musicPrepared) try { if (music.isPlaying()) music.pause(); }
@@ -264,6 +281,7 @@ final class AudioController implements AutoCloseable {
     }
 
     private void releasePlayer() {
+        fadeHandler.removeCallbacks(fadeTick); fadeGain = 0f;
         releaseNext();
         if (music != null) { music.release(); music = null; }
         musicPrepared = false;
@@ -275,3 +293,4 @@ final class AudioController implements AutoCloseable {
         releasePlayer(); pool.release(); loaded.clear(); effects.clear();
     }
 }
+
