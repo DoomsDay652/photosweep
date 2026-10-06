@@ -483,6 +483,11 @@ public class MainActivity extends ComponentActivity {
     private Set<String> trashedIds = new HashSet<>();
     private LinearLayout root;
     private TextView headingSubtitle;
+    private View tutorialTarget;
+    private Bitmap tutorialPicture;
+    private ReviewUndo tutorialSavedUndo;
+    private static final String TUTORIAL_MONTH = "2026-07";
+    private static final String[] TUTORIAL_ACTIONS = {"month", "keep", "undo", "trash", "Months", "All years", "Trash", "Select", "sample", "Restore", "Photo Sweep", "Themes", "Photo Sweep", "Report a bug"};
     private FrameLayout tutorialLayer;
     private int tutorialStep = -1;
     private boolean tutorialPromptShowing;
@@ -658,6 +663,10 @@ public class MainActivity extends ComponentActivity {
                 scrollPositions.put(key, savedScroll.getInt(key));
         }
         tutorialStep = getPreferences(MODE_PRIVATE).getInt("tutorial_step", -1);
+        if (tutorialStep >= 0 && getPreferences(MODE_PRIVATE).getInt("tutorial_revision", 0) < 2) tutorialStep = 0;
+        if (tutorialStep >= TUTORIAL_ACTIONS.length) {
+            tutorialStep = -1; getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", -1).putBoolean("tutorial_completed", true).apply();
+        }
         applyTheme();
         keptCount = keptIds.size();
         trashedCount = trashedIds.size();
@@ -708,6 +717,7 @@ public class MainActivity extends ComponentActivity {
         if (accounts != null) accounts.close();
         if (audio != null) audio.close();
         closePhotoZoom();
+        if (tutorialPicture != null && !tutorialPicture.isRecycled()) tutorialPicture.recycle();
         for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         for (Bitmap bitmap : themeEffects) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         if (fireBackgroundFrames != null && !fireBackgroundFrames.isRecycled()) fireBackgroundFrames.recycle();
@@ -723,7 +733,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean handleAppBack() {
-        if (tutorialStep >= 0) return true;
+        if (tutorialStep >= 0) { endTutorial(false); return true; }
         if (reviewActionRunning) return true;
         if (zoomOverlay != null) closePhotoZoom();
         else if (fullScreenReview) { fullScreenReview = false; render(); }
@@ -962,6 +972,44 @@ public class MainActivity extends ComponentActivity {
         if (radioBubble != null) radioBubble.setVisibility(full ? View.GONE : View.VISIBLE);
     }
     private void render() {
+        if (reviewActionRunning) return;
+        if (tutorialStep < 0) { renderContent(); return; }
+        ArrayList<Photo> realPhotos = new ArrayList<>(photos);
+        HashMap<String, ArrayList<Photo>> realMonths = new HashMap<>(photosByMonth);
+        ArrayList<TrashEntry> realTrash = new ArrayList<>(trashEntries);
+        Set<String> realReviewed = reviewed;
+        HashSet<Long> realSelected = new HashSet<>(selectedTrash);
+        tutorialTarget = null;
+        if (tutorialLayer != null) { host.removeView(tutorialLayer); tutorialLayer = null; }
+        try {
+            photos.clear(); photos.addAll(tutorialPhotos());
+            photosByMonth.clear(); photosByMonth.put(TUTORIAL_MONTH, new ArrayList<>(photos));
+            reviewed = new HashSet<>();
+            if (tutorialStep == 2 || (tutorialStep >= 4 && tutorialStep < 10)) reviewed.add("-101");
+            trashEntries.clear();
+            if (tutorialStep >= 7 && tutorialStep <= 9) {
+                TrashEntry sample = new TrashEntry(-101, System.currentTimeMillis(), photos.get(0).timestamp);
+                sample.bytes = 1024; trashEntries.add(sample);
+            }
+            selectedTrash.clear(); if (tutorialStep == 9) selectedTrash.add(-101L);
+            libraryYear = 2026; selectedYear = tutorialStep == 5 ? 2026 : -1;
+            selectedMonth = TUTORIAL_MONTH; fullScreenReview = false;
+            reviewing = tutorialStep >= 1 && tutorialStep <= 4;
+            showingTrash = tutorialStep >= 7 && tutorialStep <= 10;
+            trashSelecting = tutorialStep == 8 || tutorialStep == 9;
+            showingSettings = false; showingThemes = tutorialStep == 12;
+            themeAnimationsOpen = false;
+            renderContent();
+        } finally {
+            photos.clear(); photos.addAll(realPhotos);
+            photosByMonth.clear(); photosByMonth.putAll(realMonths);
+            trashEntries.clear(); trashEntries.addAll(realTrash);
+            reviewed = realReviewed;
+            selectedTrash.clear(); selectedTrash.addAll(realSelected);
+        }
+    }
+
+    private void renderContent() {
         if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
         if (updateReviewPage()) return;
         stopPhotoIdle();
@@ -1006,8 +1054,8 @@ public class MainActivity extends ComponentActivity {
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
         if (showingThemes) themesScreen();
         else if (showingSettings) settingsScreen();
-        else if (!hasAccess()) intro();
-        else if (loading && photos.isEmpty()) {
+        else if (tutorialStep < 0 && !hasAccess()) intro();
+        else if (tutorialStep < 0 && loading && photos.isEmpty()) {
             if (!reviewing || !fullScreenReview) heading("Photo Sweep", "Gathering your photos…");
         }
         else if (showingTrash) trashScreen();
@@ -1033,7 +1081,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void showRadioTrack(String title) {
-        if (isDestroyed() || host == null) return;
+        if (isDestroyed() || host == null || tutorialStep >= 0) return;
         if (radioTrackLabel != null) radioTrackLabel.setText("Now playing · " + title);
         clearRadioBubble();
         TextView bubble = new TextView(this);
@@ -1108,7 +1156,7 @@ public class MainActivity extends ComponentActivity {
     /** Update the existing review page, including Undo, without restarting the world or layout. */
     private boolean updateReviewPage() {
         ReviewPage page = reviewPage;
-        if (page == null || page.content != root || !reviewing || showingSettings || showingThemes || showingTrash
+        if (tutorialStep >= 0 || page == null || page.content != root || !reviewing || showingSettings || showingThemes || showingTrash
                 || !hasAccess() || page.theme != themeChoice || page.full != fullScreenReview
                 || !page.month.equals(selectedMonth)) return false;
         List<Photo> month = monthPhotos();
@@ -1222,7 +1270,7 @@ public class MainActivity extends ComponentActivity {
             statTile(stats, Integer.toString(restoredCount), "Restored", GOLD);
         }
         spacer(16);
-        if (!canManage()) {
+        if (tutorialStep < 0 && !canManage()) {
             button(root, "Enable prompt-free Trash", PANEL, INK, this::requestMediaManagement);
             spacer(10);
         }
@@ -1285,12 +1333,14 @@ public class MainActivity extends ComponentActivity {
             status.setTextSize(13); status.setTextColor(remaining == 0 ? GREEN : MUTED);
             status.setPadding(dp(12), 0, dp(12), dp(12)); card.addView(status);
             card.setContentDescription(ReviewNavigation.title(month, true) + ", " + status.getText());
-            card.setOnClickListener(v -> openReviewMonth(month));
+            tutorialBind(card, "month");
+            card.setOnClickListener(v -> tutorialClick("month", () -> openReviewMonth(month)));
         }
         if (count % 2 != 0) row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
     }
 
     private void loadMonthThumbnail(Photo photo, ImageView image) {
+        if (photo.id < 0) { image.setImageBitmap(tutorialPicture()); return; }
         Bitmap cached = monthThumbnails.get(photo.id);
         if (cached != null) { image.setImageBitmap(cached); return; }
         final FrameLayout requestedHost = host;
@@ -1324,7 +1374,8 @@ public class MainActivity extends ComponentActivity {
         button.addView(name, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(58), 1);
         if (row.getChildCount() > 0) lp.leftMargin = dp(7); row.addView(button, lp);
-        button.setOnClickListener(v -> action.run());
+        tutorialBind(button, title);
+        button.setOnClickListener(v -> tutorialClick(title, action));
     }
 
     private void levelPanel() {
@@ -1790,6 +1841,7 @@ public class MainActivity extends ComponentActivity {
     }
     private Button addUndoPhotoAction(LinearLayout parent) {
         Button undo = button(parent, "↶  Undo last photo", PANEL, GREEN, this::undoLastPhoto);
+        tutorialBind(undo, "undo");
         undo.setTextSize(14); undo.setPadding(dp(20), 0, dp(20), 0);
         undo.setMinHeight(dp(48)); undo.setMinimumHeight(dp(48));
         undo.setContentDescription("Undo the last photo decision");
@@ -1835,6 +1887,10 @@ public class MainActivity extends ComponentActivity {
         settingsRow(choices, ICON_FEEDBACK, "Report a problem", "Tell us what happened and what you expected", () -> {
             dialog.dismiss(); writeFeedback("Report a problem");
         });
+        if (tutorialStep == TUTORIAL_ACTIONS.length) {
+            dialog.setOnDismissListener(ignored -> endTutorial(true));
+
+        }
         showThemedFeedbackDialog(dialog);
     }
 
@@ -1886,29 +1942,67 @@ public class MainActivity extends ComponentActivity {
     }
 
 
+    private ArrayList<Photo> tutorialPhotos() {
+        ArrayList<Photo> samples = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            Photo sample = new Photo(); sample.id = -101-i; sample.year = 2026;
+            sample.month = TUTORIAL_MONTH; sample.timestamp = 1784160000000L + i*86400000L;
+            sample.size = 1024; samples.add(sample);
+        }
+        return samples;
+    }
+
+    private Bitmap tutorialPicture() {
+        if (tutorialPicture != null && !tutorialPicture.isRecycled()) return tutorialPicture;
+        tutorialPicture = Bitmap.createBitmap(480, 640, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(tutorialPicture); android.graphics.Paint paint = new android.graphics.Paint(3);
+        canvas.drawColor(0xff9ed8ee); paint.setColor(0xffffdc87); canvas.drawCircle(360, 140, 55, paint);
+        paint.setColor(0xff5b9975); android.graphics.Path hill = new android.graphics.Path();
+        hill.moveTo(0,640); hill.lineTo(0,420); hill.lineTo(180,280); hill.lineTo(480,540); hill.lineTo(480,640); hill.close(); canvas.drawPath(hill,paint);
+        paint.setColor(0xffffffff); paint.setTextSize(30); canvas.drawText("Sample photo", 24, 600, paint); return tutorialPicture;
+    }
+
+    private void tutorialBind(View view, String action) {
+        if (tutorialStep >= 0 && tutorialStep < TUTORIAL_ACTIONS.length && TUTORIAL_ACTIONS[tutorialStep].equals(action)) tutorialTarget = view;
+    }
+
+    private void tutorialClick(String label, Runnable action) {
+        if (label.equals("Skip tutorial")) { action.run(); return; }
+        if (label.startsWith("↶")) label = "undo";
+        if (tutorialStep < 0) { action.run(); return; }
+        if (tutorialStep >= TUTORIAL_ACTIONS.length || !TUTORIAL_ACTIONS[tutorialStep].equals(label)) return;
+        tutorialStep++;
+        getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", tutorialStep).apply();
+        if (label.equals("Restore")) { render(); return; }
+        action.run(); render();
+    }
+
     private boolean themeUnlocked(int index) {
         return adminMode || xp / 500 + 1 >= requiredThemeLevel(index)
                 || getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index;
     }
 
     private void startTutorial() {
+        tutorialSavedUndo = lastUndo;
         tutorialStep = 0;
         getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_prompt_seen", true)
-                .putInt("tutorial_step", tutorialStep).apply();
-        refreshTutorial();
+                .putInt("tutorial_step", tutorialStep).putInt("tutorial_revision", 2).apply();
+        clearRadioBubble(); render();
     }
 
     private void advanceTutorial() {
         tutorialStep++;
         getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", tutorialStep).apply();
-        refreshTutorial();
+        render();
     }
 
     private void endTutorial(boolean completed) {
-        tutorialStep = -1;
+        tutorialStep = -1; lastUndo = tutorialSavedUndo;
         getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", -1)
                 .putBoolean("tutorial_prompt_seen", true).apply();
         if (tutorialLayer != null) { host.removeView(tutorialLayer); tutorialLayer = null; }
+        reviewing = false; showingTrash = false; showingThemes = false; showingSettings = false;
+        selectedYear = -1; selectedMonth = null; trashSelecting = false; selectedTrash.clear(); render();
         if (completed) {
             getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_completed", true).apply();
             if (getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) < 0) chooseTutorialReward();
@@ -1949,59 +2043,20 @@ public class MainActivity extends ComponentActivity {
             }
             return;
         }
-        if (tutorialStep >= 8) { endTutorial(true); return; }
+        if (tutorialStep >= TUTORIAL_ACTIONS.length || tutorialTarget == null) return;
         if (tutorialLayer != null) host.removeView(tutorialLayer);
         tutorialLayer = new FrameLayout(this);
-        tutorialLayer.setBackgroundColor(BG);
         host.addView(tutorialLayer, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24), safeInsets.top + dp(24), dp(24), safeInsets.bottom + dp(180));
-        tutorialLayer.addView(content, new FrameLayout.LayoutParams(-1, -1));
-        TextView title = new TextView(this); title.setText("Photo Sweep · Practice"); title.setTextSize(24);
-        title.setTextColor(INK); content.addView(title);
-        TextView note = new TextView(this); note.setText("Sample pictures only · Your gallery stays untouched");
-        note.setTextColor(MUTED); note.setPadding(0, dp(10), 0, dp(20)); content.addView(note);
         final int step = tutorialStep;
-        View target;
-        if (step == 1 || step == 2) {
-            View photo = new View(this) {
-                final android.graphics.Paint paint = new android.graphics.Paint(3);
-                @Override protected void onDraw(Canvas canvas) {
-                    paint.setColor(0xff9ed8ee); canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
-                    paint.setColor(0xffffdc87); canvas.drawCircle(getWidth()*.75f, getHeight()*.22f, dp(30), paint);
-                    paint.setColor(0xff5b9975); android.graphics.Path hill = new android.graphics.Path();
-                    hill.moveTo(0, getHeight()); hill.lineTo(0, getHeight()*.65f);
-                    hill.lineTo(getWidth()*.35f, getHeight()*.4f); hill.lineTo(getWidth(), getHeight()*.85f);
-                    hill.lineTo(getWidth(), getHeight()); hill.close(); canvas.drawPath(hill, paint);
-                }
-            };
-            content.addView(photo, new LinearLayout.LayoutParams(-1, 0, 1));
-            photo.setContentDescription(step == 1 ? "Sample photo: swipe right to keep" : "Sample photo: swipe left to Trash");
-            photo.setOnTouchListener(new View.OnTouchListener() {
-                float start;
-                @Override public boolean onTouch(View view, MotionEvent event) {
-                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN) { start = event.getRawX(); return true; }
-                    if (event.getActionMasked() == MotionEvent.ACTION_MOVE) { view.setTranslationX(event.getRawX()-start); tutorialLayer.getChildAt(1).invalidate(); return true; }
-                    if (event.getActionMasked() == MotionEvent.ACTION_UP) {
-                        float distance = event.getRawX()-start;
-                        view.setTranslationX(0);
-                        if ((step == 1 && distance > dp(70)) || (step == 2 && distance < -dp(70))) advanceTutorial();
-                        return true;
-                    }
-                    if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) { view.setTranslationX(0); return true; }
-                    return true;
-                }
-            });
-            target = photo;
-        } else {
-            String[] actions = {"July · 2 sample photos", "", "", "↶ Undo last photo", "Trash", "Restore sample photo", "✦ Themes", "⚑ Report a bug"};
-            target = button(content, actions[step], PANEL, GREEN, this::advanceTutorial);
-        }
-        String[] instructions = {"Tap a month to see its photos.", "Swipe the sample photo RIGHT to keep it.",
-                "Swipe the sample photo LEFT to move it to Trash.", "Tap Undo to bring the last photo back.",
-                "Open Trash: the latest 20 photos stay for up to 7 days; older photos auto-delete.", "Tap Restore to bring the sample photo back.",
-                "Tap Themes; you can change them while reviewing photos.", "Tap Report a bug to find problem reports, theme requests and feature suggestions."};
-        final View brightTarget = target;
+        String[] instructions = {"Tap a month to open its photos. These are safe sample photos.", "Swipe RIGHT to keep the sample photo.",
+                "Tap Undo last photo to bring it back.", "Swipe LEFT to move the sample photo to Trash.",
+                "Tap Months to return to the month list.", "Tap All years to return to your library.",
+                "Open Trash. It keeps the latest 20 photos for up to 7 days; older photos auto-delete.",
+                "Tap Select to choose photos in Trash.", "Tap the sample photo to select it.",
+                "Tap Restore to return it to your gallery.", "Tap Photo Sweep to return to the library.",
+                "Open Themes; you can change them during photo review too.", "Tap Photo Sweep to return to your library.",
+                "Open Report a bug to see the three feedback options; close it to finish."};
+        final View brightTarget = tutorialTarget;
         View shade = new View(this) {
             final android.graphics.Paint paint = new android.graphics.Paint(3);
             final android.graphics.RectF hole = new android.graphics.RectF();
@@ -2024,14 +2079,15 @@ public class MainActivity extends ComponentActivity {
         guidance.setPadding(dp(18), dp(12), dp(18), dp(12)); guidance.setBackground(rounded(PANEL, 16));
         FrameLayout.LayoutParams placement = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         placement.setMargins(dp(16), 0, dp(16), safeInsets.bottom + dp(12)); tutorialLayer.addView(guidance, placement);
-        TextView instruction = new TextView(this); instruction.setText((step+1)+" / 8 · "+instructions[step]);
+        TextView instruction = new TextView(this); instruction.setText((step+1)+" / "+TUTORIAL_ACTIONS.length+" · "+instructions[step]);
         instruction.setTextColor(INK); instruction.setTextSize(16); guidance.addView(instruction);
-        guidance.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            int needed = view.getHeight() + safeInsets.bottom + dp(24);
-            if (content.getPaddingBottom() != needed) content.setPadding(dp(24), safeInsets.top + dp(24), dp(24), needed);
-        });
         button(guidance, "Skip tutorial", PANEL, GREEN, () -> endTutorial(false));
-        shade.post(shade::invalidate);
+        shade.post(() -> {
+            int[] location = new int[2]; brightTarget.getLocationInWindow(location);
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) guidance.getLayoutParams();
+            if (location[1] > host.getHeight()/2) { lp.gravity = Gravity.TOP; lp.topMargin = safeInsets.top + dp(12); lp.bottomMargin = 0; }
+            guidance.setLayoutParams(lp); shade.invalidate();
+        });
     }
 
     private void showSupportDetails() {
@@ -2157,6 +2213,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private List<Photo> monthPhotos() {
+        if (tutorialStep >= 0) return tutorialPhotos();
         List<Photo> month = photosByMonth.get(selectedMonth);
         return month == null ? Collections.emptyList() : month;
     }
@@ -2207,12 +2264,14 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean canUndoLastPhoto() {
+        if (tutorialStep >= 0) return tutorialStep == 2;
         if (lastUndo == null || !lastUndo.month.equals(selectedMonth)) return false;
         return lastUndo.trashed ? trashEntries.stream().anyMatch(entry -> entry.id == lastUndo.id)
                 : photos.stream().anyMatch(photo -> photo.id == lastUndo.id);
     }
 
     private void undoLastPhoto() {
+        if (tutorialStep >= 0) { if (tutorialStep == 2) advanceTutorial(); return; }
         if (!canUndoLastPhoto() || pendingTrash != -1 || pendingRestore != -1) return;
         if (lastUndo.trashed) {
             for (TrashEntry entry : trashEntries) if (entry.id == lastUndo.id) {
@@ -2294,7 +2353,9 @@ public class MainActivity extends ComponentActivity {
             card.setContentDescription(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))
                     + ". " + days.getText() + (selected ? ". Selected" : "")
                     + (trashSelecting ? ". Tap to toggle selection" : ". Tap to inspect"));
+            tutorialBind(card, "sample");
             card.setOnClickListener(v -> {
+                if (tutorialStep == 8) { advanceTutorial(); return; }
                 if (pendingRestore != -1 || pendingTrash != -1) return;
                 if (trashSelecting) {
                     if (!selectedTrash.add(entry.id)) selectedTrash.remove(entry.id);
@@ -2391,6 +2452,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void requestTrashSelection(boolean delete) {
+        if (tutorialStep >= 0) { return; }
         if (pendingRestore != -1 || pendingTrash != -1 || selectedTrash.isEmpty()) return;
         final ArrayList<TrashEntry> entries = new ArrayList<>();
         for (TrashEntry entry : trashEntries) if (selectedTrash.contains(entry.id)) entries.add(entry);
@@ -2508,7 +2570,7 @@ public class MainActivity extends ComponentActivity {
         TextView keepAction = swipeOverlayLabel("Keep  →", GREEN);
         overlay.addView(trashAction, new LinearLayout.LayoutParams(0, -2, 1));
         overlay.addView(keepAction, new LinearLayout.LayoutParams(0, -2, 1));
-        if (!swipeHintSeen) {
+        if (tutorialStep < 0 && !swipeHintSeen) {
             swipeHintSeen = true;
             getPreferences(MODE_PRIVATE).edit().putBoolean("swipe_hint_seen", true)
                     .remove("seen_swipe_overlays").apply();
@@ -2517,6 +2579,7 @@ public class MainActivity extends ComponentActivity {
                     .withEndAction(() -> overlay.setVisibility(View.GONE)).start(), 2300);
         } else overlay.setVisibility(View.GONE);
         attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> { fullScreenReview = true; render(); });
+        tutorialBind(card, tutorialStep == 1 ? "keep" : "trash");
         page.card = card; page.effect = effect; page.border = fireBorder;
         schedulePhotoIdle(card);
         {
@@ -2530,6 +2593,7 @@ public class MainActivity extends ComponentActivity {
 
     /** A small playful sway; touch always takes ownership of the card immediately. */
     private void schedulePhotoIdle(FrameLayout card) {
+        if (tutorialStep >= 0) return;
         stopPhotoIdle();
         if (card == null || reducedMotion || !photoIdleResumed || fullScreenReview) return;
         photoIdleCard = card;
@@ -2588,7 +2652,7 @@ public class MainActivity extends ComponentActivity {
         card.setOnClickListener(v -> {
             if (reviewActionRunning) return;
             if (zoomImage != null) { fullScreenReview = false; render(); }
-            else if (tap != null) tap.run();
+            else if (shown.id >= 0 && tap != null) tap.run();
         });
         card.setOnTouchListener((view, event) -> {
             if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
@@ -2633,6 +2697,9 @@ public class MainActivity extends ComponentActivity {
                 effect.follow(event.getRawX() - position[0], event.getRawY() - position[1]); return true;
             }
             if (action == MotionEvent.ACTION_UP) {
+                if (shown.id < 0 && ((tutorialStep == 1 && dx < 0) || (tutorialStep == 3 && dx > 0))) {
+                    effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
+                }
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
                     {
                         committed[0] = true; reviewActionRunning = true;
@@ -2652,7 +2719,7 @@ public class MainActivity extends ComponentActivity {
                     if (fireBorder != null) fireBorder.cool();
                     effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(200).start();
                     schedulePhotoIdle(card);
-                    if (tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
+                    if (shown.id >= 0 && tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
                 }
                 return true;
             }
@@ -2729,6 +2796,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void loadReviewPhoto(Photo photo, ImageView view) {
+        if (photo.id < 0) { view.setImageBitmap(tutorialPicture()); return; }
         view.setTag(photo.id);
         Bitmap cached = reviewPhotos.get(photo.id);
         if (cached != null && !cached.isRecycled()) { view.setImageBitmap(cached); invalidatePhotoDecorations(view); }
@@ -2895,6 +2963,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void loadPreview(long id, Uri uri, ImageView view) {
+        if (id < 0) { view.setImageBitmap(tutorialPicture()); return; }
         Bitmap cached = previews.get(id);
         if (cached != null) { view.setImageBitmap(cached); return; }
         final FrameLayout requestedHost = host;
@@ -3327,6 +3396,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void keep(Photo p) {
+        if (p.id < 0) { if (tutorialStep == 1) advanceTutorial(); return; }
         if (pendingTrash != -1 || pendingRestore != -1) return;
         playEffect(true);
         lastUndo = snapshot(p, false);
@@ -3366,6 +3436,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void trash(Photo p) {
+        if (p.id < 0) { if (tutorialStep == 3) advanceTutorial(); return; }
         if (pendingTrash != -1 || pendingRestore != -1) return;
         try {
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(p.uri), true);
@@ -3379,6 +3450,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void restore(TrashEntry entry) {
+        if (entry.id < 0) return;
         if (pendingRestore != -1 || pendingTrash != -1) return;
         try {
             pendingRestore = entry.id;
@@ -4466,7 +4538,8 @@ public class MainActivity extends ComponentActivity {
     private Button button(LinearLayout parent, String value, int bg, int color, Runnable action) {
         Button button = new Button(this); button.setText(value); button.setAllCaps(false); button.setTextSize(16);
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(themeButton(bg, 18));
-        button.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
+        tutorialBind(button, value);
+        button.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); tutorialClick(value, action); });
         parent.addView(button, new LinearLayout.LayoutParams(-1, dp(55))); return button;
     }
     private void back(String value, Runnable action) {
@@ -4475,7 +4548,8 @@ public class MainActivity extends ComponentActivity {
         back.setPadding(dp(18), 0, dp(18), 0);
         back.setMinWidth(dp(150)); back.setHeight(dp(56));
         back.setBackground(themeButton(PANEL, 18));
-        back.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
+        tutorialBind(back, value);
+        back.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); tutorialClick(value, action); });
         spacer(15);
     }
     private void tile(LinearLayout parent, String title, String detail, Runnable action) {
