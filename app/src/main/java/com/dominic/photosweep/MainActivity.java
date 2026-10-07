@@ -484,10 +484,11 @@ public class MainActivity extends ComponentActivity {
     private LinearLayout root;
     private TextView headingSubtitle;
     private View tutorialTarget;
-    private Bitmap tutorialPicture;
+    private final Bitmap[] tutorialPictures = new Bitmap[4];
+    private static final int TUTORIAL_RESTORE = 10, TUTORIAL_THEME_TAB = 13, TUTORIAL_THEME_PICK = 14;
     private ReviewUndo tutorialSavedUndo;
     private static final String TUTORIAL_MONTH = "2026-07";
-    private static final String[] TUTORIAL_ACTIONS = {"month", "keep", "undo", "trash", "Months", "All years", "Trash", "Select", "sample", "Restore", "Photo Sweep", "Themes", "Photo Sweep", "Report a bug"};
+    private static final String[] TUTORIAL_ACTIONS = {"month", "keep", "undo", "trash", "Months", "All years", "Trash", "Select", "sample-first", "sample-second", "Restore", "Photo Sweep", "Themes", "Tier 2", "theme-choice", "Photo Sweep", "Report a bug"};
     private FrameLayout tutorialLayer;
     private int tutorialStep = -1;
     private boolean tutorialPromptShowing;
@@ -663,7 +664,7 @@ public class MainActivity extends ComponentActivity {
                 scrollPositions.put(key, savedScroll.getInt(key));
         }
         tutorialStep = getPreferences(MODE_PRIVATE).getInt("tutorial_step", -1);
-        if (tutorialStep >= 0 && getPreferences(MODE_PRIVATE).getInt("tutorial_revision", 0) < 2) tutorialStep = 0;
+        if (tutorialStep >= 0 && getPreferences(MODE_PRIVATE).getInt("tutorial_revision", 0) < 3) tutorialStep = 0;
         if (tutorialStep >= TUTORIAL_ACTIONS.length) {
             tutorialStep = -1; getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", -1).putBoolean("tutorial_completed", true).apply();
         }
@@ -717,7 +718,7 @@ public class MainActivity extends ComponentActivity {
         if (accounts != null) accounts.close();
         if (audio != null) audio.close();
         closePhotoZoom();
-        if (tutorialPicture != null && !tutorialPicture.isRecycled()) tutorialPicture.recycle();
+        for (Bitmap picture : tutorialPictures) if (picture != null && !picture.isRecycled()) picture.recycle();
         for (Bitmap bitmap : themeBackdrops) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         for (Bitmap bitmap : themeEffects) if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         if (fireBackgroundFrames != null && !fireBackgroundFrames.isRecycled()) fireBackgroundFrames.recycle();
@@ -985,19 +986,26 @@ public class MainActivity extends ComponentActivity {
             photos.clear(); photos.addAll(tutorialPhotos());
             photosByMonth.clear(); photosByMonth.put(TUTORIAL_MONTH, new ArrayList<>(photos));
             reviewed = new HashSet<>();
-            if (tutorialStep == 2 || (tutorialStep >= 4 && tutorialStep < 10)) reviewed.add("-101");
+            if (tutorialStep == 2 || (tutorialStep >= 4 && tutorialStep <= TUTORIAL_RESTORE)) reviewed.add("-101");
             trashEntries.clear();
-            if (tutorialStep >= 7 && tutorialStep <= 9) {
-                TrashEntry sample = new TrashEntry(-101, System.currentTimeMillis(), photos.get(0).timestamp);
+            for (long id : new long[]{-101, -201, -202, -203}) {
+                if (tutorialStep > TUTORIAL_RESTORE && (id == -101 || id == -201)) continue;
+                TrashEntry sample = new TrashEntry(id, System.currentTimeMillis(), photos.get(0).timestamp);
                 sample.bytes = 1024; trashEntries.add(sample);
             }
-            selectedTrash.clear(); if (tutorialStep == 9) selectedTrash.add(-101L);
+            selectedTrash.clear();
+            if (tutorialStep == 9 || tutorialStep == TUTORIAL_RESTORE) selectedTrash.add(-101L);
+            if (tutorialStep == TUTORIAL_RESTORE) selectedTrash.add(-201L);
             libraryYear = 2026; selectedYear = tutorialStep == 5 ? 2026 : -1;
             selectedMonth = TUTORIAL_MONTH; fullScreenReview = false;
             reviewing = tutorialStep >= 1 && tutorialStep <= 4;
-            showingTrash = tutorialStep >= 7 && tutorialStep <= 10;
-            trashSelecting = tutorialStep == 8 || tutorialStep == 9;
-            showingSettings = false; showingThemes = tutorialStep == 12;
+            showingTrash = tutorialStep >= 7 && tutorialStep <= 11;
+            trashSelecting = tutorialStep >= 8 && tutorialStep <= TUTORIAL_RESTORE;
+            showingSettings = false; showingThemes = tutorialStep >= 13 && tutorialStep <= 15;
+            if (tutorialStep == TUTORIAL_THEME_TAB) { themeCategory = 0; themeQuery = ""; }
+            if (tutorialStep == TUTORIAL_THEME_PICK) { themeCategory = 2; themeQuery = ""; }
+            int preview = getPreferences(MODE_PRIVATE).getInt("tutorial_suggested_theme", -1);
+            if (tutorialStep >= 15 && validTutorialTheme(preview) && themeChoice != preview) { themeChoice = preview; applyTheme(); }
             themeAnimationsOpen = false;
             renderContent();
         } finally {
@@ -1243,10 +1251,10 @@ public class MainActivity extends ComponentActivity {
         topAction(top, ICON_THEMES, "Themes", GREEN, "Themes and animation settings",
                 () -> { themeAnimationsOpen = false; showingThemes = true; render(); });
         topAction(top, ICON_FEEDBACK, "Report a bug", GREEN, "Feedback: suggest a theme, suggest a feature, or report a problem", this::showFeedbackMenu);
-        topAction(top, ICON_SETTINGS, "Settings", GREEN, "Options and sound settings",
-                () -> { showingSettings = true; render(); });
         topAction(top, ICON_TRASH, "Trash", GOLD, "Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()),
                 () -> { showingTrash = true; render(); });
+        topAction(top, ICON_SETTINGS, "Settings", GREEN, "Options and sound settings",
+                () -> { showingSettings = true; render(); });
         label(accounts == null ? "Your photos" : accounts.photosHeading(), 28, INK, true); spacer(13);
         LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
         statsToggle.setPadding(dp(16), dp(8), dp(16), dp(8)); statsToggle.setBackground(rounded(PANEL, 17));
@@ -1340,7 +1348,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void loadMonthThumbnail(Photo photo, ImageView image) {
-        if (photo.id < 0) { image.setImageBitmap(tutorialPicture()); return; }
+        if (photo.id < 0) { image.setImageBitmap(tutorialPicture(photo.id)); return; }
         Bitmap cached = monthThumbnails.get(photo.id);
         if (cached != null) { image.setImageBitmap(cached); return; }
         final FrameLayout requestedHost = host;
@@ -1499,11 +1507,13 @@ public class MainActivity extends ComponentActivity {
             tab.setSelected(i == themeCategory); tab.setFocusable(true);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(48));
             lp.topMargin = dp(4); lp.rightMargin = dp(5); choices.addView(tab, lp);
-            tab.setOnClickListener(v -> {
+            tutorialBind(tab, categories[i]);
+            tab.setOnClickListener(v -> tutorialClick(categories[category], () -> {
                 themeCategory = category; scrollPositions.remove("themes-library"); render();
-            });
+            }));
         }
         LinearLayout grid = optionsList("themes-library");
+        tutorialBind((View) grid.getParent(), "theme-choice");
         addThemeOptions(grid);
         search.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
@@ -1563,7 +1573,8 @@ public class MainActivity extends ComponentActivity {
             // Country variants share one card; tier tabs contain non-country themes only.
             if (country >= 0 && index != COUNTRY_STILL_THEMES[country]) continue;
             if (themeCategory == 4 && country < 0) continue;
-            if (themeCategory >= 1 && themeCategory <= 3
+            if (tutorialStep == TUTORIAL_THEME_PICK && themeTier(index) != 2) continue;
+            if (tutorialStep != TUTORIAL_THEME_PICK && themeCategory >= 1 && themeCategory <= 3
                     && (country >= 0 || holiday >= 0 || themeTier(index) != themeCategory)) continue;
             String searchable = holiday >= 0 ? (holiday == 1 ? "holiday " : "federal holiday ") + HolidayThemes.SEARCH[holiday] + " " + HolidayThemes.SCENES[holiday] + " " + HolidayThemes.MOTIONS[holiday]
                     : country < 0 ? THEME_NAMES[index]
@@ -1576,7 +1587,7 @@ public class MainActivity extends ComponentActivity {
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.bottomMargin = dp(10); list.addView(row, lp);
             }
-            int preview = holiday >= 0 && HolidayThemes.collection(themeChoice) == holiday ? themeChoice
+            int preview = tutorialStep == TUTORIAL_THEME_PICK ? index : holiday >= 0 && HolidayThemes.collection(themeChoice) == holiday ? themeChoice
                     : country >= 0 && countryCollection(themeChoice) == country ? themeChoice : index;
             addThemePreview(row, preview, themeUnlocked(preview));
         }
@@ -1617,6 +1628,7 @@ public class MainActivity extends ComponentActivity {
         card.addView(badge);
         card.setContentDescription(THEME_NAMES[index] + ", " + badge.getText() + (themeChoice == index ? ", selected" : ""));
         card.setOnClickListener(v -> {
+            if (tutorialStep >= 0) { if (tutorialStep == TUTORIAL_THEME_PICK) selectTheme(index); return; }
             if (holiday >= 0) showHolidayVariants(holiday);
             else if (country >= 0) showCountryVariants(country);
             else selectTheme(index);
@@ -1660,6 +1672,12 @@ public class MainActivity extends ComponentActivity {
 
     private void selectTheme(int index) {
         if (!PlayPolicy.themeAllowed(index)) return;
+        if (tutorialStep >= 0) {
+            if (tutorialStep != TUTORIAL_THEME_PICK || !validTutorialTheme(index)) return;
+            getPreferences(MODE_PRIVATE).edit().putInt("tutorial_suggested_theme", index).apply();
+            themeChoice = index; playSound(R.raw.bubble_tap, .16f); applyTheme(); animateThemeChange = true;
+            advanceTutorial(); return;
+        }
         if (!themeUnlocked(index)) {
             Toast.makeText(this, "Unlock at level " + requiredThemeLevel(index), Toast.LENGTH_SHORT).show();
             return;
@@ -1952,14 +1970,22 @@ public class MainActivity extends ComponentActivity {
         return samples;
     }
 
-    private Bitmap tutorialPicture() {
-        if (tutorialPicture != null && !tutorialPicture.isRecycled()) return tutorialPicture;
-        tutorialPicture = Bitmap.createBitmap(480, 640, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(tutorialPicture); android.graphics.Paint paint = new android.graphics.Paint(3);
-        canvas.drawColor(0xff9ed8ee); paint.setColor(0xffffdc87); canvas.drawCircle(360, 140, 55, paint);
-        paint.setColor(0xff5b9975); android.graphics.Path hill = new android.graphics.Path();
-        hill.moveTo(0,640); hill.lineTo(0,420); hill.lineTo(180,280); hill.lineTo(480,540); hill.lineTo(480,640); hill.close(); canvas.drawPath(hill,paint);
-        paint.setColor(0xffffffff); paint.setTextSize(30); canvas.drawText("Sample photo", 24, 600, paint); return tutorialPicture;
+    private Bitmap tutorialPicture(long id) {
+        int tile = id <= -201 ? (int) (-id - 200) : (int) (-id - 101);
+        tile = Math.floorMod(tile, 4);
+        if (tutorialPictures[tile] == null || tutorialPictures[tile].isRecycled()) {
+            BitmapFactory.Options options = new BitmapFactory.Options(); options.inScaled = false;
+            Bitmap sheet = BitmapFactory.decodeResource(getResources(), R.drawable.tutorial_samples, options);
+            if (sheet == null) return null;
+            int sizeX = sheet.getWidth()/2, sizeY = sheet.getHeight()/2;
+            tutorialPictures[tile] = Bitmap.createBitmap(sheet, tile%2*sizeX, tile/2*sizeY, sizeX, sizeY);
+            sheet.recycle();
+        }
+        return tutorialPictures[tile];
+    }
+
+    private boolean validTutorialTheme(int index) {
+        return index >= 0 && index < THEME_NAMES.length && themeTier(index) == 2 && PlayPolicy.themeAllowed(index);
     }
 
     private void tutorialBind(View view, String action) {
@@ -1978,7 +2004,9 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean themeUnlocked(int index) {
-        return adminMode || xp / 500 + 1 >= requiredThemeLevel(index)
+        return (tutorialStep == TUTORIAL_THEME_PICK && validTutorialTheme(index))
+                || (tutorialStep >= 15 && getPreferences(MODE_PRIVATE).getInt("tutorial_suggested_theme", -1) == index)
+                || adminMode || xp / 500 + 1 >= requiredThemeLevel(index)
                 || getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index;
     }
 
@@ -1986,7 +2014,8 @@ public class MainActivity extends ComponentActivity {
         tutorialSavedUndo = lastUndo;
         tutorialStep = 0;
         getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_prompt_seen", true)
-                .putInt("tutorial_step", tutorialStep).putInt("tutorial_revision", 2).apply();
+                .putInt("tutorial_original_theme", themeChoice).putInt("tutorial_suggested_theme", -1)
+                .putInt("tutorial_step", tutorialStep).putInt("tutorial_revision", 3).apply();
         clearRadioBubble(); render();
     }
 
@@ -1998,32 +2027,56 @@ public class MainActivity extends ComponentActivity {
 
     private void endTutorial(boolean completed) {
         tutorialStep = -1; lastUndo = tutorialSavedUndo;
+        themeChoice = getPreferences(MODE_PRIVATE).getInt("tutorial_original_theme", getPreferences(MODE_PRIVATE).getInt("theme", 0));
+        applyTheme();
+        boolean offerReward = completed && getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) < 0;
+        tutorialPromptShowing = offerReward;
         getPreferences(MODE_PRIVATE).edit().putInt("tutorial_step", -1)
                 .putBoolean("tutorial_prompt_seen", true).apply();
+        if (completed) getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_completed", true).apply();
         if (tutorialLayer != null) { host.removeView(tutorialLayer); tutorialLayer = null; }
         reviewing = false; showingTrash = false; showingThemes = false; showingSettings = false;
         selectedYear = -1; selectedMonth = null; trashSelecting = false; selectedTrash.clear(); render();
         if (completed) {
             getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_completed", true).apply();
-            if (getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) < 0) chooseTutorialReward();
+            if (offerReward) chooseTutorialReward();
             else Toast.makeText(this, "Tutorial complete! Your theme reward is already unlocked.", Toast.LENGTH_LONG).show();
         }
     }
 
     private void chooseTutorialReward() {
         tutorialPromptShowing = true;
+        int suggested = getPreferences(MODE_PRIVATE).getInt("tutorial_suggested_theme", -1);
+        if (validTutorialTheme(suggested)) {
+            android.app.AlertDialog dialog = themedFeedbackDialog("Your free Tier 2 theme")
+                    .setMessage("You tried " + THEME_NAMES[suggested] + ". Keep it as your free theme, or choose another Tier 2 theme.")
+                    .setPositiveButton("Keep this theme", (ignored, which) -> claimTutorialTheme(suggested))
+                    .setNegativeButton("Choose another", (ignored, which) -> chooseOtherTutorialReward())
+                    .setCancelable(false).create();
+            showThemedFeedbackDialog(dialog); return;
+        }
+        chooseOtherTutorialReward();
+    }
+
+    private void claimTutorialTheme(int chosen) {
+        if (!validTutorialTheme(chosen) || getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) >= 0) return;
+        getPreferences(MODE_PRIVATE).edit().putInt("tutorial_reward_theme", chosen).apply();
+        tutorialPromptShowing = false; selectTheme(chosen);
+    }
+
+    private void chooseOtherTutorialReward() {
+        tutorialPromptShowing = true;
         java.util.ArrayList<Integer> themes = new java.util.ArrayList<>();
         java.util.ArrayList<String> names = new java.util.ArrayList<>();
         for (int i = 0; i < THEME_NAMES.length; i++) {
             if (themeTier(i) == 2 && PlayPolicy.themeAllowed(i)) { themes.add(i); names.add(THEME_NAMES[i]); }
         }
-        new android.app.AlertDialog.Builder(this).setTitle("Choose your free Tier 2 theme")
+        android.app.AlertDialog reward = themedFeedbackDialog("Choose your free Tier 2 theme")
                 .setItems(names.toArray(new String[0]), (dialog, which) -> {
                     int chosen = themes.get(which);
-                    getPreferences(MODE_PRIVATE).edit().putInt("tutorial_reward_theme", chosen).apply();
-                    tutorialPromptShowing = false;
-                    selectTheme(chosen);
-                }).setCancelable(false).show();
+                    claimTutorialTheme(chosen);
+                }).setCancelable(false).create();
+        showThemedFeedbackDialog(reward);
     }
 
     private void refreshTutorial() {
@@ -2052,9 +2105,12 @@ public class MainActivity extends ComponentActivity {
                 "Tap Undo last photo to bring it back.", "Swipe LEFT to move the sample photo to Trash.",
                 "Tap Months to return to the month list.", "Tap All years to return to your library.",
                 "Open Trash. It keeps the latest 20 photos for up to 7 days; older photos auto-delete.",
-                "Tap Select to choose photos in Trash.", "Tap the sample photo to select it.",
-                "Tap Restore to return it to your gallery.", "Tap Photo Sweep to return to the library.",
-                "Open Themes; you can change them during photo review too.", "Tap Photo Sweep to return to your library.",
+                "Tap Select. You can restore several photos together.", "Tap the highlighted photo to select it.",
+                "Tap a second photo. The first stays selected.", "Tap Restore to return BOTH selected photos to your gallery together.",
+                "Two photos were restored; the other samples stay in Trash. Tap Photo Sweep.",
+                "Open Themes; you can change them during photo review too.", "Tap Tier 2 to see your theme choices.",
+                "Tap any Tier 2 theme to try it. Scroll to see more. We will suggest it as your free reward at the end; you can choose another.",
+                "Your chosen theme is now previewed. Tap Photo Sweep to return to your library.",
                 "Open Report a bug to see the three feedback options; close it to finish."};
         final View brightTarget = tutorialTarget;
         View shade = new View(this) {
@@ -2353,9 +2409,12 @@ public class MainActivity extends ComponentActivity {
             card.setContentDescription(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))
                     + ". " + days.getText() + (selected ? ". Selected" : "")
                     + (trashSelecting ? ". Tap to toggle selection" : ". Tap to inspect"));
-            tutorialBind(card, "sample");
+            tutorialBind(card, entry.id == -101 ? "sample-first" : entry.id == -201 ? "sample-second" : "other-sample");
             card.setOnClickListener(v -> {
-                if (tutorialStep == 8) { advanceTutorial(); return; }
+                if (tutorialStep >= 0) {
+                    if ((tutorialStep == 8 && entry.id == -101) || (tutorialStep == 9 && entry.id == -201)) advanceTutorial();
+                    return;
+                }
                 if (pendingRestore != -1 || pendingTrash != -1) return;
                 if (trashSelecting) {
                     if (!selectedTrash.add(entry.id)) selectedTrash.remove(entry.id);
@@ -2363,6 +2422,7 @@ public class MainActivity extends ComponentActivity {
                 } else inspectTrash(entry);
             });
             card.setOnLongClickListener(v -> {
+                if (tutorialStep >= 0) return true;
                 if (pendingRestore != -1 || pendingTrash != -1) return true;
                 trashSelecting = true; selectedTrash.add(entry.id); render(); return true;
             });
@@ -2796,7 +2856,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void loadReviewPhoto(Photo photo, ImageView view) {
-        if (photo.id < 0) { view.setImageBitmap(tutorialPicture()); return; }
+        if (photo.id < 0) { view.setImageBitmap(tutorialPicture(photo.id)); return; }
         view.setTag(photo.id);
         Bitmap cached = reviewPhotos.get(photo.id);
         if (cached != null && !cached.isRecycled()) { view.setImageBitmap(cached); invalidatePhotoDecorations(view); }
@@ -2963,7 +3023,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void loadPreview(long id, Uri uri, ImageView view) {
-        if (id < 0) { view.setImageBitmap(tutorialPicture()); return; }
+        if (id < 0) { view.setImageBitmap(tutorialPicture(id)); return; }
         Bitmap cached = previews.get(id);
         if (cached != null) { view.setImageBitmap(cached); return; }
         final FrameLayout requestedHost = host;
@@ -4587,4 +4647,3 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
-
