@@ -530,6 +530,9 @@ public class MainActivity extends ComponentActivity {
     private boolean fullScreenReview, reviewActionRunning;
     private boolean showingTrash, deletingOld;
     private int themeCategory;
+    private int themeAvailability;
+    private boolean themeSearchOpen;
+    private static final String[] THEME_CATEGORIES = {"All themes", "Tier 1", "Tier 2", "Tier 3", "Countries", "Holidays"};
     private String themeQuery = "";
     private boolean themeAnimationsOpen;
     private final LruCache<Integer, Bitmap> themeThumbnails = new LruCache<Integer, Bitmap>(8 * 1024 * 1024) {
@@ -645,6 +648,8 @@ public class MainActivity extends ComponentActivity {
             showingSettings = state.getBoolean("showingSettings");
             showingThemes = state.getBoolean("showingThemes");
             themeCategory = state.getInt("themeCategory");
+            themeAvailability = state.getInt("themeAvailability");
+            themeSearchOpen = state.getBoolean("themeSearchOpen");
             themeQuery = state.getString("themeQuery", "");
             themeAnimationsOpen = state.getBoolean("themeAnimationsOpen");
             optionsSection = state.getInt("optionsSection");
@@ -762,6 +767,8 @@ public class MainActivity extends ComponentActivity {
         state.putBoolean("showingSettings", showingSettings);
         state.putBoolean("showingThemes", showingThemes);
         state.putInt("themeCategory", themeCategory);
+        state.putInt("themeAvailability", themeAvailability);
+        state.putBoolean("themeSearchOpen", themeSearchOpen);
         state.putString("themeQuery", themeQuery);
         state.putBoolean("themeAnimationsOpen", themeAnimationsOpen);
         state.putInt("optionsSection", optionsSection);
@@ -1002,8 +1009,8 @@ public class MainActivity extends ComponentActivity {
             showingTrash = tutorialStep >= 7 && tutorialStep <= 11;
             trashSelecting = tutorialStep >= 8 && tutorialStep <= TUTORIAL_RESTORE;
             showingSettings = false; showingThemes = tutorialStep >= 13 && tutorialStep <= 15;
-            if (tutorialStep == TUTORIAL_THEME_TAB) { themeCategory = 0; themeQuery = ""; }
-            if (tutorialStep == TUTORIAL_THEME_PICK) { themeCategory = 2; themeQuery = ""; }
+            if (tutorialStep == TUTORIAL_THEME_TAB) { themeCategory = 0; themeAvailability = 0; themeQuery = ""; themeSearchOpen = false; }
+            if (tutorialStep == TUTORIAL_THEME_PICK) { themeCategory = 2; themeAvailability = 0; themeQuery = ""; }
             int preview = getPreferences(MODE_PRIVATE).getInt("tutorial_suggested_theme", -1);
             if (tutorialStep >= 15 && validTutorialTheme(preview) && themeChoice != preview) { themeChoice = preview; applyTheme(); }
             themeAnimationsOpen = false;
@@ -1478,54 +1485,112 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void themesScreen() {
-        back(reviewing ? "Photos" : "Photo Sweep", () -> {
+        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(54)));
+        Button backButton = button(header, "←", PANEL, INK, () -> {
             if (themeAnimationsOpen) themeAnimationsOpen = false; else showingThemes = false;
             render();
         });
-        heading("Themes", "Level " + (xp / 500 + 1) + " · " + xp + " XP");
+        backButton.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(48)));
+        String backLabel = reviewing ? "Photos" : "Photo Sweep";
+        tutorialBind(backButton, backLabel); backButton.setContentDescription("Back to " + backLabel);
+        backButton.setOnClickListener(v -> tutorialClick(backLabel, () -> {
+            if (themeAnimationsOpen) themeAnimationsOpen = false; else showingThemes = false;
+            render();
+        }));
+        TextView title = new TextView(this); title.setText("Themes"); title.setTextSize(26);
+        title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setPadding(dp(12), 0, 0, 0); header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        Button more = button(header, "⋯", PANEL, INK, this::showThemeMenu);
+        LinearLayout.LayoutParams moreLp = new LinearLayout.LayoutParams(dp(44), dp(48)); moreLp.rightMargin = dp(7); more.setLayoutParams(moreLp);
+        more.setContentDescription("More theme options: search, swipe settings and feedback");
+        Button settings = button(header, ICON_SETTINGS, PANEL, GREEN, () -> { showingThemes = false; showingSettings = true; render(); });
+        settings.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(48))); settings.setContentDescription("Settings");
+        spacer(10);
         if (themeAnimationsOpen) {
-            LinearLayout controls = optionsList("theme-animations");
-            addSwipeControls(controls);
-            return;
+            LinearLayout controls = optionsList("theme-animations"); addSwipeControls(controls); return;
         }
-        android.widget.EditText search = new android.widget.EditText(this);
-        search.setSingleLine(true); search.setHint("Search themes"); search.setText(themeQuery);
-        search.setTextSize(15); search.setTextColor(INK); search.setHintTextColor(MUTED);
-        search.setPadding(dp(14), 0, dp(14), 0); search.setBackground(rounded(PANEL, 14));
-        root.addView(search, new LinearLayout.LayoutParams(-1, dp(48)));
-        android.widget.HorizontalScrollView tabs = new android.widget.HorizontalScrollView(this);
-        tabs.setHorizontalScrollBarEnabled(false);
-        LinearLayout choices = new LinearLayout(this);
-        tabs.addView(choices); root.addView(tabs, new LinearLayout.LayoutParams(-1, dp(56)));
-        String[] categories = {"All", "Tier 1", "Tier 2", "Tier 3", "Countries", "Holidays"};
-        for (int i = 0; i < categories.length; i++) {
-            final int category = i;
-            TextView tab = new TextView(this); tab.setText(categories[i]); tab.setTextSize(13);
-            tab.setGravity(Gravity.CENTER); tab.setTextColor(i == themeCategory ? BG : INK);
-            tab.setPadding(dp(12), 0, dp(12), 0); tab.setMinWidth(dp(48));
-            tab.setBackground(rounded(i == themeCategory ? GREEN : PANEL, 12));
-            tab.setSelected(i == themeCategory); tab.setFocusable(true);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(48));
-            lp.topMargin = dp(4); lp.rightMargin = dp(5); choices.addView(tab, lp);
-            tutorialBind(tab, categories[i]);
-            tab.setOnClickListener(v -> tutorialClick(categories[category], () -> {
-                themeCategory = category; scrollPositions.remove("themes-library"); render();
-            }));
+        int level = xp / 500 + 1;
+        LinearLayout progress = new LinearLayout(this); progress.setOrientation(LinearLayout.VERTICAL);
+        progress.setPadding(dp(14), dp(10), dp(14), dp(10)); progress.setBackground(rounded(PANEL, 15));
+        progress.setContentDescription("Level " + level + ". " + (xp % 500) + " of 500 XP. View level unlocks"); progress.setFocusable(true);
+        root.addView(progress, new LinearLayout.LayoutParams(-1, -2));
+        TextView status = new TextView(this); status.setText("✦ Level " + level + "  ·  " + (xp % 500) + "/500 XP  ›");
+        status.setTextSize(16); status.setTextColor(INK); status.setTypeface(Typeface.DEFAULT, Typeface.BOLD); progress.addView(status);
+        TextView next = new TextView(this);
+        next.setText(level < 3 ? "Tier 2 at Level 3 · " + Math.max(0, 1000 - xp) + " XP to go"
+                : level < 6 ? "Tier 3 at Level 6 · " + Math.max(0, 2500 - xp) + " XP to go" : "All theme tiers unlocked");
+        next.setTextColor(MUTED); next.setTextSize(13); next.setPadding(0, dp(4), 0, 0); progress.addView(next);
+        progress.setOnClickListener(v -> { if (tutorialStep < 0) showThemeLevels(); });
+        spacer(10);
+        LinearLayout tools = new LinearLayout(this); root.addView(tools, new LinearLayout.LayoutParams(-1, dp(48)));
+        Button collection = button(tools, THEME_CATEGORIES[Math.max(0, Math.min(5, themeCategory))] + "  ▾", PANEL, INK, this::chooseThemeCategory);
+        LinearLayout.LayoutParams categoryLp = new LinearLayout.LayoutParams(0, dp(48), 1); categoryLp.rightMargin = dp(9); collection.setLayoutParams(categoryLp);
+        collection.setContentDescription("Choose theme collection"); tutorialBind(collection, "Tier 2");
+        collection.setOnClickListener(v -> { if (tutorialStep < 0 || tutorialStep == TUTORIAL_THEME_TAB) chooseThemeCategory(); });
+        Button filters = button(tools, themeAvailability == 1 ? "✓ Unlocked" : themeAvailability == 2 ? "Locked" : "Filters", PANEL, GREEN, this::showThemeFilters);
+        filters.setLayoutParams(new LinearLayout.LayoutParams(-2, dp(48))); filters.setContentDescription("Filter themes by availability");
+        if (themeSearchOpen) {
+            spacer(9);
+            android.widget.EditText search = new android.widget.EditText(this); search.setSingleLine(true);
+            search.setHint("Search themes"); search.setText(themeQuery); search.setTextSize(15); search.setTextColor(INK); search.setHintTextColor(MUTED);
+            search.setPadding(dp(14), 0, dp(14), 0); search.setBackground(rounded(PANEL, 14));
+            root.addView(search, new LinearLayout.LayoutParams(-1, dp(48)));
+            search.addTextChangedListener(new android.text.TextWatcher() {
+                public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+                public void onTextChanged(CharSequence text, int start, int before, int count) {
+                    themeQuery = text.toString();
+                    if (themeGrid != null) { themeGrid.removeAllViews(); addThemeOptions(themeGrid); }
+                    if (activeScroll != null) activeScroll.scrollTo(0, 0);
+                }
+                public void afterTextChanged(android.text.Editable text) { }
+            });
         }
-        LinearLayout grid = optionsList("themes-library");
-        tutorialBind((View) grid.getParent(), "theme-choice");
-        addThemeOptions(grid);
-        search.addTextChangedListener(new android.text.TextWatcher() {
-            public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
-            public void onTextChanged(CharSequence text, int start, int before, int count) {
-                themeQuery = text.toString(); grid.removeAllViews(); addThemeOptions(grid);
-                if (activeScroll != null) activeScroll.scrollTo(0, 0);
-            }
-            public void afterTextChanged(android.text.Editable text) { }
-        });
-        button(root, "Current theme · " + THEME_NAMES[themeChoice].split(" · ")[0] + "  ›", PANEL, INK, () -> {
-            themeAnimationsOpen = true; render();
-        }).setContentDescription("Current theme and swipe animations");
+        spacer(9);
+        themeGrid = optionsList("themes-library"); tutorialBind((View) themeGrid.getParent(), "theme-choice"); addThemeOptions(themeGrid);
+    }
+
+    private LinearLayout themeGrid;
+
+    private void chooseThemeCategory() {
+        android.app.AlertDialog dialog = themedFeedbackDialog("Theme collection")
+                .setSingleChoiceItems(THEME_CATEGORIES, themeCategory, (choice, which) -> {
+                    if (tutorialStep >= 0 && which != 2) return;
+                    choice.dismiss();
+                    tutorialClick(which == 2 ? "Tier 2" : THEME_CATEGORIES[which], () -> {
+                        themeCategory = which; scrollPositions.remove("themes-library"); render();
+                    });
+                }).setNegativeButton("Cancel", null).create();
+        showThemedFeedbackDialog(dialog);
+    }
+
+    private void showThemeFilters() {
+        if (tutorialStep >= 0) return;
+        String[] labels = {"All themes", "Unlocked only", "Locked only"};
+        android.app.AlertDialog dialog = themedFeedbackDialog("Show themes")
+                .setSingleChoiceItems(labels, themeAvailability, (choice, which) -> {
+                    choice.dismiss(); themeAvailability = which; scrollPositions.remove("themes-library"); render();
+                }).setNegativeButton("Cancel", null).create();
+        showThemedFeedbackDialog(dialog);
+    }
+
+    private void showThemeMenu() {
+        if (tutorialStep >= 0) return;
+        String[] actions = {themeSearchOpen ? "Close search" : "Search themes", "Swipe & motion settings", "Report a bug"};
+        android.app.AlertDialog dialog = themedFeedbackDialog("Theme options").setItems(actions, (choice, which) -> {
+            if (which == 0) { themeSearchOpen = !themeSearchOpen; if (!themeSearchOpen) themeQuery = ""; render(); }
+            else if (which == 1) { themeAnimationsOpen = true; render(); }
+            else showFeedbackMenu();
+        }).setNegativeButton("Cancel", null).create();
+        showThemedFeedbackDialog(dialog);
+    }
+
+    private void showThemeLevels() {
+        int free = getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1);
+        String message = "Every 500 XP adds a level.\n\nLevel 1 · Tier 1 colors\nLevel 3 · Tier 2 scenes\nLevel 6 · Tier 3 animated themes\n\n"
+                + (free >= 0 && free < THEME_NAMES.length ? "Tutorial reward · " + THEME_NAMES[free] + " is already yours." : "Complete the tutorial for one free Tier 2 theme.");
+        android.app.AlertDialog dialog = themedFeedbackDialog("Level & unlocks").setMessage(message).setPositiveButton("Done", null).create();
+        showThemedFeedbackDialog(dialog);
     }
 
     private void addTestingOptions(LinearLayout list) {
@@ -1561,21 +1626,19 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void addThemeOptions(LinearLayout list) {
-        int level = xp / 500 + 1;
         String query = themeQuery.trim().toLowerCase(Locale.ROOT);
         LinearLayout row = null; int count = 0;
         for (int index = 0; index < THEME_NAMES.length; index++) {
             if (!PlayPolicy.themeAllowed(index)) continue;
             int country = countryCollection(index);
             int holiday = HolidayThemes.collection(index);
-            if (holiday >= 0 && index != HolidayThemes.still(holiday)) continue;
             if (themeCategory == 5 && holiday < 0) continue;
-            // Country variants share one card; tier tabs contain non-country themes only.
-            if (country >= 0 && index != COUNTRY_STILL_THEMES[country]) continue;
             if (themeCategory == 4 && country < 0) continue;
+            if (themeAvailability == 1 && !themeUnlocked(index)) continue;
+            if (themeAvailability == 2 && themeUnlocked(index)) continue;
             if (tutorialStep == TUTORIAL_THEME_PICK && themeTier(index) != 2) continue;
             if (tutorialStep != TUTORIAL_THEME_PICK && themeCategory >= 1 && themeCategory <= 3
-                    && (country >= 0 || holiday >= 0 || themeTier(index) != themeCategory)) continue;
+                    && themeTier(index) != themeCategory) continue;
             String searchable = holiday >= 0 ? (holiday == 1 ? "holiday " : "federal holiday ") + HolidayThemes.SEARCH[holiday] + " " + HolidayThemes.SCENES[holiday] + " " + HolidayThemes.MOTIONS[holiday]
                     : country < 0 ? THEME_NAMES[index]
                     : THEME_NAMES[COUNTRY_STILL_THEMES[country]] + " "
@@ -1587,9 +1650,7 @@ public class MainActivity extends ComponentActivity {
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.bottomMargin = dp(10); list.addView(row, lp);
             }
-            int preview = tutorialStep == TUTORIAL_THEME_PICK ? index : holiday >= 0 && HolidayThemes.collection(themeChoice) == holiday ? themeChoice
-                    : country >= 0 && countryCollection(themeChoice) == country ? themeChoice : index;
-            addThemePreview(row, preview, themeUnlocked(preview));
+            addThemePreview(row, index, themeUnlocked(index));
         }
         if (count == 0) {
             TextView empty = new TextView(this); empty.setText("No matching themes");
@@ -1622,17 +1683,42 @@ public class MainActivity extends ComponentActivity {
         detail.setText(holiday >= 0 ? HolidayThemes.SCENES[holiday] : country >= 0 ? COUNTRY_SCENES[country] : (parts.length > 1 ? parts[1] : "")); detail.setTextSize(12); detail.setTextColor(MUTED);
         detail.setMinLines(2); card.addView(detail);
         TextView badge = new TextView(this); badge.setTextSize(12); badge.setTextColor(unlocked ? GREEN : MUTED);
-        badge.setText(holiday >= 0 ? "Still / Animated  ›" + (themeChoice == index ? " · " + (hasThemeMotion(index) ? "Animated" : "Still") : "") : country >= 0
-                ? "Still / Animated  ›" + (themeChoice == index ? " · " + (hasThemeMotion(index) ? "Animated" : "Still") : "")
-                : "Tier " + themeTier(index) + " · " + (unlocked ? (hasThemeMotion(index) ? "Animated" : "Still") : "🔒 Level " + requiredThemeLevel(index)));
+        badge.setText("Tier " + themeTier(index) + " · " + (hasThemeMotion(index) ? "Animated" : isColorTheme(index) ? "Color" : "Still scene"));
         card.addView(badge);
-        card.setContentDescription(THEME_NAMES[index] + ", " + badge.getText() + (themeChoice == index ? ", selected" : ""));
+        TextView availability = new TextView(this); availability.setTextSize(12);
+        availability.setText(themeAccessLabel(index)); availability.setTextColor(unlocked ? GREEN : GOLD);
+        availability.setMinLines(2); availability.setPadding(0, dp(5), 0, 0); card.addView(availability);
+        card.setContentDescription(THEME_NAMES[index] + ", " + badge.getText() + ". " + availability.getText() + (themeChoice == index ? ", selected" : ""));
         card.setOnClickListener(v -> {
             if (tutorialStep >= 0) { if (tutorialStep == TUTORIAL_THEME_PICK) selectTheme(index); return; }
-            if (holiday >= 0) showHolidayVariants(holiday);
-            else if (country >= 0) showCountryVariants(country);
-            else selectTheme(index);
+            showThemeDetails(index);
         });
+    }
+
+    private String themeAccessLabel(int index) {
+        if (themeUnlocked(index)) {
+            if (getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index) return "✦ Tutorial reward · Unlocked";
+            return themeChoice == index ? "✓ Selected · Unlocked" : "✓ Unlocked";
+        }
+        int remaining = Math.max(0, (requiredThemeLevel(index) - 1) * 500 - xp);
+        return "🔒 Level " + requiredThemeLevel(index) + " · " + remaining + " XP to go";
+    }
+
+    private void showThemeDetails(int index) {
+        LinearLayout preview = new LinearLayout(this); preview.setOrientation(LinearLayout.VERTICAL);
+        preview.setPadding(dp(18), dp(8), dp(18), dp(8));
+        ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{THEME_COLORS[index][0], THEME_COLORS[index][2]}));
+        image.setContentDescription(THEME_NAMES[index] + " artwork preview");
+        preview.addView(image, new LinearLayout.LayoutParams(-1, dp(180))); loadThemeThumbnail(index, image);
+        TextView detail = new TextView(this); detail.setTextSize(15); detail.setTextColor(INK);
+        detail.setText("Tier " + themeTier(index) + " · " + (hasThemeMotion(index) ? "Animated" : isColorTheme(index) ? "Color" : "Still scene") + "\n" + themeAccessLabel(index));
+        detail.setPadding(0, dp(12), 0, dp(8)); preview.addView(detail);
+        android.app.AlertDialog.Builder builder = themedFeedbackDialog(THEME_NAMES[index].split(" · ")[0]).setView(preview).setNegativeButton("Close", null);
+        if (themeUnlocked(index)) builder.setPositiveButton("Use theme", (dialog, which) -> selectTheme(index));
+        else builder.setPositiveButton("View levels", (dialog, which) -> showThemeLevels());
+        showThemedFeedbackDialog(builder.create());
     }
 
     private void showHolidayVariants(int holiday) {
@@ -2108,7 +2194,7 @@ public class MainActivity extends ComponentActivity {
                 "Tap Select. You can restore several photos together.", "Tap the highlighted photo to select it.",
                 "Tap a second photo. The first stays selected.", "Tap Restore to return BOTH selected photos to your gallery together.",
                 "Two photos were restored; the other samples stay in Trash. Tap Photo Sweep.",
-                "Open Themes; you can change them during photo review too.", "Tap Tier 2 to see your theme choices.",
+                "Open Themes; you can change them during photo review too.", "Open the collection menu and choose Tier 2 to see your theme choices.",
                 "Tap any Tier 2 theme to try it. Scroll to see more. We will suggest it as your free reward at the end; you can choose another.",
                 "Your chosen theme is now previewed. Tap Photo Sweep to return to your library.",
                 "Open Report a bug to see the three feedback options; close it to finish."};
