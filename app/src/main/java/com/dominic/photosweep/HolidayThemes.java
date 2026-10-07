@@ -9,10 +9,10 @@ final class HolidayThemes {
             "Martin Luther King Jr. Day", "Presidents' Day", "Memorial Day", "Juneteenth", "Labor Day", "Columbus Day", "Veterans Day"};
     static final String[] SYMBOLS = {"🎄", "🎃", "🍂", "🎆", "✨", "🕊", "🏛", "🌺", "⭐", "☀", "⛵", "🎗"};
     static final String[] SCENES = {"Snowy village lights", "Cozy pumpkin night", "Autumn harvest evening",
-            "Waterfront fireworks", "Midnight gold celebration", "A peaceful bridge of light", "Winter civic gardens",
+            "American waterfront celebration", "Midnight fireworks celebration", "A peaceful bridge of light", "Winter civic gardens",
             "Quiet remembrance garden", "Community celebration", "Golden summer town", "Twilight sailing horizon", "Lanterns of gratitude"};
     static final String[] MOTIONS = {"Drifting snowflakes", "Bobbing pumpkin lights", "Falling harvest leaves",
-            "Occasional red, white and blue fireworks", "Golden confetti and gentle fireworks", "Floating peace doves",
+            "Red, white and blue fireworks", "Multicolor fireworks", "Floating peace doves",
             "Sapphire and gold glints", "Slow drifting poppies", "Rising celebration stars", "Swaying summer blooms",
             "Sailing emblems and soft ocean sway", "Gentle laurel lights"};
     static final String[] SEARCH = {"Christmas Day winter snow", "Halloween October pumpkin", "Thanksgiving Day harvest autumn",
@@ -27,3 +27,4 @@ final class HolidayThemes {
     static boolean animatedTheme(int theme) { return collection(theme) >= 0 && (theme - FIRST) % 2 == 1; }
     static boolean reflective(int holiday) { return holiday == 5 || holiday == 7 || holiday == 11; }
 }
+

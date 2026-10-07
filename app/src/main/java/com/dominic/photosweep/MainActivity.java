@@ -145,8 +145,8 @@ public class MainActivity extends ComponentActivity {
             "Thanksgiving · autumn harvest evening · animated",
             "July 4th · waterfront fireworks",
             "July 4th · waterfront fireworks · animated",
-            "New Year's Day · midnight gold",
-            "New Year's Day · midnight gold · animated",
+            "New Year's Day · midnight fireworks",
+            "New Year's Day · midnight fireworks · animated",
             "Martin Luther King Jr. Day · peaceful bridge of light",
             "Martin Luther King Jr. Day · peaceful bridge of light · animated",
             "Presidents' Day · winter civic gardens",
@@ -4152,9 +4152,12 @@ public class MainActivity extends ComponentActivity {
 
         private void drawHolidayMotion(Canvas canvas, float w, float h, float time) {
             int holiday = HolidayThemes.collection(themeChoice);
+            if (holiday == 3 || holiday == 4) {
+                drawHolidayFireworks(canvas, w, h, time, holiday == 3);
+                return;
+            }
             Bitmap sprite = effectSprite(themeChoice); if (sprite == null) return;
             boolean quiet = HolidayThemes.reflective(holiday);
-            boolean fireworks = holiday == 3 || holiday == 4;
             int count = quiet ? 5 : holiday == 0 ? 14 : 8;
             int save = canvas.save();
             // The decorative world stays behind controls, mostly in side margins.
@@ -4165,26 +4168,63 @@ public class MainActivity extends ComponentActivity {
                 if (holiday == 1 || holiday == 6 || holiday == 9 || holiday == 10) {
                     y = h * (.10f + (i / 2) * .23f) + (float)Math.sin(time * .7f + i) * dp(7);
                 }
-                if (fireworks) {
-                    float age = loop(time + i * 2.1f, 11f); if (age > 1.8f) continue;
-                    float cx = w * (.12f + (i % 4) * .25f), cy = h * (.035f + (i % 3) * .025f);
-                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1.5f));
-                    paint.setColor(holiday == 4 ? GOLD : i % 3 == 0 ? RED : i % 3 == 1 ? GREEN : INK);
-                    paint.setAlpha((int)(115 * (1f - age / 1.8f)));
-                    for (int ray = 0; ray < 10; ray++) {
-                        float angle = ray * .6283f, r = dp(8 + age * 28);
-                        canvas.drawLine(cx + (float)Math.cos(angle) * r * .65f, cy + (float)Math.sin(angle) * r * .65f,
-                                cx + (float)Math.cos(angle) * r, cy + (float)Math.sin(angle) * r, paint);
-                    }
-                    paint.setStyle(Paint.Style.FILL); paint.setColor(Color.WHITE);
-                    if (holiday == 3) continue;
-                }
                 paint.setColor(Color.WHITE); paint.setAlpha(quiet ? 90 : 115);
                 canvas.save(); canvas.rotate(quiet || holiday == 1 || holiday == 10 ? 0 : (float)Math.sin(time*.5f+i)*20, x, y);
                 float halfW = size/2, halfH = halfW * sprite.getHeight()/sprite.getWidth();
                 canvas.drawBitmap(sprite, null, new RectF(x-halfW, y-halfH, x+halfW, y+halfH), paint); canvas.restore();
             }
             paint.setStyle(Paint.Style.FILL); paint.setAlpha(255); canvas.restoreToCount(save);
+        }
+
+        // Deterministic staggered launches keep the celebration lively without flashing the screen.
+        private void drawHolidayFireworks(Canvas canvas, float w, float h, float time, boolean patriotic) {
+            final int[] colors = patriotic
+                    ? new int[]{0xFFFF4D62, 0xFFF7FAFF, 0xFF5C9DFF}
+                    : new int[]{0xFFFFD35C, 0xFF55DFFF, 0xFFB88AFF, 0xFFFF72BA,
+                            0xFF77EEA1, 0xFFFF9A55, 0xFFFF626D};
+            int save = canvas.save();
+            canvas.clipRect(0, 0, w, h);
+            paint.setStyle(Paint.Style.STROKE);
+            for (int burst = 0; burst < 5; burst++) {
+                float phase = time + burst * 1.23f;
+                float age = loop(phase, 6.8f);
+                if (age > 3.15f) continue;
+                int cycle = (int)Math.floor(phase / 6.8f);
+                float cx = w * (.12f + burst * .19f);
+                float cy = h * (.13f + (burst % 3) * .065f);
+                int baseColor = colors[(burst + cycle) % colors.length];
+                if (age < .75f) {
+                    float progress = age / .75f;
+                    float y = cy + (1f - progress) * h * .22f;
+                    paint.setColor(baseColor); paint.setAlpha(210);
+                    paint.setStrokeWidth(dp(2));
+                    canvas.drawLine(cx, y, cx, y + dp(16), paint);
+                    paint.setColor(Color.WHITE); paint.setAlpha(245);
+                    canvas.drawCircle(cx, y, dp(1.6f), paint);
+                    continue;
+                }
+                float elapsed = age - .75f;
+                float progress = elapsed / 2.4f;
+                float expansion = 1f - (float)Math.pow(1f - progress, 3);
+                float radius = Math.min(w * .20f, dp(58 + burst % 3 * 12)) * expansion;
+                float fall = dp(20) * progress * progress;
+                int alpha = (int)(240 * (1f - progress) * (1f - progress));
+                for (int ray = 0; ray < 32; ray++) {
+                    double angle = ray * Math.PI * 2 / 32 + burst * .37;
+                    float reach = radius * (.82f + (ray % 4) * .06f);
+                    float dx = (float)Math.cos(angle), dy = (float)Math.sin(angle);
+                    float tail = Math.max(0, reach - dp(10) * (1f - progress));
+                    paint.setColor(patriotic ? colors[(burst + cycle + ray / 11) % colors.length]
+                            : baseColor);
+                    paint.setAlpha(alpha); paint.setStrokeWidth(dp(1.8f));
+                    canvas.drawLine(cx + dx * tail, cy + dy * tail + fall,
+                            cx + dx * reach, cy + dy * reach + fall, paint);
+                    paint.setColor(Color.WHITE); paint.setAlpha((int)(alpha * .85f));
+                    canvas.drawCircle(cx + dx * reach, cy + dy * reach + fall, dp(1.2f), paint);
+                }
+            }
+            paint.setStyle(Paint.Style.FILL); paint.setAlpha(255); paint.setColor(Color.WHITE);
+            canvas.restoreToCount(save);
         }
 
         private void drawExpandedCollectionEffects(Canvas canvas, Bitmap sprite, float w, float h, float time, int theme) {
