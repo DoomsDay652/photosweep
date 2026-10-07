@@ -4153,7 +4153,7 @@ public class MainActivity extends ComponentActivity {
         private void drawHolidayMotion(Canvas canvas, float w, float h, float time) {
             int holiday = HolidayThemes.collection(themeChoice);
             if (holiday == 3 || holiday == 4) {
-                drawHolidayFireworks(canvas, w, h, time, holiday == 3);
+                drawHolidayFireworks(canvas, w, h, holiday == 3);
                 return;
             }
             Bitmap sprite = effectSprite(themeChoice); if (sprite == null) return;
@@ -4176,51 +4176,114 @@ public class MainActivity extends ComponentActivity {
             paint.setStyle(Paint.Style.FILL); paint.setAlpha(255); canvas.restoreToCount(save);
         }
 
-        // Deterministic staggered launches keep the celebration lively without flashing the screen.
-        private void drawHolidayFireworks(Canvas canvas, float w, float h, float time, boolean patriotic) {
-            final int[] colors = patriotic
-                    ? new int[]{0xFFFF4D62, 0xFFF7FAFF, 0xFF5C9DFF}
-                    : new int[]{0xFFFFD35C, 0xFF55DFFF, 0xFFB88AFF, 0xFFFF72BA,
-                            0xFF77EEA1, 0xFFFF9A55, 0xFFFF626D};
-            int save = canvas.save();
-            canvas.clipRect(0, 0, w, h);
+        private final java.util.Random holidayRandom = new java.util.Random();
+        private final ArrayList<HolidayShell> holidayShells = new ArrayList<>();
+        private final int[] patrioticFireworkColors = {0xFFFF4D62, 0xFFF7FAFF, 0xFF5C9DFF};
+        private final int[] newYearFireworkColors = {0xFFFFD35C, 0xFF55DFFF, 0xFFB88AFF,
+                0xFFFF72BA, 0xFF77EEA1, 0xFFFF9A55, 0xFFFF626D};
+        private long nextHolidayLaunch, lastHolidayFrame;
+        private int fireworkHoliday = -1;
+
+        private class HolidayShell {
+            long start;
+            float flight, life, x, y, launchX, rise, bend, size, gravity;
+            int type, color, secondary;
+            float[] vx, vy, length, sparkle;
+            HolidayShell(long start, boolean patriotic) {
+                this.start = start;
+                flight = .7f + holidayRandom.nextFloat() * .65f;
+                life = 1.8f + holidayRandom.nextFloat() * 1.7f;
+                x = .13f + holidayRandom.nextFloat() * .74f;
+                y = .10f + holidayRandom.nextFloat() * .25f;
+                launchX = x + (holidayRandom.nextFloat() - .5f) * .18f;
+                rise = .20f + holidayRandom.nextFloat() * .15f;
+                bend = (holidayRandom.nextFloat() - .5f) * .055f;
+                size = 42 + holidayRandom.nextFloat() * 47;
+                type = holidayRandom.nextInt(4); // chrysanthemum, ring, willow, double burst
+                gravity = type == 2 ? 24 : 9 + holidayRandom.nextFloat() * 10;
+                int[] palette = patriotic ? patrioticFireworkColors : newYearFireworkColors;
+                color = palette[holidayRandom.nextInt(palette.length)];
+                secondary = palette[holidayRandom.nextInt(palette.length)];
+                int count = 28 + holidayRandom.nextInt(25);
+                vx = new float[count]; vy = new float[count];
+                length = new float[count]; sparkle = new float[count];
+                double rotation = holidayRandom.nextFloat() * Math.PI * 2;
+                for (int i = 0; i < count; i++) {
+                    double angle = rotation + Math.PI * 2 * (i + holidayRandom.nextFloat() * .65f) / count;
+                    float speed = type == 1 ? .94f + holidayRandom.nextFloat() * .06f
+                            : .50f + holidayRandom.nextFloat() * .50f;
+                    if (type == 3 && i % 3 == 0) speed *= .48f;
+                    vx[i] = (float)Math.cos(angle) * speed;
+                    vy[i] = (float)Math.sin(angle) * speed;
+                    length[i] = 4 + holidayRandom.nextFloat() * (type == 2 ? 20 : 9);
+                    sparkle[i] = holidayRandom.nextFloat() * 6.28f;
+                }
+            }
+        }
+
+        private float shellX(HolidayShell shell, float progress, float w) {
+            return w * (shell.launchX + (shell.x - shell.launchX) * progress
+                    + shell.bend * (float)Math.sin(progress * Math.PI));
+        }
+        private float shellY(HolidayShell shell, float progress, float h) {
+            return h * (shell.y + shell.rise * (1f - progress) * (1f - progress));
+        }
+
+        private void drawHolidayFireworks(Canvas canvas, float w, float h, boolean patriotic) {
+            long now = android.os.SystemClock.uptimeMillis();
+            // Restart after pauses rather than catching up a backlog of launches.
+            if (fireworkHoliday != themeChoice || now - lastHolidayFrame > 2000) {
+                holidayShells.clear(); nextHolidayLaunch = now + 250;
+                fireworkHoliday = themeChoice;
+            }
+            lastHolidayFrame = now;
+            if (now >= nextHolidayLaunch) {
+                int chance = holidayRandom.nextInt(100);
+                int volley = chance < 55 ? 1 : chance < 87 ? 2 : 3;
+                for (int i = 0; i < volley && holidayShells.size() < 12; i++) {
+                    holidayShells.add(new HolidayShell(now + (i == 0 ? 0 : holidayRandom.nextInt(380)), patriotic));
+                }
+                nextHolidayLaunch = now + 650 + holidayRandom.nextInt(2000);
+            }
+            int save = canvas.save(); canvas.clipRect(0, 0, w, h);
             paint.setStyle(Paint.Style.STROKE);
-            for (int burst = 0; burst < 5; burst++) {
-                float phase = time + burst * 1.23f;
-                float age = loop(phase, 6.8f);
-                if (age > 3.15f) continue;
-                int cycle = (int)Math.floor(phase / 6.8f);
-                float cx = w * (.12f + burst * .19f);
-                float cy = h * (.13f + (burst % 3) * .065f);
-                int baseColor = colors[(burst + cycle) % colors.length];
-                if (age < .75f) {
-                    float progress = age / .75f;
-                    float y = cy + (1f - progress) * h * .22f;
-                    paint.setColor(baseColor); paint.setAlpha(210);
-                    paint.setStrokeWidth(dp(2));
-                    canvas.drawLine(cx, y, cx, y + dp(16), paint);
-                    paint.setColor(Color.WHITE); paint.setAlpha(245);
-                    canvas.drawCircle(cx, y, dp(1.6f), paint);
+            for (int index = holidayShells.size() - 1; index >= 0; index--) {
+                HolidayShell shell = holidayShells.get(index);
+                float age = (now - shell.start) / 1000f;
+                if (age < 0) continue;
+                if (age > shell.flight + shell.life) { holidayShells.remove(index); continue; }
+                if (age < shell.flight) {
+                    float progress = age / shell.flight;
+                    for (int trail = 7; trail > 0; trail--) {
+                        float head = Math.max(0, progress - (trail - 1) * .018f);
+                        float tail = Math.max(0, progress - trail * .018f);
+                        paint.setColor(shell.color); paint.setAlpha(210 - trail * 22);
+                        paint.setStrokeWidth(dp(1.1f));
+                        canvas.drawLine(shellX(shell, tail, w), shellY(shell, tail, h),
+                                shellX(shell, head, w), shellY(shell, head, h), paint);
+                    }
+                    paint.setStyle(Paint.Style.FILL); paint.setColor(Color.WHITE); paint.setAlpha(240);
+                    canvas.drawCircle(shellX(shell, progress, w), shellY(shell, progress, h), dp(1.5f), paint);
+                    paint.setStyle(Paint.Style.STROKE);
                     continue;
                 }
-                float elapsed = age - .75f;
-                float progress = elapsed / 2.4f;
-                float expansion = 1f - (float)Math.pow(1f - progress, 3);
-                float radius = Math.min(w * .20f, dp(58 + burst % 3 * 12)) * expansion;
-                float fall = dp(20) * progress * progress;
-                int alpha = (int)(240 * (1f - progress) * (1f - progress));
-                for (int ray = 0; ray < 32; ray++) {
-                    double angle = ray * Math.PI * 2 / 32 + burst * .37;
-                    float reach = radius * (.82f + (ray % 4) * .06f);
-                    float dx = (float)Math.cos(angle), dy = (float)Math.sin(angle);
-                    float tail = Math.max(0, reach - dp(10) * (1f - progress));
-                    paint.setColor(patriotic ? colors[(burst + cycle + ray / 11) % colors.length]
-                            : baseColor);
-                    paint.setAlpha(alpha); paint.setStrokeWidth(dp(1.8f));
-                    canvas.drawLine(cx + dx * tail, cy + dy * tail + fall,
-                            cx + dx * reach, cy + dy * reach + fall, paint);
-                    paint.setColor(Color.WHITE); paint.setAlpha((int)(alpha * .85f));
-                    canvas.drawCircle(cx + dx * reach, cy + dy * reach + fall, dp(1.2f), paint);
+                float elapsed = age - shell.flight, progress = elapsed / shell.life;
+                float expansion = 1f - (float)Math.exp(-elapsed * (shell.type == 2 ? 1.6f : 2.8f));
+                float radius = Math.min(w * .24f, dp(shell.size)) * expansion;
+                float fall = dp(shell.gravity) * elapsed * elapsed;
+                float cx = w * shell.x, cy = h * shell.y;
+                for (int ray = 0; ray < shell.vx.length; ray++) {
+                    float twinkle = .72f + .28f * (float)Math.sin(elapsed * 11 + shell.sparkle[ray]);
+                    int alpha = (int)(240 * (float)Math.pow(1f - progress, 1.3) * twinkle);
+                    float tail = Math.max(0, radius - dp(shell.length[ray]) * (1f - progress));
+                    paint.setColor(ray % 4 == 0 ? shell.secondary : shell.color);
+                    paint.setAlpha(alpha); paint.setStrokeWidth(dp(shell.type == 2 ? 1.3f : 1.8f));
+                    canvas.drawLine(cx + shell.vx[ray] * tail, cy + shell.vy[ray] * tail + fall,
+                            cx + shell.vx[ray] * radius, cy + shell.vy[ray] * radius + fall, paint);
+                    paint.setStyle(Paint.Style.FILL); paint.setColor(Color.WHITE); paint.setAlpha(alpha * 3 / 4);
+                    canvas.drawCircle(cx + shell.vx[ray] * radius, cy + shell.vy[ray] * radius + fall,
+                            dp(.8f + .5f * twinkle), paint);
+                    paint.setStyle(Paint.Style.STROKE);
                 }
             }
             paint.setStyle(Paint.Style.FILL); paint.setAlpha(255); paint.setColor(Color.WHITE);
@@ -4773,3 +4836,4 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
