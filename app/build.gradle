@@ -19,7 +19,7 @@ android {
         publicConfig.each { key, value -> buildConfigField 'String', key, groovy.json.JsonOutput.toJson(value) }
         targetSdk 36
         versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
-        versionName '0.1.23'
+        versionName '0.1.24'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     signingConfigs {
@@ -80,6 +80,7 @@ tasks.register('verifyPlayProduction') {
 if (providers.gradleProperty('playProduction').getOrElse('false') == 'true') {
     tasks.matching { it.name == 'preReleaseBuild' }.configureEach { dependsOn 'verifyPlayProduction' }
 }
+
 
 
 
