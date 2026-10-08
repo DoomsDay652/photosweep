@@ -78,6 +78,12 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Optimize artwork without changing pixels
+        run: |
+          python3 -m pip install Pillow==12.3.0
+          python3 -m unittest discover -s tools -p test_optimize_assets.py
+          python3 tools/optimize_assets.py
+
       - name: Verify review logic
         run: |
           javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java app/src/main/java/com/dominic/photosweep/SwipeTheme.java app/src/main/java/com/dominic/photosweep/PhotoFit.java app/src/main/java/com/dominic/photosweep/ResetPolicy.java app/src/main/java/com/dominic/photosweep/PlayPolicy.java app/src/main/java/com/dominic/photosweep/HolidayThemes.java tests/ReviewLogicCheck.java tests/HolidayThemesCheck.java
@@ -116,6 +122,9 @@ jobs:
           PHOTO_SWEEP_STORE_PASSWORD: ${{ secrets.PHOTO_SWEEP_STORE_PASSWORD }}
         run: gradle :app:lintRelease :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
 
+      - name: Verify every packaged artwork pixel
+        run: python3 tools/optimize_assets.py --verify-bundle app/build/outputs/bundle/release/app-release.aab
+
       - name: Verify Play crash diagnostics
         run: python3 tools/verify_release_bundle.py app/build/outputs/bundle/release/app-release.aab
 
@@ -127,6 +136,7 @@ jobs:
             app/build/outputs/mapping/release/mapping.txt
             app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
             app/build/outputs/release-diagnostics.txt
+            build/asset-optimization.json
           if-no-files-found: error
 
       - name: Save APK for download
@@ -142,3 +152,4 @@ jobs:
           name: PhotoSweep-play-store-bundle
           path: app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+
