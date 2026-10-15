@@ -1786,7 +1786,7 @@ public class MainActivity extends ComponentActivity {
         });
         displayPreview=new FrameLayout(this);displayPreview.setBackground(rounded(PANEL,22));displayPreview.setClipToOutline(true);
         LinearLayout.LayoutParams previewLp=new LinearLayout.LayoutParams(-1,dp(176));previewLp.bottomMargin=dp(14);list.addView(displayPreview,previewLp);
-        displayPreviewImage=new ImageView(this);displayPreviewImage.setImageBitmap(tutorialPicture(-101));displayPreviewImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        displayPreviewImage=new SwipeVfxView.PreviewPhoto(this);displayPreviewImage.setImageBitmap(tutorialPicture(-101));displayPreviewImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
         FrameLayout.LayoutParams imageLp=new FrameLayout.LayoutParams(dp(150),dp(128),Gravity.CENTER);displayPreview.addView(displayPreviewImage,imageLp);
         addSwipeControls(list);
         onceTip("gesture_zoom","Tap a photo for full screen, then pinch to zoom.");
@@ -2460,8 +2460,15 @@ public class MainActivity extends ComponentActivity {
     }
     private void clearSwipePreview() {
         if (swipePreviewAnimator != null) swipePreviewAnimator.cancel();
-        if (swipePreviewEffect != null && swipePreviewEffect.getParent() instanceof android.view.ViewGroup)
-            ((android.view.ViewGroup) swipePreviewEffect.getParent()).removeView(swipePreviewEffect);
+        if (swipePreviewEffect != null) {
+            swipePreviewEffect.cancel();
+            if(swipePreviewEffect.getParent() instanceof android.view.ViewGroup)
+                ((android.view.ViewGroup) swipePreviewEffect.getParent()).removeView(swipePreviewEffect);
+        }
+        if(displayPreviewImage instanceof SwipeVfxView.PreviewPhoto) {
+            ((SwipeVfxView.PreviewPhoto)displayPreviewImage).effect=null;
+            displayPreviewImage.setTranslationX(0);displayPreviewImage.setClipBounds(null);displayPreviewImage.invalidate();
+        }
         swipePreviewEffect = null;
     }
     private void previewSwipe(boolean keep) {
@@ -2469,7 +2476,7 @@ public class MainActivity extends ComponentActivity {
         FrameLayout target = displayPreview != null && displayPreview.isAttachedToWindow() ? displayPreview : host;
         ImageView sample = target == displayPreview ? displayPreviewImage : null;
         SwipeEffect effect = new SwipeEffect(); swipePreviewEffect = effect;
-        if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);}
+        if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);((SwipeVfxView.PreviewPhoto)sample).effect=effect;} 
         target.addView(effect, new FrameLayout.LayoutParams(-1, -1));
         android.animation.ValueAnimator animation = android.animation.ValueAnimator.ofFloat(0f, keep ? 1f : -1f);
         animation.setDuration(900L * 100 / swipeSpeed);
@@ -2477,8 +2484,9 @@ public class MainActivity extends ComponentActivity {
             effect.progress = (float)value.getAnimatedValue();
             if(sample!=null){
                 float dx=effect.progress*target.getWidth()*.8f;sample.setTranslationX(dx);
-                RectF bounds=new RectF(sample.getLeft(),sample.getTop(),sample.getRight(),sample.getBottom());effect.setPhoto(tutorialPicture(-101),bounds,dx,0);
-                if(keep)sample.setClipBounds(new Rect(0,0,Math.max(0,Math.min(sample.getWidth(),(int)(effect.keepClipEdge()-sample.getLeft()-dx))),sample.getHeight()));
+                RectF bounds=new RectF();
+                if(visiblePhotoBounds(sample,bounds))effect.setPhoto(tutorialPicture(-101),bounds,dx,0);
+                if(keep){sample.setClipBounds(null);sample.invalidate();}
                 else sample.setClipBounds(new Rect(Math.max(0,Math.min(sample.getWidth(),(int)(dp(10)-sample.getLeft()-dx))),0,sample.getWidth(),sample.getHeight()));
             }
             effect.invalidate();
@@ -2488,10 +2496,10 @@ public class MainActivity extends ComponentActivity {
             @Override public void onAnimationCancel(android.animation.Animator value) { cancelled = true; }
             @Override public void onAnimationEnd(android.animation.Animator value) {
                 if (swipePreviewAnimator == value) swipePreviewAnimator = null;
-                if (cancelled) { target.removeView(effect); if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);} return; }
+                if (cancelled) { target.removeView(effect); if(sample!=null && ((SwipeVfxView.PreviewPhoto)sample).effect==effect){((SwipeVfxView.PreviewPhoto)sample).effect=null;sample.setTranslationX(0);sample.setClipBounds(null);} return; }
                 effect.release(keep);
                 playEffect(keep);
-                Runnable remove = () -> { target.removeView(effect); if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);} if (swipePreviewEffect == effect) swipePreviewEffect = null; };
+                Runnable remove = () -> { target.removeView(effect); if(sample!=null && ((SwipeVfxView.PreviewPhoto)sample).effect==effect){((SwipeVfxView.PreviewPhoto)sample).effect=null;sample.setTranslationX(0);sample.setClipBounds(null);} if (swipePreviewEffect == effect) swipePreviewEffect = null; };
                 uiHandler.postDelayed(() -> {
                     if (keep && !reducedMotion) { effect.beginKeepClose(); uiHandler.postDelayed(remove, 280); }
                     else remove.run();
@@ -2865,7 +2873,7 @@ public class MainActivity extends ComponentActivity {
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, 0, 1);
         cardParams.leftMargin=-root.getPaddingLeft(); cardParams.rightMargin=-root.getPaddingRight();
         cardParams.bottomMargin = dp(20); root.addView(stage, cardParams);
-        FrameLayout card = new FrameLayout(this);
+        FrameLayout card = new SwipeVfxView.Card(this);
         card.setBackgroundColor(Color.TRANSPARENT);
         card.setClipChildren(false); card.setClipToPadding(false); page.card = card;
         card.setContentDescription("Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
@@ -2883,6 +2891,7 @@ public class MainActivity extends ComponentActivity {
         }
         SwipeEffect effect = new SwipeEffect();
         effect.setElevation(dp(18)); stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+        ((SwipeVfxView.Card)card).effect=effect;
         {
             TextView bubble = pill("✦ Duplicate", GOLD, Color.rgb(89, 64, 27));
             FrameLayout.LayoutParams badge = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
@@ -3012,7 +3021,7 @@ public class MainActivity extends ComponentActivity {
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
                 multitouch[0] = action == MotionEvent.ACTION_POINTER_DOWN;
                 if (fireBorder != null) fireBorder.cool();
-                effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).start();
+                effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).setUpdateListener(frame -> effect.track(card)).start();
                 if (action == MotionEvent.ACTION_CANCEL) schedulePhotoIdle(card);
                 return true;
             }
@@ -3030,7 +3039,7 @@ public class MainActivity extends ComponentActivity {
             if (action == MotionEvent.ACTION_UP) {
                 if (shown.id < 0 && ((tutorialStep == 1 && dx < 0) || (tutorialStep == 3 && dx > 0))) {
                     if (fireBorder != null) fireBorder.cool();
-                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
+                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).setUpdateListener(frame -> effect.track(card)).start(); return true;
                 }
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
                     {
@@ -3063,7 +3072,7 @@ public class MainActivity extends ComponentActivity {
                     }
                 } else {
                     if (fireBorder != null) fireBorder.cool();
-                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(200).start();
+                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(200).setUpdateListener(frame -> effect.track(card)).start();
                     schedulePhotoIdle(card);
                     if (shown.id >= 0 && tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
                 }
@@ -3077,7 +3086,7 @@ public class MainActivity extends ComponentActivity {
         FrameLayout stage = new FrameLayout(this);
         stage.setClipChildren(false); stage.setClipToPadding(false); page.stage = stage;
         root.addView(stage, new LinearLayout.LayoutParams(-1, -1));
-        FrameLayout card = new FrameLayout(this); page.card = card;
+        FrameLayout card = new SwipeVfxView.Card(this); page.card = card;
         card.setClipChildren(false); card.setClipToPadding(false);
         card.setContentDescription("Whole photo. Swipe right to Keep or left to Trash");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
@@ -3091,6 +3100,7 @@ public class MainActivity extends ComponentActivity {
         }
         SwipeEffect effect = new SwipeEffect(); effect.setElevation(dp(18));
         stage.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+        ((SwipeVfxView.Card)card).effect=effect;
         page.effect = effect; page.border = border;
         attachSwipeGesture(card, stage, effect, border, shown, null);
     }
@@ -3779,11 +3789,7 @@ public class MainActivity extends ComponentActivity {
                 clip.set(SwipeMotion.grinderClipLeft(card.getTranslationX(), card.getWidth(), dp(9)),
                         0, card.getWidth(), card.getHeight());
                 card.setClipBounds(clip);
-            } else if(progress>0) {
-                // Clip the actual card at the receiving mouth: the front rim now occludes it.
-                clip.set(0,0,SwipeMotion.keepClipRight(card.getTranslationX(),card.getWidth(),keepClipEdge(),card.getScaleX()),card.getHeight());
-                card.setClipBounds(clip);
-            } else card.setClipBounds(null);
+            } else { card.setClipBounds(null);card.invalidate(); }
         }
         @Override void retreat() {
             super.retreat();
@@ -5100,6 +5106,7 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
 
 

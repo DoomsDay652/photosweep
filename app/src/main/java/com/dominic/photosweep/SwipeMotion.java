@@ -4,6 +4,7 @@ package com.dominic.photosweep;
 final class SwipeMotion {
     static float clamp(float value) { return Math.max(0f, Math.min(1f, value)); }
     static float ease(float value) { float t = clamp(value); return t * t * (3f - 2f * t); }
+    static float followFactor(float milliseconds,float response) { return 1f-(float)Math.exp(-Math.max(0,milliseconds)/Math.max(1,response)); }
     static int duration(int speed) { return Math.max(220, Math.min(620, 36000 / Math.max(50, speed))); }
     // Shared semantic cues do not change with the selected theme or custom VFX.
     static final int KEEP_COLOR = 0xFF80E3BF, TRASH_COLOR = 0xFFFF959D;
@@ -49,6 +50,7 @@ final class SwipeMotion {
     static boolean shouldCommit(float dx, float dy, float threshold) { return Math.abs(dx)>threshold && Math.abs(dx)>Math.abs(dy)*1.2f; }
     static float falling(float seconds) { return 32f * seconds * seconds; }
 }
+
 
 
 
