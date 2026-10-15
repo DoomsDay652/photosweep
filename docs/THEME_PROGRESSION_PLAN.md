@@ -18,3 +18,12 @@ Reset local progress clears the wallet, guarantee count, ownership, XP and revie
 ## Verification
 
 ReviewLogicCheck covers XP boundaries, five-level grants, migration level, milestone bonuses, exact 70/25/5 distribution, the ten-spin guarantee, Undo reward retention, token reset policy and photo occlusion geometry. Android lint and signed APK/AAB compilation run in CI. Visual behavior still requires checking on a physical phone.
+
+## Animated spins — 0.1.34
+
+Three native Canvas reels reveal the single token banked when Spin is tapped. They scroll vertically, ease to a stop at 1.65 / 2.10 / 2.55 seconds and settle on the same token; the view never rolls odds or awards tokens. A short glow accompanies the saved-token result. Normal odds and the Diamond guarantee remain unchanged.
+
+The wallet blocks repeat Spin taps and exchanges during animation. Closing the dialog leaves the banked reward intact. Pausing finishes the presentation quietly; destroying the Activity disposes the animator and dialog. The last token is persisted for the next wallet visit. Reduced motion or disabled system animations skip scrolling. Reel-stop taps and the result chime respect existing sound controls. Canvas paths and drawing objects are reused, with no added artwork files or animation dependencies.
+
+TokenReelCheck verifies staggered stop times, multiple complete turns, exact token alignment, no reversal/overshoot, and deceleration. Physical-phone animation timing and appearance remain a manual check.
+
