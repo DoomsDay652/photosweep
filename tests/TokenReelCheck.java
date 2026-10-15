@@ -4,7 +4,7 @@ public class TokenReelCheck {
     static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     public static void main(String[] args) {
         check(TokenReelMotion.duration(0)<TokenReelMotion.duration(1) && TokenReelMotion.duration(1)<TokenReelMotion.duration(2),"reels stop in sequence");
-        for(int token=0;token<3;token++)for(int reel=0;reel<3;reel++)for(int prior=0;prior<3;prior++) {
+        for(int token=0;token<ThemeProgression.REWARD_TYPES;token++)for(int reel=0;reel<3;reel++)for(int prior=0;prior<ThemeProgression.REWARD_TYPES;prior++) {
             int target=TokenReelMotion.target(prior,token,reel);
             check(target>prior+15,"reel travels several complete turns");
             check(TokenReelMotion.symbol(target)==token,"all reels settle on the banked token");
@@ -21,7 +21,8 @@ public class TokenReelCheck {
             float late=target-TokenReelMotion.position(prior,target,d-100,reel);
             check(early>late,"reel slows gently before stopping");
         }
-        check(TokenReelMotion.symbol(-1)==2,"offscreen symbols wrap safely");
+        check(TokenReelMotion.symbol(-1)==ThemeProgression.REWARD_TYPES-1,"offscreen symbols wrap safely");
         System.out.println("PASS: staggered reel timing, exact reward alignment, smooth forward travel and deceleration.");
     }
 }
+

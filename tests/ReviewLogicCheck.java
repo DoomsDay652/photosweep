@@ -8,9 +8,20 @@ public class ReviewLogicCheck {
         check(ThemeProgression.addLevels(245,5)==1245,"admin adds exactly five levels preserving progress");
         check(ThemeProgression.level(ThemeProgression.migratedXp(2750))==6,"migration preserves earned level");
         check(ThemeProgression.reviewXp(9)==5 && ThemeProgression.reviewXp(10)==15 && ThemeProgression.reviewXp(20)==15,"unique review milestone bonus");
-        int[] odds=new int[3];for(int i=0;i<100;i++)odds[ThemeProgression.roll(i,0)]++;
-        check(odds[0]==70 && odds[1]==25 && odds[2]==5,"token odds exactly 70/25/5");
-        for(int i=0;i<100;i++)check(ThemeProgression.roll(i,9)==2,"tenth spin guarantees diamond");
+        int[] odds=new int[ThemeProgression.REWARD_TYPES],families=new int[3],units=new int[3];
+        for(int i=0;i<100;i++) {
+            int reward=ThemeProgression.roll(i);odds[reward]++;
+            families[ThemeProgression.tokenKind(reward)]++;
+            units[ThemeProgression.tokenKind(reward)]+=ThemeProgression.tokenCount(reward);
+        }
+        check(Arrays.equals(odds,new int[]{50,20,20,5,5}),"five reward odds sum to 100 percent");
+        check(Arrays.equals(families,new int[]{70,25,5}),"base token-family odds remain 70/25/5 without guarantee");
+        check(Arrays.equals(units,new int[]{110,30,5}),"bundle payouts award correct amounts");
+        check(ThemeProgression.roll(94)==3 && ThemeProgression.roll(95)==4,"Diamond starts at the flat five-percent boundary");
+        check(ThemeProgression.tokenCount(1)==3 && ThemeProgression.tokenKind(1)==0,"3 Silver bundle");
+        check(ThemeProgression.tokenCount(3)==2 && ThemeProgression.tokenKind(3)==1,"2 Gold bundle");
+        check(ThemeProgression.legacyReward(0)==0 && ThemeProgression.legacyReward(1)==2 && ThemeProgression.legacyReward(2)==4 && ThemeProgression.legacyReward(-1)==-1,"last-result migration preserves token kind");
+        check("3 Silver tokens".equals(ThemeProgression.rewardLabel(1)) && "2 Gold tokens".equals(ThemeProgression.rewardLabel(3)) && "1 Diamond token".equals(ThemeProgression.rewardLabel(4)),"reward descriptions match amounts");
         check(SwipeMotion.keepClipRight(100,400,368,1)==268,"photo passes behind pocket mouth");
         check(SwipeMotion.keepClipRight(900,400,368,1)==0,"fully received photo is occluded");
         check(SwipeMotion.keepClipRight(-100,400,368,1)==400,"reverse movement restores photo");
@@ -123,6 +134,7 @@ public class ReviewLogicCheck {
         System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }
+
 
 
 
