@@ -496,6 +496,7 @@ public class MainActivity extends ComponentActivity {
     private int renderedTheme = -1;
     private boolean hasResumed, skipMediaReloadOnResume;
     private ReviewPage reviewPage;
+    private PhotoDrag photoDrag;
     private ValueAnimator photoIdleAnimator;
     private FrameLayout photoIdleCard;
     private Runnable photoIdleStart;
@@ -711,6 +712,10 @@ public class MainActivity extends ComponentActivity {
         if(tokenSlot!=null)tokenSlot.finishImmediately();
         photoIdleResumed = false;
         stopPhotoIdle();
+        if(reviewPage!=null && !reviewActionRunning) {
+            reviewPage.card.animate().cancel();reviewPage.effect.cancel();
+            reviewPage.card.setTranslationX(0);reviewPage.card.setTranslationY(0);reviewPage.card.setRotation(0);
+        }
         clearRadioBubble();
         skipMediaReloadOnResume = pendingTrash != -1 || pendingRestore != -1 || playUpdates.isFlowActive();
         playUpdates.onPause();
@@ -2958,6 +2963,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void stopPhotoIdle() {
+        stopPhotoDrag();
         if (photoIdleStart != null) uiHandler.removeCallbacks(photoIdleStart);
         photoIdleStart = null;
         if (photoIdleAnimator != null) photoIdleAnimator.cancel();
@@ -2966,6 +2972,46 @@ public class MainActivity extends ComponentActivity {
             photoIdleCard.setTranslationX(0); photoIdleCard.setTranslationY(0); photoIdleCard.setRotation(0);
         }
         photoIdleCard = null;
+    }
+
+    private void stopPhotoDrag() {
+        if(photoDrag!=null){photoDrag.card.removeCallbacks(photoDrag);photoDrag=null;}
+    }
+    private final class PhotoDrag implements Runnable {
+        final FrameLayout card;
+        final SwipeEffect effect;
+        final SwipeMotion.Body body=new SwipeMotion.Body();
+        final float density=getResources().getDisplayMetrics().density,baseX,baseY,baseAngle;
+        float pointerX,pointerY;
+        long last;
+        PhotoDrag(FrameLayout card,SwipeEffect effect,float touchX,float touchY) {
+            this.card=card;this.effect=effect;
+            RectF bounds=new RectF(0,0,card.getWidth(),card.getHeight());
+            if(reviewPage!=null)visiblePhotoBounds(reviewPage.image,bounds);
+            card.setPivotX(bounds.centerX());card.setPivotY(bounds.centerY());
+            baseX=card.getTranslationX();baseY=card.getTranslationY();baseAngle=card.getRotation();
+            body.begin((touchX-card.getLeft()-bounds.centerX()-baseX)/density,
+                    (touchY-card.getTop()-bounds.centerY()-baseY)/density,
+                    bounds.width()/density,bounds.height()/density);
+            last=System.nanoTime();
+        }
+        void target(float dx,float dy) { pointerX=dx;pointerY=dy;body.target(dx/density,dy/density); }
+        @Override public void run() {
+            if(photoDrag!=this || reviewPage==null || reviewPage.card!=card || !card.isAttachedToWindow())return;
+            long now=System.nanoTime();body.step((now-last)/1000000000f);last=now;
+            card.setTranslationX(baseX+body.x*density);
+            card.setTranslationY(baseY+body.y*density+effect.shakeOffset);
+            card.setRotation(baseAngle+body.degrees());
+            effect.progress=SwipeMotion.dragProgress(pointerX,pointerY,card.getWidth());
+            effect.track(card);card.postOnAnimation(this);
+        }
+    }
+    private void settlePhoto(FrameLayout card,SwipeEffect effect) {
+        stopPhotoDrag();effect.retreat();
+        float upright=360*Math.round(card.getRotation()/360);
+        card.animate().translationX(0).translationY(0).rotation(upright).scaleX(1).scaleY(1)
+                .setDuration(reducedMotion?80:260).setUpdateListener(frame -> effect.track(card))
+                .withEndAction(() -> {card.setRotation(0);effect.track(card);}).start();
     }
 
     private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect,
@@ -3001,8 +3047,9 @@ public class MainActivity extends ComponentActivity {
                 if (!fullScreenReview) return true;
                 if (action == MotionEvent.ACTION_DOWN) { lastPan[0] = event.getX(); lastPan[1] = event.getY(); }
                 if (event.getPointerCount() > 1 || scaler.isInProgress() || zoomImage.zoom > 1.01f || multitouch[0]) {
+                    stopPhotoDrag();
                     if (fireBorder != null) fireBorder.cool(); effect.cancel();
-                    card.setTranslationX(0); card.setRotation(0);
+                    card.setTranslationX(0); card.setTranslationY(0); card.setRotation(0);
                     if (action == MotionEvent.ACTION_POINTER_DOWN) multitouch[0] = true;
                     if (action == MotionEvent.ACTION_MOVE && event.getPointerCount() == 1 && !scaler.isInProgress())
                         zoomImage.pan(event.getX() - lastPan[0], event.getY() - lastPan[1]);
@@ -3015,13 +3062,18 @@ public class MainActivity extends ComponentActivity {
                 multitouch[0] = false;
                 start[0] = event.getRawX(); start[1] = event.getRawY(); stage.getLocationOnScreen(position);
                 if (fireBorder != null) fireBorder.stop();
-                effect.hold(start[0] - position[0], start[1] - position[1]); effect.track(card); return true;
+                effect.hold(start[0] - position[0], start[1] - position[1]);
+                if(!reducedMotion) {
+                    photoDrag=new PhotoDrag(card,effect,start[0]-position[0],start[1]-position[1]);
+                    card.postOnAnimation(photoDrag);
+                }
+                effect.track(card);return true;
             }
             float dx = event.getRawX() - start[0], dy = event.getRawY() - start[1];
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
                 multitouch[0] = action == MotionEvent.ACTION_POINTER_DOWN;
                 if (fireBorder != null) fireBorder.cool();
-                effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).setUpdateListener(frame -> effect.track(card)).start();
+                settlePhoto(card,effect);
                 if (action == MotionEvent.ACTION_CANCEL) schedulePhotoIdle(card);
                 return true;
             }
@@ -3030,16 +3082,20 @@ public class MainActivity extends ComponentActivity {
                 return true;
             }
             if (action == MotionEvent.ACTION_MOVE) {
-                card.setTranslationX(dx); card.setRotation(0);
-                effect.progress = SwipeMotion.dragProgress(dx, dy, card.getWidth());
+                if(photoDrag!=null)photoDrag.target(dx,dy);
+                else {
+                    card.setTranslationX(dx);card.setTranslationY(0);card.setRotation(0);
+                    effect.progress=SwipeMotion.dragProgress(dx,dy,card.getWidth());effect.track(card);
+                }
                 if (fireBorder != null) fireBorder.stop();
-                effect.track(card);
                 effect.follow(event.getRawX() - position[0], event.getRawY() - position[1]); return true;
             }
             if (action == MotionEvent.ACTION_UP) {
+                float releaseSpin=photoDrag==null?0:photoDrag.body.releaseDegrees();
+                stopPhotoDrag();
                 if (shown.id < 0 && ((tutorialStep == 1 && dx < 0) || (tutorialStep == 3 && dx > 0))) {
                     if (fireBorder != null) fireBorder.cool();
-                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).setUpdateListener(frame -> effect.track(card)).start(); return true;
+                    settlePhoto(card,effect);return true;
                 }
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
                     {
@@ -3050,11 +3106,11 @@ public class MainActivity extends ComponentActivity {
                         boolean keeping = dx > 0;
                         card.announceForAccessibility(SwipeMotion.actionLabel(keeping));
                         card.animate().translationX((keeping ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
-                                .translationY(reducedMotion ? 0 : dp(SwipeMotion.cardVertical(1, keeping)))
+                                .translationY(reducedMotion ? 0 : card.getTranslationY())
                                 .scaleX(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
                                 .scaleY(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
                                 .alpha(reducedMotion ? 1 : SwipeMotion.cardAlpha(1, keeping))
-                                .rotation(reducedMotion ? 0 : SwipeMotion.cardRotation(keeping))
+                                .rotation(reducedMotion ? 0 : card.getRotation()+releaseSpin)
                                 .setDuration(reducedMotion ? 80 : SwipeMotion.releaseDuration(swipeSpeed, keeping))
                                 .setUpdateListener(frame -> effect.track(card))
                                 .withEndAction(() -> {
@@ -3072,7 +3128,7 @@ public class MainActivity extends ComponentActivity {
                     }
                 } else {
                     if (fireBorder != null) fireBorder.cool();
-                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(200).setUpdateListener(frame -> effect.track(card)).start();
+                    settlePhoto(card,effect);
                     schedulePhotoIdle(card);
                     if (shown.id >= 0 && tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
                 }
@@ -3766,30 +3822,20 @@ public class MainActivity extends ComponentActivity {
     }
     private class SwipeEffect extends SwipeVfxView {
         private final RectF trackedBounds = new RectF();
-        private final Rect clip = new Rect();
+        float shakeOffset;
         @Override protected void onGrinderShake(float offset) {
-            if (reviewPage != null && reviewPage.effect == this)
-                reviewPage.card.setTranslationY(offset);
+            shakeOffset=offset;
         }
         void track(FrameLayout card) {
             if (reviewPage == null || reviewPage.card != card) return;
             ImageView image = reviewPage.image;
             if (visiblePhotoBounds(image, trackedBounds)) {
-                float cx=card.getWidth()/2f, cy=card.getHeight()/2f;
-                trackedBounds.set(cx+(trackedBounds.left-cx)*card.getScaleX(),
-                        cy+(trackedBounds.top-cy)*card.getScaleY(),
-                        cx+(trackedBounds.right-cx)*card.getScaleX(),
-                        cy+(trackedBounds.bottom-cy)*card.getScaleY());
                 Drawable art = image.getDrawable();
                 Bitmap bitmap = art instanceof android.graphics.drawable.BitmapDrawable
                         ? ((android.graphics.drawable.BitmapDrawable) art).getBitmap() : null;
-                setPhoto(bitmap, trackedBounds, card.getTranslationX(), card.getTranslationY());
+                setTransformedPhoto(bitmap,trackedBounds,card);
             }
-            if (!reducedMotion && progress < 0) {
-                clip.set(SwipeMotion.grinderClipLeft(card.getTranslationX(), card.getWidth(), grinderEdge()),
-                        0, card.getWidth(), card.getHeight());
-                card.setClipBounds(clip);
-            } else { card.setClipBounds(null);card.invalidate(); }
+            card.setClipBounds(null);card.invalidate();
         }
         @Override void retreat() {
             super.retreat();
