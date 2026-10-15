@@ -25,6 +25,14 @@ public class ReviewLogicCheck {
         check(SwipeMotion.deepestBite(.4f,20,200)==.4f,"pulling away preserves the deepest bite within a gesture");
         check(SwipeMotion.deepestBite(.1f,100,200)==.5f,"feeding further increases the bite");
         check(SwipeMotion.deepestBite(.2f,900,200)==1 && SwipeMotion.deepestBite(0,-5,200)==0,"bite depth stays in photo bounds");
+        check(SwipeMotion.freshBite(.4f,20,200)==0 && SwipeMotion.freshBite(.4f,79,200)==0,"no chips while a previously bitten edge is away from the teeth");
+        check(SwipeMotion.freshBite(.4f,80,200)==0,"touching the old cut does not consume fresh material");
+        check(Math.abs(SwipeMotion.freshBite(.4f,100,200)-20)<.001f,"chips measure only newly consumed material");
+        check(SwipeMotion.freshBite(1,400,200)==0,"fully consumed photo cannot emit chips");
+        check(SwipeMotion.portalFront(700,40,550,350,550)==660,"portal has a visible near rim");
+        check(SwipeMotion.portalFront(700,40,550,350,200)==700,"oval closes at its upper tip");
+        check(SwipeMotion.portalDepth(0,40)==0 && SwipeMotion.portalDepth(-10,40)==0,"photo is unchanged before crossing the opening");
+        check(SwipeMotion.portalDepth(80,40)>SwipeMotion.portalDepth(40,40) && SwipeMotion.portalDepth(10000,40)<=1,"entering photo compresses smoothly into the portal depth");
         float response60=0,response120=0;
         for(int i=0;i<60;i++)response60+=(1-response60)*SwipeMotion.followFactor(1000f/60,32);
         for(int i=0;i<120;i++)response120+=(1-response120)*SwipeMotion.followFactor(1000f/120,32);
