@@ -18,7 +18,8 @@ final class ReviewUndo {
         if (wasReviewed) reviewed.add(key); else reviewed.remove(key);
         if (!wasKept) kept.remove(key);
         if (!wasTrashed) trashedIds.remove(key);
-        if (earnedXp > 0) rewarded.remove(key);
+        // Earned rewards stay earned; replaying after Undo cannot mint more rewards.
     }
-    int restoredXp(int current) { return Math.max(0, current - earnedXp); }
+    int restoredXp(int current) { return current; }
 }
+

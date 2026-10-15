@@ -22,6 +22,10 @@ final class SwipeMotion {
     static int grinderClipLeft(float translationX, int width, float edge) {
         return Math.max(0, Math.min(width, (int)Math.ceil(edge-translationX)));
     }
+    static int keepClipRight(float translationX, int width, float edge, float scale) {
+        float pivot=width/2f;
+        return Math.max(0,Math.min(width,(int)Math.floor(pivot+(edge-translationX-pivot)/Math.max(.01f,scale))));
+    }
     static float grinderProximity(float photoLeft, float edge, float range) {
         return clamp(1f-Math.max(0,photoLeft-edge)/Math.max(1,range));
     }

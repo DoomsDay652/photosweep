@@ -639,6 +639,7 @@ public class MainActivity extends ComponentActivity {
                 !getPreferences(MODE_PRIVATE).getStringSet("seen_swipe_overlays", Collections.emptySet()).isEmpty());
         statsExpanded = getPreferences(MODE_PRIVATE).getBoolean("stats_expanded", false);
         xp = getPreferences(MODE_PRIVATE).getInt("xp", 0);
+        loadThemeProgression();
         if (state != null) {
             selectedYear = state.getInt("selectedYear", -1);
             libraryYear = state.getInt("libraryYear", -1);
@@ -1268,7 +1269,7 @@ public class MainActivity extends ComponentActivity {
         statsToggle.setPadding(dp(16), dp(8), dp(16), dp(8)); statsToggle.setBackground(rounded(PANEL, 17));
         root.addView(statsToggle, new LinearLayout.LayoutParams(-1, dp(54)));
         TextView progressTitle = new TextView(this);
-        progressTitle.setText("✦  Level " + (xp / 500 + 1) + "  ·  " + (xp % 500) + "/500 XP");
+        progressTitle.setText("✦  Level " + (ThemeProgression.level(xp)) + "  ·  " + (xp % 200) + "/200 XP");
         progressTitle.setTextColor(INK); progressTitle.setTextSize(16); progressTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         statsToggle.addView(progressTitle, new LinearLayout.LayoutParams(0, -2, 1));
         TextView chevron = new TextView(this); chevron.setText(statsExpanded ? "Stats  ▴" : "Stats  ▾");
@@ -1395,7 +1396,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void levelPanel() {
-        int level = xp / 500 + 1;
+        int level = ThemeProgression.level(xp);
         LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(19), dp(18), dp(19), dp(17)); box.setBackground(rounded(PANEL, 24));
         root.addView(box, new LinearLayout.LayoutParams(-1, dp(170)));
@@ -1409,7 +1410,7 @@ public class MainActivity extends ComponentActivity {
         label.setTextSize(14); label.setTypeface(Typeface.DEFAULT, Typeface.BOLD); names.addView(label);
         TextView name = new TextView(this); name.setText(level < 3 ? "Photo Explorer" : level < 7 ? "Photo Pathfinder" : "Gallery Guardian");
         name.setTextColor(INK); name.setTextSize(19); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); names.addView(name);
-        TextView points = new TextView(this); points.setText((xp % 500) + " / 500 XP to next level");
+        TextView points = new TextView(this); points.setText((xp % 200) + " / 200 XP to next level");
         points.setTextColor(INK); points.setTextSize(15);
         LinearLayout.LayoutParams pointsLp = new LinearLayout.LayoutParams(-1, -2); pointsLp.topMargin = dp(12); box.addView(points, pointsLp);
         FrameLayout bar = new FrameLayout(this);
@@ -1417,7 +1418,7 @@ public class MainActivity extends ComponentActivity {
         View track = new View(this); track.setBackground(rounded(BG, 8)); bar.addView(track, new FrameLayout.LayoutParams(-1, -1));
         View fill = new View(this); fill.setBackground(rounded(GREEN, 8)); bar.addView(fill, new FrameLayout.LayoutParams(0, -1));
         bar.post(() -> { FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) fill.getLayoutParams();
-            lp.width = Math.max(dp(3), bar.getWidth() * (xp % 500) / 500); fill.setLayoutParams(lp); });
+            lp.width = Math.max(dp(3), bar.getWidth() * (xp % 200) / 200); fill.setLayoutParams(lp); });
     }
 
     private void statTile(LinearLayout parent, String count, String title, int accent) {
@@ -1511,16 +1512,15 @@ public class MainActivity extends ComponentActivity {
         if (themeAnimationsOpen) {
             LinearLayout controls = optionsList("theme-animations"); addSwipeControls(controls); return;
         }
-        int level = xp / 500 + 1;
+        int level = ThemeProgression.level(xp);
         LinearLayout progress = new LinearLayout(this); progress.setOrientation(LinearLayout.VERTICAL);
         progress.setPadding(dp(14), dp(10), dp(14), dp(10)); progress.setBackground(rounded(PANEL, 15));
-        progress.setContentDescription("Level " + level + ". " + (xp % 500) + " of 500 XP. View level unlocks"); progress.setFocusable(true);
+        progress.setContentDescription("Level " + level + ". " + (xp % 200) + " of 200 XP. Open tokens and spins"); progress.setFocusable(true);
         root.addView(progress, new LinearLayout.LayoutParams(-1, -2));
-        TextView status = new TextView(this); status.setText("✦ Level " + level + "  ·  " + (xp % 500) + "/500 XP  ›");
+        TextView status = new TextView(this); status.setText("✦ Level " + level + "  ·  " + (xp % 200) + "/200 XP  ›");
         status.setTextSize(16); status.setTextColor(INK); status.setTypeface(Typeface.DEFAULT, Typeface.BOLD); progress.addView(status);
         TextView next = new TextView(this);
-        next.setText(level < 3 ? "Tier 2 at Level 3 · " + Math.max(0, 1000 - xp) + " XP to go"
-                : level < 6 ? "Tier 3 at Level 6 · " + Math.max(0, 2500 - xp) + " XP to go" : "All theme tiers unlocked");
+        next.setText(pendingSpins + " spins  ·  " + silverTokens + " Silver  ·  " + goldTokens + " Gold  ·  " + diamondTokens + " Diamond");
         next.setTextColor(MUTED); next.setTextSize(13); next.setPadding(0, dp(4), 0, 0); progress.addView(next);
         progress.setOnClickListener(v -> { if (tutorialStep < 0) showThemeLevels(); });
         spacer(10);
@@ -1587,16 +1587,89 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void showThemeLevels() {
-        int free = getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1);
-        String message = "Every 500 XP adds a level.\n\nLevel 1 · Tier 1 colors\nLevel 3 · Tier 2 scenes\nLevel 6 · Tier 3 animated themes\n\n"
-                + (free >= 0 && free < THEME_NAMES.length ? "Tutorial reward · " + THEME_NAMES[free] + " is already yours." : "Complete the tutorial for one free Tier 2 theme.");
-        android.app.AlertDialog dialog = themedFeedbackDialog("Level & unlocks").setMessage(message).setPositiveButton("Done", null).create();
+        showTokenWallet();
+    }
+
+    private int pendingSpins, silverTokens, goldTokens, diamondTokens, diamondMisses;
+    private Set<String> ownedThemes = new HashSet<>();
+    private final java.security.SecureRandom rewardRandom = new java.security.SecureRandom();
+
+    private void loadThemeProgression() {
+        android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        ownedThemes = new HashSet<>(prefs.getStringSet("progress_owned", Collections.emptySet()));
+        pendingSpins = Math.max(0,prefs.getInt("progress_spins",0));
+        silverTokens = Math.max(0,prefs.getInt("progress_silver",0));
+        goldTokens = Math.max(0,prefs.getInt("progress_gold",0));
+        diamondTokens = Math.max(0,prefs.getInt("progress_diamond",0));
+        diamondMisses = Math.max(0,Math.min(9,prefs.getInt("progress_misses",0)));
+        if (!prefs.getBoolean("progress_v1",false)) {
+            int oldLevel = Math.max(0,xp)/500+1;
+            for (int i=0;i<THEME_NAMES.length;i++)
+                if (oldLevel>=requiredThemeLevel(i)) ownedThemes.add(Integer.toString(i));
+            xp = ThemeProgression.migratedXp(xp);
+            pendingSpins = Math.max(0,oldLevel-1);
+            saveThemeProgression();
+        }
+    }
+
+    private void saveThemeProgression() {
+        getPreferences(MODE_PRIVATE).edit().putBoolean("progress_v1",true).putInt("xp",xp)
+                .putInt("progress_spins",pendingSpins).putInt("progress_silver",silverTokens)
+                .putInt("progress_gold",goldTokens).putInt("progress_diamond",diamondTokens)
+                .putInt("progress_misses",diamondMisses)
+                .putStringSet("progress_owned",new HashSet<>(ownedThemes))
+                .putStringSet("rewarded",new HashSet<>(rewarded)).apply();
+    }
+
+    private String walletSummary() {
+        return "Level " + ThemeProgression.level(xp) + " · " + pendingSpins + " spins\n"
+                + silverTokens + " Silver · " + goldTokens + " Gold · " + diamondTokens + " Diamond";
+    }
+
+    private void showTokenWallet() {
+        if (tutorialStep>=0) return;
+        LinearLayout choices = new LinearLayout(this); choices.setOrientation(LinearLayout.VERTICAL);
+        choices.setPadding(dp(20),0,dp(20),dp(8));
+        TextView info = new TextView(this); info.setText(walletSummary()
+                + "\n\nEvery level earns a spin. Each new photo gives 5 XP, with +10 XP every 10 photos. Keep and Trash earn equally.\n\nGold unlocks any Tier 2 theme. Diamond unlocks any Tier 3 theme.\n\nSpin odds: Silver 70%, Gold 25%, Diamond 5%. Guaranteed Diamond within 10 spins (" + (10-diamondMisses) + " or fewer left). Tokens never expire.");
+        info.setTextColor(INK); info.setTextSize(14); choices.addView(info);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(choices);
+        android.app.AlertDialog dialog = themedFeedbackDialog("Theme tokens").setView(scroll).setNegativeButton("Done",null).create();
+        Button spin = button(choices,"Spin · " + pendingSpins + " available",PANEL,GREEN,() -> {
+            if (pendingSpins<=0) return;
+            int result = ThemeProgression.roll(rewardRandom.nextInt(100),diamondMisses);
+            pendingSpins--;
+            if (result==2) { diamondTokens++; diamondMisses=0; }
+            else { diamondMisses++; if (result==1) goldTokens++; else silverTokens++; }
+            saveThemeProgression(); dialog.dismiss(); render();
+            showThemedFeedbackDialog(themedFeedbackDialog(new String[]{"Silver token ✦","Gold token ✦","Diamond token ✦"}[result])
+                    .setMessage(walletSummary()).setPositiveButton("Tokens",(d,w)->showTokenWallet()).setNegativeButton("Done",null).create());
+        }); spin.setEnabled(pendingSpins>0);
+        Button gold = button(choices,"3 Silver → 1 Gold",PANEL,GOLD,() -> {
+            if(silverTokens<3)return; silverTokens-=3; goldTokens++;saveThemeProgression();dialog.dismiss();render();showTokenWallet();
+        }); gold.setEnabled(silverTokens>=3);
+        Button diamond = button(choices,"3 Gold → 1 Diamond",PANEL,GOLD,() -> {
+            if(goldTokens<3)return;goldTokens-=3;diamondTokens++;saveThemeProgression();dialog.dismiss();render();showTokenWallet();
+        }); diamond.setEnabled(goldTokens>=3);
         showThemedFeedbackDialog(dialog);
+    }
+
+    private void purchaseTheme(int index) {
+        if(themeUnlocked(index)){selectTheme(index);return;}
+        boolean diamond=themeTier(index)==3;
+        if((diamond?diamondTokens:goldTokens)<=0){showTokenWallet();return;}
+        showThemedFeedbackDialog(themedFeedbackDialog("Unlock " + THEME_NAMES[index].split(" · ")[0] + "?")
+                .setMessage("Use 1 " + (diamond?"Diamond":"Gold") + " token. This theme stays yours.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Unlock",(d,w)->{
+                    if(ownedThemes.contains(Integer.toString(index)))return;
+                    if(diamond){if(diamondTokens<=0)return;diamondTokens--;}else{if(goldTokens<=0)return;goldTokens--;}
+                    ownedThemes.add(Integer.toString(index));saveThemeProgression();selectTheme(index);
+                }).create());
     }
 
     private void addTestingOptions(LinearLayout list) {
         sectionTitle(list, "TESTING");
-        settingSwitch(list, "Admin mode", "Preview all themes without earning XP or reviewing photos", adminMode, value -> {
+        settingSwitch(list, "Admin mode", "Open testing tools and optional previews for all themes", adminMode, value -> {
             if (value) getPreferences(MODE_PRIVATE).edit().putInt("theme_before_admin", themeChoice).apply();
             adminMode = value;
             getPreferences(MODE_PRIVATE).edit().putBoolean("admin_mode", value).apply();
@@ -1606,6 +1679,7 @@ public class MainActivity extends ComponentActivity {
             }
             applyTheme(); animateThemeChange = true; render();
         });
+        if (adminMode) settingsRow(list, "✦", "Testing menu", "Add 5 levels and 5 earned spins per tap", this::showAdminTesting);
         sectionTitle(list, "LOCAL PROGRESS");
         Button reset = new Button(this); reset.setText("Reset local progress"); reset.setTextColor(INK);
         reset.setBackground(rounded(PANEL, 12)); list.addView(reset, new LinearLayout.LayoutParams(-1, dp(52)));
@@ -1615,6 +1689,27 @@ public class MainActivity extends ComponentActivity {
             testingVisible = false; getPreferences(MODE_PRIVATE).edit().putBoolean("testing_visible", false).apply();
             optionsSection = 0; render();
         });
+    }
+
+    private void showAdminTesting() {
+        if (!adminMode) return;
+        LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(20),0,dp(20),dp(8));
+        settingSwitch(content,"Preview all themes","Turn off to test token purchases and locked cards",getPreferences(MODE_PRIVATE).getBoolean("admin_preview_themes",true), value -> {
+            getPreferences(MODE_PRIVATE).edit().putBoolean("admin_preview_themes",value).apply();
+            if(!themeUnlocked(themeChoice)){themeChoice=0;getPreferences(MODE_PRIVATE).edit().putInt("theme",0).apply();}
+            applyTheme(); render();
+        });
+        TextView balance = new TextView(this); balance.setText(walletSummary()); balance.setTextColor(INK); balance.setTextSize(16); content.addView(balance);
+        button(content,"Give 5 levels",PANEL,GREEN,() -> {
+            if (!adminMode) return;
+            int before=ThemeProgression.level(xp); xp=ThemeProgression.addLevels(xp,5);
+            int gained=ThemeProgression.level(xp)-before; pendingSpins+=gained; saveThemeProgression();
+            balance.setText(walletSummary()+"\n+"+gained+" levels · +"+gained+" spins. Spin to receive tokens.");
+        });
+        android.app.AlertDialog dialog = themedFeedbackDialog("Admin testing").setView(content).setNegativeButton("Done",(d,w)->render()).create();
+        button(content,"Open spins & tokens",PANEL,GOLD,()->{dialog.dismiss();render();showTokenWallet();});
+        showThemedFeedbackDialog(dialog);
     }
 
     private void addDisplayOptions(LinearLayout list) {
@@ -1701,8 +1796,7 @@ public class MainActivity extends ComponentActivity {
             if (getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index) return "✦ Tutorial reward · Unlocked";
             return themeChoice == index ? "✓ Selected · Unlocked" : "✓ Unlocked";
         }
-        int remaining = Math.max(0, (requiredThemeLevel(index) - 1) * 500 - xp);
-        return "🔒 Level " + requiredThemeLevel(index) + " · " + remaining + " XP to go";
+        return "1 " + (themeTier(index)==3?"Diamond":"Gold") + " token · Choose to unlock";
     }
 
     private void showThemeDetails(int index) {
@@ -1718,7 +1812,7 @@ public class MainActivity extends ComponentActivity {
         detail.setPadding(0, dp(12), 0, dp(8)); preview.addView(detail);
         android.app.AlertDialog.Builder builder = themedFeedbackDialog(THEME_NAMES[index].split(" · ")[0]).setView(preview).setNegativeButton("Close", null);
         if (themeUnlocked(index)) builder.setPositiveButton("Use theme", (dialog, which) -> selectTheme(index));
-        else builder.setPositiveButton("View levels", (dialog, which) -> showThemeLevels());
+        else builder.setPositiveButton("Unlock · 1 " + (themeTier(index)==3?"Diamond":"Gold"), (dialog, which) -> purchaseTheme(index));
         showThemedFeedbackDialog(builder.create());
     }
 
@@ -1732,7 +1826,7 @@ public class MainActivity extends ComponentActivity {
             boolean unlocked = themeUnlocked(theme);
             settingsRow(choices, variant == 0 ? "▧" : ICON_THEMES,
                     (themeChoice == theme ? "✓ " : "") + (variant == 0 ? "Still" : "Animated")
-                            + (unlocked ? "" : " · 🔒 Level " + requiredThemeLevel(theme)),
+                            + (unlocked ? "" : " · " + themeAccessLabel(theme)),
                     variant == 0 ? HolidayThemes.SCENES[holiday] : HolidayThemes.MOTIONS[holiday], () -> {
                         if (themeUnlocked(theme)) dialog.dismiss();
                         selectTheme(theme);
@@ -1749,7 +1843,7 @@ public class MainActivity extends ComponentActivity {
             boolean unlocked = themeUnlocked(theme);
             labels[i] = (themeChoice == theme ? "✓ " : "") + (i == 0 ? "Still" : "Animated")
                     + " · " + (i == 0 ? COUNTRY_SCENES[country] : COUNTRY_MOTIONS[country])
-                    + (unlocked ? "" : " · 🔒 Level " + requiredThemeLevel(theme));
+                    + (unlocked ? "" : " · " + themeAccessLabel(theme));
         }
         new android.app.AlertDialog.Builder(this)
                 .setTitle(COUNTRY_FLAGS[country] + " " + COUNTRY_NAMES[country])
@@ -1766,7 +1860,7 @@ public class MainActivity extends ComponentActivity {
             advanceTutorial(); return;
         }
         if (!themeUnlocked(index)) {
-            Toast.makeText(this, "Unlock at level " + requiredThemeLevel(index), Toast.LENGTH_SHORT).show();
+            purchaseTheme(index);
             return;
         }
         themeChoice = index; getPreferences(MODE_PRIVATE).edit().putInt("theme", index).apply();
@@ -1937,7 +2031,8 @@ public class MainActivity extends ComponentActivity {
                     for (String key : prefs.getAll().keySet()) if (ResetPolicy.clears(key)) editor.remove(key);
                     editor.apply();
                     reviewed.clear(); rewarded.clear(); keptIds.clear(); trashedIds.clear();
-                    xp = 0; keptCount = 0; trashedCount = 0; restoredCount = 0;
+                    pendingSpins=0;silverTokens=0;goldTokens=0;diamondTokens=0;diamondMisses=0;ownedThemes.clear();
+                    xp = 0; saveThemeProgression(); keptCount = 0; trashedCount = 0; restoredCount = 0;
                     lastUndo = null; pendingTrashUndo = null; adminMode = false; themeChoice = 0;
                     statsExpanded = false; swipeHintSeen = false; fullScreenReview = false;
                     scrollPositions.clear(); activeScrollPage = null; closePhotoZoom(); applyTheme(); render();
@@ -2093,7 +2188,7 @@ public class MainActivity extends ComponentActivity {
     private boolean themeUnlocked(int index) {
         return (tutorialStep == TUTORIAL_THEME_PICK && validTutorialTheme(index))
                 || (tutorialStep >= 15 && getPreferences(MODE_PRIVATE).getInt("tutorial_suggested_theme", -1) == index)
-                || adminMode || xp / 500 + 1 >= requiredThemeLevel(index)
+                || (adminMode && getPreferences(MODE_PRIVATE).getBoolean("admin_preview_themes",true)) || themeTier(index)==1 || ownedThemes.contains(Integer.toString(index))
                 || getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index;
     }
 
@@ -2698,6 +2793,7 @@ public class MainActivity extends ComponentActivity {
         page.date = dateHeading; page.count = remainingHeading; page.fill = fill; page.progress = progress; page.photoId = shown.id;
         FrameLayout stage = new FrameLayout(this); stage.setClipChildren(false); stage.setClipToPadding(false); page.stage = stage;
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, 0, 1);
+        cardParams.leftMargin=-root.getPaddingLeft(); cardParams.rightMargin=-root.getPaddingRight();
         cardParams.bottomMargin = dp(20); root.addView(stage, cardParams);
         FrameLayout card = new FrameLayout(this);
         card.setBackgroundColor(Color.TRANSPARENT);
@@ -2705,7 +2801,7 @@ public class MainActivity extends ComponentActivity {
         card.setContentDescription("Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        photo.setPadding(dp(28), dp(20), dp(28), dp(42)); page.image = photo;
+        photo.setPadding(root.getPaddingLeft()+dp(28), dp(20), root.getPaddingRight()+dp(28), dp(42)); page.image = photo;
         photo.setContentDescription("Tap for full-screen photo review");
         card.addView(new PhotoShadowView(photo), new FrameLayout.LayoutParams(-1, -1));
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
@@ -3612,6 +3708,10 @@ public class MainActivity extends ComponentActivity {
                 clip.set(SwipeMotion.grinderClipLeft(card.getTranslationX(), card.getWidth(), dp(9)),
                         0, card.getWidth(), card.getHeight());
                 card.setClipBounds(clip);
+            } else if(progress>0) {
+                // Clip the actual card at the receiving mouth: the front rim now occludes it.
+                clip.set(0,0,SwipeMotion.keepClipRight(card.getTranslationX(),card.getWidth(),keepClipEdge(),card.getScaleX()),card.getHeight());
+                card.setClipBounds(clip);
             } else card.setClipBounds(null);
         }
         @Override void retreat() {
@@ -3637,7 +3737,7 @@ public class MainActivity extends ComponentActivity {
         if (pendingTrash != -1 || pendingRestore != -1) return;
         lastUndo = snapshot(p, false);
         if (keptIds.add(Long.toString(p.id))) keptCount++;
-        int earned = awardXp(p.id, 10); lastUndo.earnedXp = earned;
+        int earned = awardXp(p.id, 5); lastUndo.earnedXp = earned;
         saveStats();
         reviewed.add(Long.toString(p.id)); saveReviewed(); render();
         playMonthComplete();
@@ -3646,7 +3746,13 @@ public class MainActivity extends ComponentActivity {
 
     private int awardXp(long id, int points) {
         if (!rewarded.add(Long.toString(id))) return 0;
-        xp += points; saveStats(); return points;
+        int previous=ThemeProgression.level(xp);
+        points=ThemeProgression.reviewXp(rewarded.size());
+        xp=ThemeProgression.addLevels(xp,0); xp+=points;
+        int earnedSpins=ThemeProgression.level(xp)-previous; pendingSpins+=earnedSpins;
+        saveThemeProgression();saveStats();
+        if(earnedSpins>0) Toast.makeText(this,"Level " + ThemeProgression.level(xp) + " · +" + earnedSpins + " theme spin",Toast.LENGTH_LONG).show();
+        return points;
     }
 
     private void saveStats() {
@@ -3811,7 +3917,7 @@ public class MainActivity extends ComponentActivity {
                 reviewed.remove(Long.toString(id)); saveReviewed();
                 duplicates.remove(id);
                 if (trashedIds.add(Long.toString(id))) trashedCount++;
-                earned = awardXp(id, 15);
+                earned = awardXp(id, 5);
                 if (lastUndo != null && lastUndo.id == id) lastUndo.earnedXp = earned;
                 saveStats();
             }
@@ -4917,6 +5023,7 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
 
 

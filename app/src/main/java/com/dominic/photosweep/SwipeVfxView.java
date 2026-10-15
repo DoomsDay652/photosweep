@@ -21,9 +21,6 @@ class SwipeVfxView extends View {
     private final Path lightPath = new Path(), ribbonPath = new Path();
     private final PathMeasure measure = new PathMeasure();
     private final float[] position = new float[2];
-    private final Matrix veilMatrix = new Matrix();
-    private final LinearGradient veil = new LinearGradient(0,0,1,0,
-            new int[]{0x00FFF4D5,0x14FFF5DF,0x28FFFBEF},null,Shader.TileMode.CLAMP);
     private boolean holding;
     private long returning, closing, lastFrame;
     private float restRight, open, returnOpen, returnAlpha;
@@ -127,11 +124,16 @@ class SwipeVfxView extends View {
         if(isAttachedToWindow() && (holding || tail || (released!=0 && (progress>0 || phase<1)) || progress>0))
             postInvalidateOnAnimation();
     }
+    float keepMouthX() { return getWidth()-dp(32); }
+    float keepClipEdge() {
+        float opening=photo.isEmpty()?Math.max(0,progress):SwipeMotion.pocketOpening(restRight,photo.right,keepMouthX(),dp(70));
+        return getWidth()-dp(32)*opening;
+    }
     private void drawHeavenly(Canvas canvas,float time,float dt,long now) {
         boolean animate=enabled&&!reducedMotion;
         float alpha=holding?SwipeMotion.ease((now-started)/140f):1;
         float wanted=photo.isEmpty()?Math.max(0,progress):
-                SwipeMotion.pocketOpening(restRight,photo.right,getWidth()-dp(7),dp(70));
+                SwipeMotion.pocketOpening(restRight,photo.right,keepMouthX(),dp(70));
         if(progress<0)wanted=0;
         if(released!=0 && progress>0)wanted=Math.max(wanted,open);
         if(returning!=0) {
@@ -140,9 +142,9 @@ class SwipeVfxView extends View {
         } else if(closing!=0) {
             open=1-SwipeMotion.ease((now-closing)/180f);
             alpha=1-SwipeMotion.ease(Math.max(0,now-closing-180)/100f);
-        } else open+= (wanted-open)*(reducedMotion?1:1-(float)Math.exp(-dt/38f));
+        } else open=wanted;
         alpha*=1-SwipeMotion.clamp(-progress*4);
-        haloX=getWidth()-dp(7);haloY=photo.isEmpty()?getHeight()*.5f:photo.centerY();
+        haloX=getWidth()-dp(1);haloY=photo.isEmpty()?getHeight()*.5f:photo.centerY();
         haloY=Math.max(dp(20),Math.min(getHeight()-dp(20),haloY));
         if(photo.isEmpty()) {
             float shift=Math.max(0,progress)*getWidth()*.36f;
@@ -151,24 +153,35 @@ class SwipeVfxView extends View {
         float o=SwipeMotion.clamp(open);
         paint.setShader(null);paint.setStyle(Paint.Style.FILL);
         if(o>.006f) {
-            float right=Math.min(haloX,fitPhoto.right);
-            if(fitPhoto.left<right) {
-                float left=SwipeMotion.keepSleeveLeft(fitPhoto.left,fitPhoto.width(),right,o);
-                sleeveRect.set(left,haloY+(fitPhoto.top-haloY)*o,right,haloY+(fitPhoto.bottom-haloY)*o);
-            } else if(!sleeveRect.isEmpty() && closing!=0) {
-                sleeveRect.top=haloY+(fitPhoto.top-haloY)*o;
-                sleeveRect.bottom=haloY+(fitPhoto.bottom-haloY)*o;
+            // The opening lives beyond the photo's clipped leading edge, anchored to the glass edge.
+            // No closed rectangle or translucent panel is drawn over the photo.
+            float mouth=getWidth()-dp(32)*o;
+            float top=haloY+(fitPhoto.top-haloY)*o-dp(7)*o;
+            float bottom=haloY+(fitPhoto.bottom-haloY)*o+dp(7)*o;
+            sleeveRect.set(mouth,top,getWidth()+dp(9),bottom);
+            float h=Math.max(dp(2),bottom-top);
+            for(int strand=2;strand>=0;strand--) {
+                float offset=dp(strand*3)*o;
+                lightPath.reset();lightPath.moveTo(getWidth()+dp(8),top-offset);
+                lightPath.cubicTo(mouth+dp(2),top-offset,mouth-dp(6)-offset,top+h*.18f,mouth-offset,haloY);
+                lightPath.cubicTo(mouth-dp(6)-offset,bottom-h*.18f,mouth+dp(2),bottom+offset,getWidth()+dp(8),bottom+offset);
+                glowStroke(canvas,lightPath,alpha*(strand==0?1:.32f),strand==0?1.65f:.7f);
+                if(animate)pathParticles(canvas,lightPath,time+strand*.31f,.18f,22+intensity/6,alpha*o);
             }
-            if(!sleeveRect.isEmpty()) {
-                float corner=Math.min(dp(9),Math.min(sleeveRect.width(),sleeveRect.height())*.22f);
-                veilMatrix.setScale(Math.max(1,sleeveRect.width()),1);veilMatrix.postTranslate(sleeveRect.left,0);
-                veil.setLocalMatrix(veilMatrix);paint.setShader(veil);paint.setAlpha((int)(255*alpha));
-                canvas.drawRoundRect(sleeveRect,corner,corner,paint);paint.setShader(null);
-                lightPath.reset();lightPath.addRoundRect(sleeveRect,corner,corner,Path.Direction.CW);
-                glowStroke(canvas,lightPath,alpha,.85f);
-                if(animate)pathParticles(canvas,lightPath,time,.14f,12+intensity/10,alpha);
-                drawRibbon(canvas,-1,o,alpha,time,animate);
-                drawRibbon(canvas,1,o,alpha,time,animate);
+            drawRibbon(canvas,-1,o,alpha,time,animate);
+            drawRibbon(canvas,1,o,alpha,time,animate);
+            // Layered, softly travelling rays blossom outward from the mouth into the pocket.
+            if(animate)for(int i=0;i<38;i++) {
+                float u=(time*.23f+i*.618034f)%1;
+                float y=top+h*((i*.381966f)%1);
+                float x=mouth+dp(3+25*u)*o;
+                float a=alpha*o*(float)Math.sin(Math.PI*u);
+                paint.setShader(null);paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(.6f+(i%3)*.3f));paint.setStrokeCap(Paint.Cap.ROUND);
+                paint.setColor(i%3==0?0xFFFFD18A:0xFFFFFAE7);paint.setAlpha((int)(105*a));
+                canvas.drawLine(x,y,x+dp(8+i%5*3)*o,y+(y-haloY)*.055f,paint);
+                paint.setStyle(Paint.Style.FILL);
+                if(i%4==0)sparkle(canvas,x,y,dp(1.1f+i%3*.35f),a);
             }
         }
         // The hold dot is the seed of the opening; its opacity is independent of proximity.
@@ -184,19 +197,21 @@ class SwipeVfxView extends View {
         }
     }
     private void drawRibbon(Canvas canvas,int side,float opening,float alpha,float time,boolean animate) {
-        float startX=Math.min(sleeveRect.left-dp(28),fitPhoto.left-fitPhoto.width()*.16f);
+        float mouth=sleeveRect.left;
         float edgeY=side<0?sleeveRect.top:sleeveRect.bottom;
-        float wave=animate?dp(5)*(float)Math.sin(time*1.2f+side):0;
-        float startY=edgeY+side*(dp(10)+wave)*opening;
+        float reach=Math.min(dp(120),fitPhoto.width()*.38f)*opening;
+        float startX=mouth-reach;
+        float wave=animate?dp(5)*(float)Math.sin(time*1.35f+side):0;
         for(int strand=0;strand<3;strand++) {
-            float offset=side*dp(strand*1.5f)*opening;
-            ribbonPath.reset();ribbonPath.moveTo(startX,startY+offset);
-            ribbonPath.cubicTo(startX+(sleeveRect.left-startX)*.45f,startY+side*dp(13)*opening+offset,
-                    sleeveRect.left-dp(12),edgeY+offset,sleeveRect.left+dp(9),edgeY+offset);
-            ribbonPath.cubicTo(sleeveRect.left+sleeveRect.width()*.45f,edgeY+offset,
-                    sleeveRect.right-dp(12),edgeY+offset,sleeveRect.right,edgeY+side*dp(3));
-            glowStroke(canvas,ribbonPath,alpha*opening*(strand==0?.65f:.22f),strand==0?.62f:.34f);
-            if(animate && strand==0)pathParticles(canvas,ribbonPath,time+(side<0?0:.8f),.26f,14+intensity/12,alpha*opening);
+            float offset=side*dp(strand*2)*opening;
+            float startY=edgeY+side*(dp(18)+wave)*opening+offset;
+            ribbonPath.reset();ribbonPath.moveTo(startX,startY);
+            ribbonPath.cubicTo(startX+reach*.44f,startY-side*dp(12)*opening,
+                    mouth-dp(20),edgeY+offset,mouth+dp(2),edgeY+offset);
+            ribbonPath.cubicTo(mouth+dp(14),edgeY+offset,
+                    getWidth()-dp(7),edgeY+side*dp(7)*opening,getWidth()+dp(9),edgeY+side*dp(14)*opening);
+            glowStroke(canvas,ribbonPath,alpha*opening*(strand==0?.9f:.35f),strand==0?1.1f:.5f);
+            if(animate)pathParticles(canvas,ribbonPath,time+(side<0?0:.8f)+strand*.2f,.32f,18+intensity/10,alpha*opening);
         }
     }
     private void glowStroke(Canvas canvas,Path line,float alpha,float width) {
