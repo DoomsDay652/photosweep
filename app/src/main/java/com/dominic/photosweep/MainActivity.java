@@ -1278,9 +1278,16 @@ public class MainActivity extends ComponentActivity {
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView brand = studioText("✦  PHOTO SWEEP", 12, GREEN, true); brand.setLetterSpacing(.12f);
         header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        Button settings = button(header, "", PANEL, GREEN, () -> { showingSettings = true; render(); });
-        setButtonIcon(settings, "Settings", GREEN); settings.setContentDescription("Settings");
-        settings.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
+        android.widget.ImageButton settings = new android.widget.ImageButton(this);
+        settings.setImageDrawable(new StudioIcon("Settings", GREEN));
+        settings.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        settings.setPadding(dp(14), dp(14), dp(14), dp(14));
+        settings.setBackground(themeButton(PANEL, 18)); settings.setContentDescription("Settings");
+        header.addView(settings, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        settings.setOnClickListener(v -> {
+            if (tutorialStep >= 0) return;
+            playSound(R.raw.bubble_tap, .16f); showingSettings = true; render();
+        });
         root.addView(header, new LinearLayout.LayoutParams(-1, dp(52)));
         label(title, 30, INK, true); spacer(14);
         libraryQuickNav(); spacer(14);
@@ -1665,7 +1672,8 @@ public class MainActivity extends ComponentActivity {
             values[0].setText(Integer.toString(silverTokens));values[1].setText(Integer.toString(goldTokens));values[2].setText(Integer.toString(diamondTokens));
             spin.setEnabled(!spinning[0]&&pendingSpins>0);spin.setAlpha(spin.isEnabled()?1f:.55f);
             spin.setText(spinning[0]?"Spinning…":pendingSpins>0?"Spin  ·  "+pendingSpins+" left":"No spins available");
-            gold.setEnabled(!spinning[0]&&silverTokens>=3);diamond.setEnabled(!spinning[0]&&goldTokens>=3);gold.setAlpha(gold.isEnabled()?1f:.5f);diamond.setAlpha(diamond.isEnabled()?1f:.5f);
+            refreshExchangeButton(gold, "3 Silver  →  1 Gold", silverTokens, "Silver", spinning[0]);
+            refreshExchangeButton(diamond, "3 Gold  →  1 Diamond", goldTokens, "Gold", spinning[0]);
         };
         spin.setOnClickListener(v->{
             if(spinning[0]||pendingSpins<=0)return;spinning[0]=true;int result=ThemeProgression.roll(rewardRandom.nextInt(100));pendingSpins--;
@@ -1679,6 +1687,26 @@ public class MainActivity extends ComponentActivity {
         });
         refresh.run();
         onceTip("shop_spins","Each level earns a spin. Your tokens stay until you use them.");
+    }
+
+    private void refreshExchangeButton(Button control, String offer, int balance, String currency, boolean spinning) {
+        boolean enough = balance >= 3;
+        int statusColor = enough ? GREEN : RED;
+        String availability = balance + " " + currency + " available";
+        android.text.SpannableString copy = new android.text.SpannableString(offer + "\n" + availability);
+        int start = offer.length() + 1;
+        copy.setSpan(new android.text.style.ForegroundColorSpan(statusColor), start, copy.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        copy.setSpan(new android.text.style.RelativeSizeSpan(.8f), start, copy.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        control.setText(copy); control.setTextColor(INK); control.setGravity(Gravity.CENTER);
+        control.setContentDescription(offer + ". " + availability + (enough ? ". Ready to exchange" : ". Need 3 " + currency));
+        control.setMinHeight(dp(76)); control.setMinimumHeight(dp(76));
+        control.setPadding(dp(12), dp(10), dp(12), dp(10));
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) control.getLayoutParams(); lp.height = -2; control.setLayoutParams(lp);
+        GradientDrawable surface = rounded(blend(PANEL, statusColor, .045f), 18);
+        surface.setStroke(dp(1), blend(PANEL, statusColor, .5f));
+        GradientDrawable mask = new GradientDrawable(); mask.setColor(Color.WHITE); mask.setCornerRadius(dp(18));
+        control.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x24ffffff), surface, mask));
+        control.setEnabled(enough && !spinning); control.setAlpha(spinning ? .7f : 1f);
     }
 
     private void purchaseTheme(int index) {
