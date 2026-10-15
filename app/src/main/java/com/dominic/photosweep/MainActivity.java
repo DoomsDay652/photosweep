@@ -978,6 +978,13 @@ public class MainActivity extends ComponentActivity {
         if (full) root.setPadding(0, 0, 0, 0);
         else root.setPadding(safeInsets.left + dp(22), safeInsets.top + dp(20),
                 safeInsets.right + dp(22), safeInsets.bottom + dp(16));
+        if (reviewPage != null && reviewPage.content == root && !reviewPage.full
+                && reviewPage.stage != null && reviewPage.image != null) {
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) reviewPage.stage.getLayoutParams();
+            lp.leftMargin=-root.getPaddingLeft(); lp.rightMargin=-root.getPaddingRight();
+            reviewPage.stage.setLayoutParams(lp);
+            reviewPage.image.setPadding(root.getPaddingLeft()+dp(28),dp(20),root.getPaddingRight()+dp(28),dp(42));
+        }
         if (radioBubble != null) radioBubble.setVisibility(full ? View.GONE : View.VISIBLE);
     }
     private void render() {
