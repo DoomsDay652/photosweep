@@ -463,6 +463,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final ExecutorService reviewWorker = Executors.newSingleThreadExecutor();
     private final ExecutorService duplicateWorker = Executors.newSingleThreadExecutor();
     private final LruCache<Long, Bitmap> previews = new LruCache<Long, Bitmap>(24 * 1024) {
         @Override protected int sizeOf(Long key, Bitmap value) { return Math.max(1, (value.getByteCount() + 1023) / 1024); }
@@ -476,6 +477,16 @@ public class MainActivity extends ComponentActivity {
     private final HashSet<Long> selectedTrash = new HashSet<>();
     private final ArrayList<Long> pendingTrashSelection = new ArrayList<>();
     private boolean trashSelecting;
+    private TrashPage trashPage;
+    private class TrashPage {
+        final LinearLayout content=root;
+        final String signature=trashPageSignature();
+        final HashMap<Long,LinearLayout> cards=new HashMap<>();
+        final HashMap<Long,TextView> checks=new HashMap<>();
+        final HashMap<Long,String> descriptions=new HashMap<>();
+        TextView selected;
+        Button select,restore,delete;
+    }
     private final ArrayList<TrashEntry> evictionQueue = new ArrayList<>();
     private Set<String> reviewed = new HashSet<>();
     private Set<String> rewarded = new HashSet<>();
@@ -506,13 +517,13 @@ public class MainActivity extends ComponentActivity {
             return Math.max(1, (value.getByteCount() + 1023) / 1024);
         }
     };
-    private long prefetchedReviewId = -1;
     private class ReviewPage {
         final LinearLayout content = root;
         final String month = selectedMonth;
         final boolean full = fullScreenReview;
         final int theme = themeChoice;
         long photoId = -1;
+        boolean ready;
         FrameLayout stage, card, progress;
         ImageView image;
         SwipeEffect effect;
@@ -703,7 +714,7 @@ public class MainActivity extends ComponentActivity {
         if (skipMediaReloadOnResume) { skipMediaReloadOnResume = false; return; }
         if (root != null && pendingTrash == -1 && pendingRestore == -1 && !reviewActionRunning) {
             loadTrashEntries();
-            reviewPhotos.evictAll(); prefetchedReviewId = -1;
+            reviewPhotos.evictAll();
             if (reviewPage != null) reviewPage.photoId = -1;
             if (hasAccess()) loadPhotos(); else render();
         }
@@ -713,7 +724,7 @@ public class MainActivity extends ComponentActivity {
         if(tokenSlot!=null)tokenSlot.finishImmediately();
         photoIdleResumed = false;
         stopPhotoIdle();
-        if(reviewPage!=null && !reviewActionRunning) {
+        if(reviewPage!=null && !reviewActionRunning && pendingTrash==-1 && pendingRestore==-1) {
             reviewPage.card.animate().cancel();reviewPage.effect.cancel();
             reviewPage.card.setTranslationX(0);reviewPage.card.setTranslationY(0);reviewPage.card.setRotation(0);
         }
@@ -747,6 +758,7 @@ public class MainActivity extends ComponentActivity {
         generation++;
         previews.evictAll(); reviewPhotos.evictAll();
         io.shutdownNow();
+        reviewWorker.shutdownNow();
         duplicateWorker.shutdownNow();
         super.onDestroy();
     }
@@ -943,6 +955,11 @@ public class MainActivity extends ComponentActivity {
         });
     }
 
+    private void invalidateMediaSnapshot() {
+        // A query begun before a confirmed media change must not resurrect its old rows.
+        generation++;loading=false;reloadPhotosPending=false;duplicateScanning=false;
+    }
+
     private void scanDuplicates(List<Photo> snapshot, int token) {
         duplicateScanning = true;
         if (reviewing) render();
@@ -1050,9 +1067,11 @@ public class MainActivity extends ComponentActivity {
         dismissTip();
         if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
         if (updateReviewPage()) return;
+        if (updateTrashPage()) return;
         stopPhotoIdle();
         if (tokenSlot != null) { tokenSlot.dispose(); tokenSlot = null; }
         reviewPage = null;
+        trashPage = null;
         clearSwipePreview();
         displayPreview=null;displayPreviewImage=null;radioTrackLabel=null;
         rememberScroll();
@@ -1096,7 +1115,7 @@ public class MainActivity extends ComponentActivity {
         else if (showingThemes) themesScreen();
         else if (showingSettings) settingsScreen();
         else if (tutorialStep < 0 && !hasAccess()) intro();
-        else if (tutorialStep < 0 && loading && photos.isEmpty()) {
+        else if (tutorialStep < 0 && loading && photos.isEmpty() && !showingTrash) {
             if (!reviewing || !fullScreenReview) heading("Photo Sweep", "Gathering your photos…");
         }
         else if (showingTrash) trashScreen();
@@ -1202,10 +1221,10 @@ public class MainActivity extends ComponentActivity {
                 || !page.month.equals(selectedMonth)) return false;
         List<Photo> month = monthPhotos();
         Photo current = null; int remaining = 0;
-        for (Photo photo : month) if (!reviewed.contains(Long.toString(photo.id))) {
+        for (Photo photo : month) if (photo.id!=pendingTrash && !reviewed.contains(Long.toString(photo.id))) {
             remaining++; if (current == null) current = photo;
         }
-        if (current == null) return false;
+        if (current == null) return pendingTrash!=-1;
         if (page.date != null) page.date.setText(photoDate(current));
         if (page.count != null) page.count.setText(page.full ? remaining + "/" + month.size() + " left"
                 : remaining + " of " + month.size() + " left to review");
@@ -1220,16 +1239,17 @@ public class MainActivity extends ComponentActivity {
         if (page.photoId != current.id) {
             stopPhotoIdle();
             page.card.animate().cancel();
+            page.ready=false;page.card.setVisibility(View.INVISIBLE);
             page.card.setTranslationX(0); page.card.setTranslationY(0); page.card.setRotation(0); page.card.setAlpha(1f);
             page.card.setScaleX(1f); page.card.setScaleY(1f); page.card.setClipBounds(null);
             page.effect.cancel();
             if (page.border != null) page.border.stop();
             if (page.image instanceof ReviewZoomImage) ((ReviewZoomImage) page.image).resetZoom();
             page.image.setImageDrawable(null);
+            page.photoId = current.id;
             loadReviewPhoto(current, page.image);
             attachSwipeGesture(page.card, page.stage, page.effect, page.border, current,
                     page.full ? null : () -> { fullScreenReview = true; render(); });
-            page.photoId = current.id;
             schedulePhotoIdle(page.card);
         }
         return true;
@@ -2628,7 +2648,39 @@ public class MainActivity extends ComponentActivity {
         playSound(R.raw.bubble_undo, .28f);
     }
 
+    private String trashPageSignature() {
+        StringBuilder key=new StringBuilder().append(themeChoice).append(':').append(trashSelecting)
+                .append(':').append(getPreferences(MODE_PRIVATE).getLong("confirmed_freed_bytes",0));
+        for(TrashEntry entry:trashEntries)key.append('|').append(entry.id).append(':').append(entry.trashedAt).append(':').append(entry.bytes)
+                .append(':').append(ReviewNavigation.expiry(SEVEN_DAYS-(System.currentTimeMillis()-entry.trashedAt)));
+        return key.toString();
+    }
+    private boolean updateTrashPage() {
+        if(tutorialStep>=0 || trashPage==null || trashPage.content!=root || !showingTrash || !hasAccess() || showingShop || showingSettings || showingThemes
+                || !trashPage.signature.equals(trashPageSignature()))return false;
+        refreshTrashSelection();return true;
+    }
+    private void refreshTrashSelection() {
+        TrashPage page=trashPage;if(page==null || page.content!=root)return;
+        selectedTrash.retainAll(page.cards.keySet());
+        for(Long id:page.cards.keySet()) {
+            boolean selected=selectedTrash.contains(id);LinearLayout card=page.cards.get(id);
+            GradientDrawable outline=rounded(PANEL,14);outline.setStroke(dp(selected?2:1),selected?GREEN:PANEL);
+            card.setBackground(outline);card.setSelected(selected);
+            card.setContentDescription(page.descriptions.get(id)+(selected?". Selected":"")+(trashSelecting?". Tap to toggle selection":". Tap to inspect"));
+            TextView check=page.checks.get(id);
+            if(check!=null){check.setText(selected?"✓":"○");check.setTextColor(selected?BG:INK);check.setBackground(rounded(selected?GREEN:PANEL,20));}
+        }
+        boolean idle=pendingRestore==-1 && pendingTrash==-1;
+        if(page.select!=null)page.select.setEnabled(idle&&!trashEntries.isEmpty());
+        if(page.selected!=null)page.selected.setText(selectedTrash.size()+" selected");
+        if(page.restore!=null && page.delete!=null) {
+            boolean enabled=idle&&!selectedTrash.isEmpty();page.restore.setEnabled(enabled);page.delete.setEnabled(enabled);
+            page.restore.setAlpha(enabled?1:.45f);page.delete.setAlpha(enabled?1:.45f);
+        }
+    }
     private void trashScreen() {
+        TrashPage page=new TrashPage();trashPage=page;
         back(reviewing ? "Back to photos" : "Photo Sweep", () -> {
             showingTrash = false; trashSelecting = false; selectedTrash.clear(); render();
         });
@@ -2640,6 +2692,7 @@ public class MainActivity extends ComponentActivity {
         Button select = button(toolbar, trashSelecting ? "Done" : "Select", PANEL, GREEN, () -> {
             trashSelecting = !trashSelecting; selectedTrash.clear(); render();
         });
+        page.select=select;
         select.setLayoutParams(new LinearLayout.LayoutParams(dp(96), dp(48)));
         select.setEnabled(pendingRestore == -1 && pendingTrash == -1 && !trashEntries.isEmpty());
         root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
@@ -2671,6 +2724,7 @@ public class MainActivity extends ComponentActivity {
             outline.setStroke(dp(selected ? 2 : 1), selected ? GREEN : PANEL); card.setBackground(outline);
             card.setPadding(dp(3), dp(3), dp(3), dp(6)); card.setClipToOutline(true);
             card.setFocusable(true); card.setSelected(selected);
+            page.cards.put(entry.id,card);
             LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(0, -2, 1);
             if (row.getChildCount() > 0) cardLp.leftMargin = dp(8); row.addView(card, cardLp);
             FrameLayout imageFrame = new FrameLayout(this);
@@ -2681,6 +2735,7 @@ public class MainActivity extends ComponentActivity {
             loadPreview(entry.id, entry.uri, thumbnail);
             if (trashSelecting) {
                 TextView check = new TextView(this); check.setText(selected ? "✓" : "○");
+                page.checks.put(entry.id,check);
                 check.setGravity(Gravity.CENTER); check.setTextSize(19); check.setTextColor(selected ? BG : INK);
                 check.setBackground(rounded(selected ? GREEN : PANEL, 20));
                 FrameLayout.LayoutParams checkLp = new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP | Gravity.END);
@@ -2691,6 +2746,7 @@ public class MainActivity extends ComponentActivity {
             TextView days = new TextView(this); days.setText(ReviewNavigation.expiry(timeLeft));
             days.setTextColor(0xffffcf83); days.setTextSize(12); days.setGravity(Gravity.CENTER);
             days.setPadding(dp(2), dp(7), dp(2), dp(4)); card.addView(days);
+            page.descriptions.put(entry.id,DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))+". "+days.getText());
             card.setContentDescription(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))
                     + ". " + days.getText() + (selected ? ". Selected" : "")
                     + (trashSelecting ? ". Tap to toggle selection" : ". Tap to inspect"));
@@ -2703,13 +2759,14 @@ public class MainActivity extends ComponentActivity {
                 if (pendingRestore != -1 || pendingTrash != -1) return;
                 if (trashSelecting) {
                     if (!selectedTrash.add(entry.id)) selectedTrash.remove(entry.id);
-                    render();
+                    refreshTrashSelection();
                 } else inspectTrash(entry);
             });
             card.setOnLongClickListener(v -> {
                 if (tutorialStep >= 0) return true;
                 if (pendingRestore != -1 || pendingTrash != -1) return true;
-                trashSelecting = true; selectedTrash.add(entry.id); render(); return true;
+                boolean wasSelecting=trashSelecting;trashSelecting=true;selectedTrash.add(entry.id);
+                if(wasSelecting)refreshTrashSelection();else render();return true;
             });
         }
         if (count % columns != 0) {
@@ -2719,11 +2776,12 @@ public class MainActivity extends ComponentActivity {
             }
         }
         if (trashSelecting) {
-            label(selectedTrash.size() + " selected", 15, INK, true);
+            page.selected=label(selectedTrash.size() + " selected", 15, INK, true);
             LinearLayout actions = new LinearLayout(this);
             Button restore = button(actions, "Restore", GREEN, BG, () -> requestTrashSelection(false));
             restore.setLayoutParams(new LinearLayout.LayoutParams(0, dp(55), 1));
             Button delete = button(actions, "Delete", PANEL, RED, () -> requestTrashSelection(true));
+            page.restore=restore;page.delete=delete;
             LinearLayout.LayoutParams deleteLp = new LinearLayout.LayoutParams(0, dp(55), 1);
             deleteLp.leftMargin = dp(10); delete.setLayoutParams(deleteLp);
             boolean enabled = !selectedTrash.isEmpty() && pendingRestore == -1 && pendingTrash == -1;
@@ -2739,13 +2797,12 @@ public class MainActivity extends ComponentActivity {
         image.setBackgroundColor(BG);
         image.setLayoutParams(new android.view.ViewGroup.LayoutParams(-1, dp(320)));
         loadPreview(entry.id, entry.uri, image);
-        new android.app.AlertDialog.Builder(this)
-                .setTitle(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp)))
+        showThemedFeedbackDialog(themedFeedbackDialog(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp)))
                 .setView(image).setNegativeButton("Close", null)
                 .setPositiveButton("Restore", (dialog, which) -> restore(entry))
                 .setNeutralButton("Select", (dialog, which) -> {
                     trashSelecting = true; selectedTrash.add(entry.id); render();
-                }).show();
+                }).create());
     }
 
     private void addTrashStorageSummary() {
@@ -2810,6 +2867,7 @@ public class MainActivity extends ComponentActivity {
                 for (TrashEntry entry : entries) { uris.add(entry.uri); pendingTrashSelection.add(entry.id); }
                 // Reuse the existing media-operation gate while Android's confirmation is open.
                 pendingRestore = entries.get(0).id;
+                refreshTrashSelection();
                 PendingIntent intent = delete ? MediaStore.createDeleteRequest(getContentResolver(), uris)
                         : MediaStore.createTrashRequest(getContentResolver(), uris, false);
                 startIntentSenderForResult(intent.getIntentSender(),
@@ -2834,7 +2892,7 @@ public class MainActivity extends ComponentActivity {
     private void reviewScreen() {
         List<Photo> month = monthPhotos();
         Photo current = null; int remaining = 0;
-        for (Photo p : month) if (!reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
+        for (Photo p : month) if (p.id!=pendingTrash && !reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
         if (fullScreenReview && current != null) { fullScreenReviewScreen(current, remaining, month.size()); return; }
         if (fullScreenReview) { fullScreenReview = false; applyContentInsets(); }
         LinearLayout reviewToolbar = new LinearLayout(this); reviewToolbar.setGravity(Gravity.CENTER_VERTICAL);
@@ -3046,6 +3104,7 @@ public class MainActivity extends ComponentActivity {
             else if (shown.id >= 0 && tap != null) tap.run();
         });
         card.setOnTouchListener((view, event) -> {
+            if(reviewPage!=null && reviewPage.card==card && !reviewPage.ready)return true;
             if (committed[0] || reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return true;
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) { stopPhotoIdle(); card.animate().cancel(); }
@@ -3122,6 +3181,7 @@ public class MainActivity extends ComponentActivity {
                                 .setUpdateListener(frame -> effect.track(card))
                                 .withEndAction(() -> {
                                     Runnable finish = () -> {
+                                        card.setVisibility(View.INVISIBLE);
                                         effect.cancel();
                                         if (fireBorder != null) fireBorder.stop();
                                         reviewActionRunning = false;
@@ -3214,36 +3274,41 @@ public class MainActivity extends ComponentActivity {
         } catch (Exception ignored) { return null; }
     }
 
+    private void presentReviewPhoto(Photo photo,ImageView view,Bitmap bitmap) {
+        if(bitmap==null || bitmap.isRecycled() || !Long.valueOf(photo.id).equals(view.getTag()))return;
+        ReviewPage page=reviewPage;
+        if(page==null || page.image!=view || page.photoId!=photo.id)return;
+        if(page.ready && (reviewActionRunning || photoDrag!=null))return;
+        view.setImageBitmap(bitmap);invalidatePhotoDecorations(view);
+        boolean first=!page.ready;page.ready=true;page.card.setVisibility(View.VISIBLE);
+        if(first && page.effect!=null && photoIdleResumed)schedulePhotoIdle(page.card);
+    }
     private void loadReviewPhoto(Photo photo, ImageView view) {
-        if (photo.id < 0) { view.setImageBitmap(tutorialPicture(photo.id)); return; }
         view.setTag(photo.id);
+        if(reviewPage!=null && reviewPage.image==view){reviewPage.ready=false;reviewPage.card.setVisibility(View.INVISIBLE);}
+        if (photo.id < 0) { presentReviewPhoto(photo,view,tutorialPicture(photo.id)); return; }
         Bitmap cached = reviewPhotos.get(photo.id);
-        if (cached != null && !cached.isRecycled()) { view.setImageBitmap(cached); invalidatePhotoDecorations(view); }
+        if (cached != null && !cached.isRecycled())presentReviewPhoto(photo,view,cached);
         else {
-            Bitmap preview = previews.get(photo.id); if (preview != null) view.setImageBitmap(preview);
-            io.execute(() -> {
+            presentReviewPhoto(photo,view,previews.get(photo.id));
+            reviewWorker.execute(() -> {
                 if (isDestroyed()) return;
-                Bitmap decoded = decodeReviewPhoto(photo);
+                Bitmap decoded=decodeReviewPhoto(photo);
+                if(decoded==null)try{decoded=getContentResolver().loadThumbnail(photo.uri,new Size(720,720),null);}catch(Exception ignored){}
+                final Bitmap result=decoded;
                 runOnUiThread(() -> {
-                    // The same ImageView is reused for the next card. A late
-                    // decode must never put the previous photo back on screen.
-                    if (decoded == null || isDestroyed() || !view.isAttachedToWindow() || !Long.valueOf(photo.id).equals(view.getTag())) return;
-                    view.setImageBitmap(decoded);
-                    invalidatePhotoDecorations(view);
+                    if(isDestroyed() || !view.isAttachedToWindow())return;
+                    presentReviewPhoto(photo,view,result);
                 });
             });
         }
-        // Decode only the next undecided photo into a bounded cache so a
-        // completed swipe can replace the image without an empty loading frame.
-        boolean found = false;
-        for (Photo next : monthPhotos()) {
-            if (next.id == photo.id) { found = true; continue; }
-            if (found && !reviewed.contains(Long.toString(next.id))) {
-                if (prefetchedReviewId != next.id) {
-                    prefetchedReviewId = next.id;
-                    io.execute(() -> { if (!isDestroyed()) decodeReviewPhoto(next); });
-                }
-                break;
+        // Gallery queries and Trash thumbnails cannot hold up the next review card.
+        boolean found=false;int ahead=0;
+        for(Photo next:monthPhotos()) {
+            if(next.id==photo.id){found=true;continue;}
+            if(found && next.id!=pendingTrash && !reviewed.contains(Long.toString(next.id))) {
+                if(reviewPhotos.get(next.id)==null)reviewWorker.execute(()->{if(!isDestroyed())decodeReviewPhoto(next);});
+                if(++ahead==2)break;
             }
         }
     }
@@ -3383,6 +3448,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void loadPreview(long id, Uri uri, ImageView view) {
+        view.setTag(id);
         if (id < 0) { view.setImageBitmap(tutorialPicture(id)); return; }
         Bitmap cached = previews.get(id);
         if (cached != null) { view.setImageBitmap(cached); return; }
@@ -3391,15 +3457,15 @@ public class MainActivity extends ComponentActivity {
             if (isDestroyed() || requestedHost != host) return;
             Bitmap queued = previews.get(id);
             if (queued != null) {
-                runOnUiThread(() -> { if (!isDestroyed() && view.isAttachedToWindow()) view.setImageBitmap(queued); });
+                runOnUiThread(() -> { if (!isDestroyed() && view.isAttachedToWindow() && Long.valueOf(id).equals(view.getTag())) view.setImageBitmap(queued); });
                 return;
             }
             try {
-                Bitmap bitmap = getContentResolver().loadThumbnail(uri, new Size(900, 900), null);
+                Bitmap bitmap = getContentResolver().loadThumbnail(uri, new Size(480, 480), null);
                 if (bitmap != null) {
                     if (isDestroyed()) { bitmap.recycle(); return; }
                     previews.put(id, bitmap);
-                    runOnUiThread(() -> { if (!isDestroyed() && view.isAttachedToWindow()) view.setImageBitmap(bitmap); });
+                    runOnUiThread(() -> { if (!isDestroyed() && view.isAttachedToWindow() && Long.valueOf(id).equals(view.getTag())) view.setImageBitmap(bitmap); });
                 }
             } catch (Exception ignored) { }
         });
@@ -3914,6 +3980,7 @@ public class MainActivity extends ComponentActivity {
         try {
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(p.uri), true);
             pendingTrash = p.id; pendingTrashUndo = snapshot(p, true);
+            render();
             startIntentSenderForResult(request.getIntentSender(), TRASH_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
             pendingTrash = -1; pendingTrashUndo = null; skipMediaReloadOnResume = false;
@@ -4032,6 +4099,10 @@ public class MainActivity extends ComponentActivity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode==TRASH_REQUEST || requestCode==RESTORE_REQUEST || requestCode==RESTORE_SELECTION_REQUEST || requestCode==DELETE_SELECTION_REQUEST) {
+            skipMediaReloadOnResume=true;
+            if(resultCode==RESULT_OK)invalidateMediaSnapshot();
+        }
         if (requestCode == TRASH_REQUEST) {
             long id = pendingTrash; pendingTrash = -1;
             ReviewUndo action = pendingTrashUndo; pendingTrashUndo = null;
