@@ -532,12 +532,13 @@ public class MainActivity extends ComponentActivity {
     private int themeCategory;
     private int themeAvailability;
     private boolean themeSearchOpen;
-    private static final String[] THEME_CATEGORIES = {"All themes", "Tier 1", "Tier 2", "Tier 3", "Countries", "Holidays"};
+    private static final String[] THEME_CATEGORIES = ThemeCatalog.COLLECTIONS;
     private String themeQuery = "";
     private boolean themeAnimationsOpen;
     private final LruCache<Integer, Bitmap> themeThumbnails = new LruCache<Integer, Bitmap>(8 * 1024 * 1024) {
         @Override protected int sizeOf(Integer key, Bitmap value) { return value.getByteCount(); }
     };
+    private boolean showingShop;
     private boolean showingSettings, showingThemes, soundEnabled, musicEnabled, statsExpanded, swipeHintSeen, adminMode;
     private int optionsSection;
     private boolean arachnophobiaMode, animateThemeChange;
@@ -648,6 +649,7 @@ public class MainActivity extends ComponentActivity {
             fullScreenReview = state.getBoolean("fullScreenReview");
             showingSettings = state.getBoolean("showingSettings");
             showingThemes = state.getBoolean("showingThemes");
+            showingShop = state.getBoolean("showingShop");
             themeCategory = state.getInt("themeCategory");
             themeAvailability = state.getInt("themeAvailability");
             themeSearchOpen = state.getBoolean("themeSearchOpen");
@@ -714,6 +716,7 @@ public class MainActivity extends ComponentActivity {
         playUpdates.onPause();
         if (sensorManager != null) sensorManager.unregisterListener(tiltListener);
         stopMusic();
+        dismissTip();
         clearSwipePreview();
         super.onPause();
     }
@@ -746,9 +749,10 @@ public class MainActivity extends ComponentActivity {
         if (tutorialStep >= 0) { endTutorial(false); return true; }
         if (reviewActionRunning) return true;
         if (zoomOverlay != null) closePhotoZoom();
+        else if (showingShop) { showingShop = false; render(); }
         else if (fullScreenReview) { fullScreenReview = false; render(); }
         else if (showingThemes) {
-            if (themeAnimationsOpen) themeAnimationsOpen = false; else showingThemes = false;
+            if (themeAnimationsOpen) themeAnimationsOpen = false; else if (themeCategory != 0) themeCategory = 0; else showingThemes = false;
             render();
         }
         else if (showingSettings && optionsSection != 0) { optionsSection = 0; render(); }
@@ -770,6 +774,7 @@ public class MainActivity extends ComponentActivity {
         state.putBoolean("fullScreenReview", fullScreenReview);
         state.putBoolean("showingSettings", showingSettings);
         state.putBoolean("showingThemes", showingThemes);
+        state.putBoolean("showingShop", showingShop);
         state.putInt("themeCategory", themeCategory);
         state.putInt("themeAvailability", themeAvailability);
         state.putBoolean("themeSearchOpen", themeSearchOpen);
@@ -971,7 +976,7 @@ public class MainActivity extends ComponentActivity {
 
     private void applyContentInsets() {
         if (root == null) return;
-        boolean full = reviewing && fullScreenReview && !showingSettings && !showingThemes && !showingTrash;
+        boolean full = reviewing && fullScreenReview && !showingShop && !showingSettings && !showingThemes && !showingTrash;
         android.view.WindowInsetsController bars = getWindow().getInsetsController();
         if (bars != null) {
             bars.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
@@ -1019,7 +1024,7 @@ public class MainActivity extends ComponentActivity {
             reviewing = tutorialStep >= 1 && tutorialStep <= 4;
             showingTrash = tutorialStep >= 7 && tutorialStep <= 11;
             trashSelecting = tutorialStep >= 8 && tutorialStep <= TUTORIAL_RESTORE;
-            showingSettings = false; showingThemes = tutorialStep >= 13 && tutorialStep <= 15;
+            showingShop = false; showingSettings = false; showingThemes = tutorialStep >= 13 && tutorialStep <= 15;
             if (tutorialStep == TUTORIAL_THEME_TAB) { themeCategory = 0; themeAvailability = 0; themeQuery = ""; themeSearchOpen = false; }
             if (tutorialStep == TUTORIAL_THEME_PICK) { themeCategory = 2; themeAvailability = 0; themeQuery = ""; }
             int preview = getPreferences(MODE_PRIVATE).getInt("tutorial_suggested_theme", -1);
@@ -1036,11 +1041,14 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void renderContent() {
+        dismissTip();
         if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
         if (updateReviewPage()) return;
         stopPhotoIdle();
+        if (tokenSlot != null) { tokenSlot.dispose(); tokenSlot = null; }
         reviewPage = null;
         clearSwipePreview();
+        displayPreview=null;displayPreviewImage=null;radioTrackLabel=null;
         rememberScroll();
         LinearLayout previousRoot = root;
         boolean transition = animateThemeChange;
@@ -1073,12 +1081,13 @@ public class MainActivity extends ComponentActivity {
         }
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        boolean swipeOverflow = reviewing && !showingSettings && !showingThemes && !showingTrash;
+        boolean swipeOverflow = reviewing && !showingShop && !showingSettings && !showingThemes && !showingTrash;
         root.setClipChildren(!swipeOverflow);
         root.setClipToPadding(!swipeOverflow);
         applyContentInsets();
         host.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        if (showingThemes) themesScreen();
+        if (showingShop) shopScreen();
+        else if (showingThemes) themesScreen();
         else if (showingSettings) settingsScreen();
         else if (tutorialStep < 0 && !hasAccess()) intro();
         else if (tutorialStep < 0 && loading && photos.isEmpty()) {
@@ -1088,7 +1097,7 @@ public class MainActivity extends ComponentActivity {
         else if (reviewing && selectedMonth != null) reviewScreen();
         else if (selectedYear != -1) monthsScreen();
         else yearsScreen();
-        if (!showingThemes && !showingSettings && !showingTrash && !reviewing && selectedYear == -1)
+        if (!showingShop && !showingThemes && !showingSettings && !showingTrash && !reviewing && selectedYear == -1)
             addVersionLabel();
         if (previousRoot != null) {
             LinearLayout nextRoot = root;
@@ -1108,7 +1117,7 @@ public class MainActivity extends ComponentActivity {
 
     private void showRadioTrack(String title) {
         if (isDestroyed() || host == null || tutorialStep >= 0) return;
-        if (radioTrackLabel != null) radioTrackLabel.setText("Now playing · " + title);
+        if (radioTrackLabel != null) radioTrackLabel.setText(title);
         clearRadioBubble();
         TextView bubble = new TextView(this);
         bubble.setText("♫  " + title + "\nD.G.S. Radio");
@@ -1182,7 +1191,7 @@ public class MainActivity extends ComponentActivity {
     /** Update the existing review page, including Undo, without restarting the world or layout. */
     private boolean updateReviewPage() {
         ReviewPage page = reviewPage;
-        if (tutorialStep >= 0 || page == null || page.content != root || !reviewing || showingSettings || showingThemes || showingTrash
+        if (tutorialStep >= 0 || page == null || page.content != root || !reviewing || showingShop || showingSettings || showingThemes || showingTrash
                 || !hasAccess() || page.theme != themeChoice || page.full != fullScreenReview
                 || !page.month.equals(selectedMonth)) return false;
         List<Photo> month = monthPhotos();
@@ -1240,12 +1249,12 @@ public class MainActivity extends ComponentActivity {
         spacer(10);
         label("A calmer way to clear your camera roll.", 18, MUTED, false);
         spacer(34);
-        label("Browse by year and month. Swipe right to keep, left to move to Trash. Exact copies get a Duplicate bubble.", 16, INK, false);
+        
         spacer(32);
         button(root, "Choose photo access", GREEN, Color.WHITE, this::requestAccess);
         button(root, "Privacy policy", PANEL, INK, () -> accounts.showPrivacy());
         spacer(18);
-        label("Photo access is your choice. Manage media is optional.", 13, MUTED, false);
+        
         button(root, "Account & settings", PANEL, INK, () -> { showingSettings = true; render(); });
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         while (root.getChildCount() > 0) { View child = root.getChildAt(0); root.removeView(child); body.addView(child); }
@@ -1260,70 +1269,71 @@ public class MainActivity extends ComponentActivity {
         TextView titleView = label(title, 32, INK, true);
         spacer(5);
         headingSubtitle = label(subtitle, 15, MUTED, false);
+        if (subtitle.isEmpty()) headingSubtitle.setVisibility(View.GONE);
         spacer(21);
         return titleView;
     }
 
-    private void yearsScreen() {
-        LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(64)));
-        topAction(top, ICON_THEMES, "Themes", GREEN, "Themes and animation settings",
-                () -> { themeAnimationsOpen = false; showingThemes = true; render(); });
-        topAction(top, ICON_FEEDBACK, "Report a bug", GREEN, "Feedback: suggest a theme, suggest a feature, or report a problem", this::showFeedbackMenu);
-        topAction(top, ICON_TRASH, "Trash", GOLD, "Recently trashed, " + ReviewNavigation.photoCount(trashEntries.size()),
-                () -> { showingTrash = true; render(); });
-        topAction(top, ICON_SETTINGS, "Settings", GREEN, "Options and sound settings",
-                () -> { showingSettings = true; render(); });
-        label(accounts == null ? "Your photos" : accounts.photosHeading(), 28, INK, true); spacer(13);
-        LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
-        statsToggle.setPadding(dp(16), dp(8), dp(16), dp(8)); statsToggle.setBackground(rounded(PANEL, 17));
-        root.addView(statsToggle, new LinearLayout.LayoutParams(-1, dp(54)));
-        TextView progressTitle = new TextView(this);
-        progressTitle.setText("✦  Level " + (ThemeProgression.level(xp)) + "  ·  " + (xp % 200) + "/200 XP");
-        progressTitle.setTextColor(INK); progressTitle.setTextSize(16); progressTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        statsToggle.addView(progressTitle, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView chevron = new TextView(this); chevron.setText(statsExpanded ? "Stats  ▴" : "Stats  ▾");
-        chevron.setTextColor(GREEN); chevron.setTextSize(14); statsToggle.addView(chevron);
-        statsToggle.setOnClickListener(v -> {
-            statsExpanded = !statsExpanded;
-            getPreferences(MODE_PRIVATE).edit().putBoolean("stats_expanded", statsExpanded).apply(); render();
-        });
-        if (statsExpanded) {
-            spacer(9); levelPanel(); spacer(10);
-            LinearLayout stats = new LinearLayout(this);
-            root.addView(stats, new LinearLayout.LayoutParams(-1, dp(80)));
-            statTile(stats, Integer.toString(keptCount), "Kept", GREEN);
-            statTile(stats, Integer.toString(trashedCount), "Trashed", RED);
-            statTile(stats, Integer.toString(restoredCount), "Restored", GOLD);
-        }
-        spacer(16);
-        if (tutorialStep < 0 && !canManage()) {
-            button(root, "Enable prompt-free Trash", PANEL, INK, this::requestMediaManagement);
-            spacer(10);
-        }
-        java.util.TreeSet<Integer> availableYears = new java.util.TreeSet<>(Collections.reverseOrder());
-        for (Photo photo : photos) availableYears.add(photo.year);
-        if (availableYears.isEmpty()) {
-            label("No photos available. Check photo access.", 17, MUTED, false); return;
-        }
-        if (!availableYears.contains(libraryYear)) libraryYear = availableYears.first();
-        ArrayList<Integer> years = new ArrayList<>(availableYears);
-        int position = years.indexOf(libraryYear);
-        LinearLayout yearRow = new LinearLayout(this); yearRow.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(yearRow, new LinearLayout.LayoutParams(-1, dp(52)));
-        Button older = button(yearRow, "‹", PANEL, INK, () -> { libraryYear = years.get(position + 1); render(); });
-        older.setLayoutParams(new LinearLayout.LayoutParams(dp(52), dp(48)));
-        older.setEnabled(position + 1 < years.size()); older.setContentDescription("Previous year");
-        TextView yearTitle = new TextView(this); yearTitle.setText(Integer.toString(libraryYear));
-        yearTitle.setTextSize(23); yearTitle.setTextColor(INK); yearTitle.setGravity(Gravity.CENTER);
-        yearTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD); readableText(yearTitle);
-        yearRow.addView(yearTitle, new LinearLayout.LayoutParams(0, -2, 1));
-        Button newer = button(yearRow, "›", PANEL, INK, () -> { libraryYear = years.get(position - 1); render(); });
-        newer.setLayoutParams(new LinearLayout.LayoutParams(dp(52), dp(48)));
-        newer.setEnabled(position > 0); newer.setContentDescription("Next year");
-        spacer(10); label("Your months", 21, INK, true); spacer(10);
-        addMonthLibrary(libraryYear, "library:" + libraryYear);
+    private void libraryHeader(String title) {
+        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView brand = studioText("✦  PHOTO SWEEP", 12, GREEN, true); brand.setLetterSpacing(.12f);
+        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        Button settings = button(header, "", PANEL, GREEN, () -> { showingSettings = true; render(); });
+        setButtonIcon(settings, "Settings", GREEN); settings.setContentDescription("Settings");
+        settings.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(52)));
+        label(title, 30, INK, true); spacer(14);
+        libraryQuickNav(); spacer(14);
+    }
 
+    private void libraryQuickNav() {
+        LinearLayout nav = new LinearLayout(this); root.addView(nav, new LinearLayout.LayoutParams(-1, dp(48)));
+        topAction(nav, ICON_THEMES, "Themes", GREEN, "Themes", () -> { showingThemes = true; themeAnimationsOpen = false; render(); });
+        topAction(nav, "", "Shop", GOLD, "Shop", this::showTokenWallet);
+        topAction(nav, ICON_TRASH, "Trash", GREEN, "Trash", () -> { showingTrash = true; render(); });
+    }
+
+    private void yearsScreen() {
+        libraryHeader(accounts == null ? "Your photos" : accounts.photosHeading());
+        LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
+        statsToggle.setPadding(dp(16), dp(12), dp(16), dp(12)); statsToggle.setBackground(themeButton(PANEL, 20));
+        root.addView(statsToggle, new LinearLayout.LayoutParams(-1, -2));
+        TextView status = studioText("✦  Level " + ThemeProgression.level(xp) + "  ·  " + (xp % 200) + "/200 XP", 15, INK, true);
+        statsToggle.addView(status, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView more = studioText(statsExpanded ? "Stats ▴" : "Stats ▾", 13, GREEN, false); statsToggle.addView(more);
+        statsToggle.setMinimumHeight(dp(56)); statsToggle.setFocusable(true);
+        statsToggle.setOnClickListener(v -> { statsExpanded = !statsExpanded; getPreferences(MODE_PRIVATE).edit().putBoolean("stats_expanded", statsExpanded).apply(); render(); });
+        if (statsExpanded) {
+            spacer(10); LinearLayout stats = new LinearLayout(this); root.addView(stats, new LinearLayout.LayoutParams(-1, dp(76)));
+            statTile(stats, Integer.toString(keptCount), "Kept", GREEN); statTile(stats, Integer.toString(trashedCount), "Trashed", RED); statTile(stats, Integer.toString(restoredCount), "Restored", GOLD);
+        }
+        spacer(18);
+        // The tutorial starts with a month card; the real library first opens a year.
+        if (tutorialStep >= 0) {
+            if (tutorialStep == 16) button(root, "Report a bug", PANEL, GREEN, this::showFeedbackMenu);
+            addMonthLibrary(2026, "tutorial-months"); return;
+        }
+        java.util.TreeSet<Integer> years = new java.util.TreeSet<>(Collections.reverseOrder());
+        for (Photo photo : photos) years.add(photo.year);
+        if (years.isEmpty()) { label("No photos available. Check photo access.", 17, MUTED, false); return; }
+        LinearLayout list = optionsList("years");
+        for (int year : years) {
+            Photo cover = null; int remaining = 0; java.util.HashSet<String> months = new java.util.HashSet<>();
+            for (Photo photo : photos) if (photo.year == year) {
+                if (cover == null) cover = photo; months.add(photo.month);
+                if (!reviewed.contains(Long.toString(photo.id))) remaining++;
+            }
+            LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setBackground(rounded(PANEL, 23)); card.setClipToOutline(true);
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, -2); cardLp.bottomMargin = dp(14); list.addView(card, cardLp);
+            ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.CENTER_CROP); image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            card.addView(image, new LinearLayout.LayoutParams(-1, dp(116))); loadMonthThumbnail(cover, image);
+            LinearLayout footer = new LinearLayout(this); footer.setGravity(Gravity.CENTER_VERTICAL); footer.setPadding(dp(18), dp(13), dp(18), dp(13)); card.addView(footer);
+            TextView name = studioText(Integer.toString(year), 25, INK, true); footer.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView count = studioText(months.size() + " months  ›", 14, GREEN, false); footer.addView(count);
+            card.setContentDescription(year + ", " + months.size() + " months, " + remaining + " left to review"); card.setFocusable(true);
+            card.setOnClickListener(v -> { selectedYear = year; libraryYear = year; render(); });
+        }
+        // Feedback stays in Settings, plus this tutorial-only target for the final step.
     }
 
     private void addMonthLibrary(int year, String scrollKey) {
@@ -1331,15 +1341,15 @@ public class MainActivity extends ComponentActivity {
         trackScroll(scroll, scrollKey);
         LinearLayout grid = new LinearLayout(this); grid.setOrientation(LinearLayout.VERTICAL); scroll.addView(grid);
         LinearLayout row = null; int count = 0;
-        for (Map.Entry<String, ArrayList<Photo>> entry : photosByMonth.entrySet()) {
-            List<Photo> monthPhotos = entry.getValue();
+        for (String monthKey : new java.util.TreeSet<>(photosByMonth.keySet()).descendingSet()) {
+            List<Photo> monthPhotos = photosByMonth.get(monthKey);
             if (monthPhotos.isEmpty() || monthPhotos.get(0).year != year) continue;
             if (count++ % 2 == 0) {
                 row = new LinearLayout(this); row.setBaselineAligned(false);
                 LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
                 rowLp.bottomMargin = dp(12); grid.addView(row, rowLp);
             }
-            String month = entry.getKey(); int remaining = 0;
+            String month = monthKey; int remaining = 0;
             Photo cover = monthPhotos.get(0);
             for (Photo photo : monthPhotos) if (!reviewed.contains(Long.toString(photo.id))) {
                 if (remaining == 0) cover = photo; remaining++;
@@ -1387,22 +1397,21 @@ public class MainActivity extends ComponentActivity {
 
     private void topAction(LinearLayout row, String symbol, String title, int color,
                            String description, Runnable action) {
-        LinearLayout button = new LinearLayout(this);
-        button.setOrientation(LinearLayout.VERTICAL); button.setGravity(Gravity.CENTER);
-        button.setBackground(themeButton(PANEL, 16));
-        button.setContentDescription(description); button.setFocusable(true);
-        TextView icon = new TextView(this); icon.setText(symbol); icon.setTextSize(23);
-        icon.setTextColor(color); icon.setGravity(Gravity.CENTER);
-        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        button.addView(icon, new LinearLayout.LayoutParams(-1, dp(29)));
-        TextView name = new TextView(this); name.setText(title); name.setTextSize(11);
-        name.setTextColor(color); name.setGravity(Gravity.CENTER); name.setMaxLines(2);
-        name.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        button.addView(name, new LinearLayout.LayoutParams(-1, -2));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(58), 1);
-        if (row.getChildCount() > 0) lp.leftMargin = dp(7); row.addView(button, lp);
-        tutorialBind(button, title);
-        button.setOnClickListener(v -> tutorialClick(title, action));
+        LinearLayout control = new LinearLayout(this); control.setGravity(Gravity.CENTER);
+        control.setPadding(dp(8), 0, dp(8), 0); control.setBackground(themeButton(PANEL, 25));
+        control.setContentDescription(description); control.setFocusable(true);
+        if (title.equals("Months")) {
+            TextView arrow = studioText("←", 18, color, false); control.addView(arrow);
+        } else {
+            ImageView icon = new ImageView(this); icon.setImageDrawable(new StudioIcon(title, color));
+            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); control.addView(icon, new LinearLayout.LayoutParams(dp(20), dp(20)));
+        }
+        TextView name = studioText(title, 12, INK, true); name.setGravity(Gravity.CENTER); name.setMaxLines(2);
+        name.setPadding(dp(6), 0, 0, 0); name.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        control.addView(name);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(48), 1);
+        if (row.getChildCount() > 0) lp.leftMargin = dp(7); row.addView(control, lp);
+        tutorialBind(control, title); control.setOnClickListener(v -> tutorialClick(title, action));
     }
 
     private void levelPanel() {
@@ -1457,20 +1466,20 @@ public class MainActivity extends ComponentActivity {
     private void settingsScreen() {
         if (optionsSection == 0) {
             back("Photo Sweep", () -> { showingSettings = false; render(); });
-            heading("Settings", "Make Photo Sweep yours");
+            heading("Settings", "");
             LinearLayout list = optionsList("options");
             sectionTitle(list, "PERSONALIZE");
             settingsRow(list, ICON_THEMES, "Themes & animations", THEME_NAMES[themeChoice].split(" · ")[0], () -> {
                 showingSettings = false; showingThemes = true; themeAnimationsOpen = false; render();
             });
-            settingsRow(list, ICON_FEEDBACK, "Report a bug", "Theme ideas, feature suggestions and problems", this::showFeedbackMenu);
+            settingsRow(list, "", "Shop", "", this::showTokenWallet);
             settingsRow(list, "♫", "Audio & radio", "Swipe sounds, music and volume", () -> openOptionsSection(1));
             settingsRow(list, "◈", "Display & gestures", "Current theme's swipe effects and previews", () -> openOptionsSection(5));
             sectionTitle(list, "APP & ACCOUNT");
             settingsRow(list, "◎", "Account", "Manage sign-in, profile and account", () -> openOptionsSection(2));
             settingsRow(list, "◇", "Privacy & permissions", "Photo access and media controls", () -> openOptionsSection(3));
             settingsRow(list, "?", "Replay tutorial", "Practice with sample photos", this::startTutorial);
-            settingsRow(list, "?", "Help & support", "Tips, support and app information", this::showSupportDetails);
+            settingsRow(list, ICON_FEEDBACK, "Feedback", "", this::showFeedbackMenu);
             if (testingVisible) settingsRow(list, ICON_SETTINGS, "Testing & progress", "Admin preview and local reset", () -> openOptionsSection(4));
             TextView version = new TextView(this); version.setText("Photo Sweep · " + BuildConfig.VERSION_NAME);
             version.setTextColor(MUTED); version.setTextSize(13); version.setGravity(Gravity.CENTER);
@@ -1484,7 +1493,7 @@ public class MainActivity extends ComponentActivity {
         String[] titles = {"", "Audio & radio", "Account & support", "Privacy & permissions", "Testing & progress", "Display & gestures"};
         if (optionsSection < 0 || optionsSection >= titles.length) { optionsSection = 0; render(); return; }
         back("Settings", () -> { optionsSection = 0; render(); });
-        heading(titles[optionsSection], "Photo Sweep options");
+        heading(titles[optionsSection], "");
         LinearLayout list = optionsList("options:" + optionsSection);
         switch (optionsSection) {
             case 1: addAudioOptions(list); break;
@@ -1497,68 +1506,41 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void themesScreen() {
-        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(header, new LinearLayout.LayoutParams(-1, dp(54)));
-        Button backButton = button(header, "←", PANEL, INK, () -> {
-            if (themeAnimationsOpen) themeAnimationsOpen = false; else showingThemes = false;
+        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); root.addView(header, new LinearLayout.LayoutParams(-1, dp(52)));
+        String backLabel = reviewing ? "Photos" : "Photo Sweep";
+        Button goBack = button(header, "←", PANEL, INK, () -> {
+            if (themeAnimationsOpen) themeAnimationsOpen = false; else if (themeCategory != 0 && tutorialStep < 0) themeCategory = 0; else showingThemes = false;
             render();
         });
-        backButton.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(48)));
-        String backLabel = reviewing ? "Photos" : "Photo Sweep";
-        tutorialBind(backButton, backLabel); backButton.setContentDescription("Back to " + backLabel);
-        backButton.setOnClickListener(v -> tutorialClick(backLabel, () -> {
-            if (themeAnimationsOpen) themeAnimationsOpen = false; else showingThemes = false;
-            render();
-        }));
-        TextView title = new TextView(this); title.setText("Themes"); title.setTextSize(26);
-        title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        title.setPadding(dp(12), 0, 0, 0); header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        Button more = button(header, "⋯", PANEL, INK, this::showThemeMenu);
-        LinearLayout.LayoutParams moreLp = new LinearLayout.LayoutParams(dp(44), dp(48)); moreLp.rightMargin = dp(7); more.setLayoutParams(moreLp);
-        more.setContentDescription("More theme options: search, swipe settings and feedback");
-        Button settings = button(header, ICON_SETTINGS, PANEL, GREEN, () -> { showingThemes = false; showingSettings = true; render(); });
-        settings.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(48))); settings.setContentDescription("Settings");
-        spacer(10);
-        if (themeAnimationsOpen) {
-            LinearLayout controls = optionsList("theme-animations"); addSwipeControls(controls); return;
+        goBack.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48))); goBack.setContentDescription("Back to " + backLabel); tutorialBind(goBack, backLabel);
+        goBack.setOnClickListener(v -> tutorialClick(backLabel, () -> { if(themeAnimationsOpen)themeAnimationsOpen=false;else if(themeCategory!=0&&tutorialStep<0)themeCategory=0;else showingThemes=false;render(); }));
+        TextView title = studioText(themeCategory == 0 ? "Themes" : THEME_CATEGORIES[themeCategory], 24, INK, true); title.setPadding(dp(12),0,dp(8),0);
+        header.addView(title, new LinearLayout.LayoutParams(0,-2,1));
+        Button shop = button(header, "Shop", PANEL, GOLD, this::showTokenWallet); shop.setTextSize(13); shop.setLayoutParams(new LinearLayout.LayoutParams(dp(86),dp(48))); setButtonIcon(shop,"Shop",GOLD);
+        spacer(14);
+        if (themeAnimationsOpen) { LinearLayout controls = optionsList("theme-animations"); addSwipeControls(controls); return; }
+        android.widget.EditText search = new android.widget.EditText(this); search.setSingleLine(true); search.setHint("Search themes"); search.setText(themeQuery);
+        search.setTextSize(15); search.setTextColor(INK); search.setHintTextColor(MUTED); search.setPadding(dp(16),0,dp(14),0); search.setBackground(rounded(PANEL,18));
+        root.addView(search, new LinearLayout.LayoutParams(-1,dp(48))); spacer(10);
+        LinearLayout tools = new LinearLayout(this); root.addView(tools, new LinearLayout.LayoutParams(-1,dp(48)));
+        Button all=button(tools,"All",themeAvailability==0?blend(PANEL,GREEN,.16f):PANEL,INK,()->{themeAvailability=0;themeCategory=0;themeQuery="";render();});
+        all.setTextSize(13);all.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));
+        Button owned=button(tools,"Owned",themeAvailability==1?blend(PANEL,GREEN,.16f):PANEL,INK,()->{themeAvailability=1;render();});
+        owned.setTextSize(13);LinearLayout.LayoutParams ownLp=new LinearLayout.LayoutParams(0,dp(48),1);ownLp.setMargins(dp(7),0,dp(7),0);owned.setLayoutParams(ownLp);
+        Button filters=button(tools,"Filters ▾",PANEL,GREEN,this::showThemeFilters);filters.setTextSize(13);filters.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));
+        if (tutorialStep == TUTORIAL_THEME_TAB) {
+            spacer(10); Button choose=button(root,"Choose a scene",PANEL,GREEN,()->{});tutorialBind(choose,"Tier 2");
+            choose.setOnClickListener(v->tutorialClick("Tier 2",()->{themeCategory=2;render();}));
+        } else if (themeCategory != 0 && tutorialStep < 0) {
+            spacer(6); Button collections=button(root,"Collections ▾",PANEL,MUTED,this::chooseThemeCategory);collections.setTextSize(13);collections.setHeight(dp(48));
         }
-        int level = ThemeProgression.level(xp);
-        LinearLayout progress = new LinearLayout(this); progress.setOrientation(LinearLayout.VERTICAL);
-        progress.setPadding(dp(14), dp(10), dp(14), dp(10)); progress.setBackground(rounded(PANEL, 15));
-        progress.setContentDescription("Level " + level + ". " + (xp % 200) + " of 200 XP. Open tokens and spins"); progress.setFocusable(true);
-        root.addView(progress, new LinearLayout.LayoutParams(-1, -2));
-        TextView status = new TextView(this); status.setText("✦ Level " + level + "  ·  " + (xp % 200) + "/200 XP  ›");
-        status.setTextSize(16); status.setTextColor(INK); status.setTypeface(Typeface.DEFAULT, Typeface.BOLD); progress.addView(status);
-        TextView next = new TextView(this);
-        next.setText(pendingSpins + " spins  ·  " + silverTokens + " Silver  ·  " + goldTokens + " Gold  ·  " + diamondTokens + " Diamond");
-        next.setTextColor(MUTED); next.setTextSize(13); next.setPadding(0, dp(4), 0, 0); progress.addView(next);
-        progress.setOnClickListener(v -> { if (tutorialStep < 0) showThemeLevels(); });
-        spacer(10);
-        LinearLayout tools = new LinearLayout(this); root.addView(tools, new LinearLayout.LayoutParams(-1, dp(48)));
-        Button collection = button(tools, THEME_CATEGORIES[Math.max(0, Math.min(5, themeCategory))] + "  ▾", PANEL, INK, this::chooseThemeCategory);
-        LinearLayout.LayoutParams categoryLp = new LinearLayout.LayoutParams(0, dp(48), 1); categoryLp.rightMargin = dp(9); collection.setLayoutParams(categoryLp);
-        collection.setContentDescription("Choose theme collection"); tutorialBind(collection, "Tier 2");
-        collection.setOnClickListener(v -> { if (tutorialStep < 0 || tutorialStep == TUTORIAL_THEME_TAB) chooseThemeCategory(); });
-        Button filters = button(tools, themeAvailability == 1 ? "✓ Unlocked" : themeAvailability == 2 ? "Locked" : "Filters", PANEL, GREEN, this::showThemeFilters);
-        filters.setLayoutParams(new LinearLayout.LayoutParams(-2, dp(48))); filters.setContentDescription("Filter themes by availability");
-        if (themeSearchOpen) {
-            spacer(9);
-            android.widget.EditText search = new android.widget.EditText(this); search.setSingleLine(true);
-            search.setHint("Search themes"); search.setText(themeQuery); search.setTextSize(15); search.setTextColor(INK); search.setHintTextColor(MUTED);
-            search.setPadding(dp(14), 0, dp(14), 0); search.setBackground(rounded(PANEL, 14));
-            root.addView(search, new LinearLayout.LayoutParams(-1, dp(48)));
-            search.addTextChangedListener(new android.text.TextWatcher() {
-                public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
-                public void onTextChanged(CharSequence text, int start, int before, int count) {
-                    themeQuery = text.toString();
-                    if (themeGrid != null) { themeGrid.removeAllViews(); addThemeOptions(themeGrid); }
-                    if (activeScroll != null) activeScroll.scrollTo(0, 0);
-                }
-                public void afterTextChanged(android.text.Editable text) { }
-            });
-        }
-        spacer(9);
-        themeGrid = optionsList("themes-library"); tutorialBind((View) themeGrid.getParent(), "theme-choice"); addThemeOptions(themeGrid);
+        spacer(12); themeGrid = optionsList("themes-library:"+themeCategory+":"+themeAvailability);
+        tutorialBind((View)themeGrid.getParent(),"theme-choice");addThemeOptions(themeGrid);
+        search.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence text,int start,int count,int after){}
+            public void onTextChanged(CharSequence text,int start,int before,int count){themeQuery=text.toString();if(themeGrid!=null){themeGrid.removeAllViews();addThemeOptions(themeGrid);}}
+            public void afterTextChanged(android.text.Editable text){}
+        });
     }
 
     private LinearLayout themeGrid;
@@ -1644,82 +1626,71 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void showTokenWallet() {
-        if (tutorialStep>=0 || (tokenWalletDialog!=null && tokenWalletDialog.isShowing())) return;
-        LinearLayout choices = new LinearLayout(this); choices.setOrientation(LinearLayout.VERTICAL);
-        choices.setPadding(dp(18),0,dp(18),dp(10));
-        TextView balance = new TextView(this); balance.setText(walletSummary()); balance.setTextSize(14); balance.setTextColor(INK);
-        balance.setPadding(0,dp(4),0,dp(12)); choices.addView(balance);
-        TokenSlotView slots = new TokenSlotView(this,BG,PANEL,GREEN,INK,reducedMotion); tokenSlot=slots;
-        slots.showResult(lastSpinReward>=0?lastSpinReward:0);
-        choices.addView(slots,new LinearLayout.LayoutParams(-1,dp(184)));
-        TextView outcome = new TextView(this); outcome.setTextSize(18); outcome.setTextColor(GREEN);
-        outcome.setTypeface(Typeface.DEFAULT_BOLD);outcome.setGravity(Gravity.CENTER);outcome.setPadding(0,dp(12),0,dp(5));
-        outcome.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        outcome.setText(lastSpinReward>=0?"Last spin · +" + ThemeProgression.rewardLabel(lastSpinReward):"Your next theme starts here");choices.addView(outcome);
-        TextView note = new TextView(this);note.setText("One reward per spin · Tokens never expire");note.setTextSize(12);note.setTextColor(MUTED);
-        note.setGravity(Gravity.CENTER);note.setPadding(0,0,0,dp(9));choices.addView(note);
-        Button spin=button(choices,"Spin",PANEL,GREEN,()->{});
-        TextView odds=new TextView(this);odds.setTextSize(12);odds.setTextColor(MUTED);odds.setPadding(0,dp(9),0,dp(9));choices.addView(odds);
-        android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(choices);
-        android.app.AlertDialog dialog = themedFeedbackDialog("Theme tokens").setView(scroll).setNegativeButton("Done",null).create();
-        LinearLayout exchanges = new LinearLayout(this); choices.addView(exchanges,new LinearLayout.LayoutParams(-1,-2));
-        Button gold=button(exchanges,"3 Silver → Gold",PANEL,GOLD,()->{
-            if(silverTokens<3)return;silverTokens-=3;goldTokens++;saveThemeProgression();dialog.dismiss();showTokenWallet();
-        });
-        LinearLayout.LayoutParams goldLp=new LinearLayout.LayoutParams(0,dp(56),1);goldLp.rightMargin=dp(6);gold.setLayoutParams(goldLp);gold.setTextSize(12);
-        Button diamond=button(exchanges,"3 Gold → Diamond",PANEL,GOLD,()->{
-            if(goldTokens<3)return;goldTokens-=3;diamondTokens++;saveThemeProgression();dialog.dismiss();showTokenWallet();
-        });diamond.setLayoutParams(new LinearLayout.LayoutParams(0,dp(56),1));diamond.setTextSize(12);
-        TextView guide=new TextView(this);guide.setText("Gold → choose Tier 2 · Diamond → choose Tier 3\n200 XP per level = 1 spin\n5 XP per new photo · +10 XP every 10 photos");
-        guide.setTextSize(12);guide.setTextColor(MUTED);guide.setPadding(0,dp(10),0,0);choices.addView(guide);
+        if (tutorialStep >= 0) return;
+        showingShop = true; render();
+    }
+
+    private void walletTiles(LinearLayout parent, TextView[] values) {
+        LinearLayout row = new LinearLayout(this); parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        String[] names={"Silver","Gold","Diamonds"}; int[] colors={0xffd9e4f0,GOLD,0xff9defff};
+        for(int i=0;i<3;i++) {
+            LinearLayout tile=new LinearLayout(this);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.CENTER);tile.setPadding(dp(5),dp(13),dp(5),dp(12));tile.setBackground(rounded(PANEL,19));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);if(i>0)lp.leftMargin=dp(8);row.addView(tile,lp);
+            ImageView icon=new ImageView(this);icon.setImageDrawable(new StudioIcon(names[i],colors[i]));icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);tile.addView(icon,new LinearLayout.LayoutParams(dp(32),dp(32)));
+            values[i]=studioText("0",23,INK,true);values[i].setPadding(0,dp(5),0,0);tile.addView(values[i]);tile.addView(studioText(names[i],12,MUTED,false));
+        }
+    }
+
+    private void shopScreen() {
+        back("Back", () -> { showingShop=false; render(); });
+        label("Shop",32,INK,true);spacer(16);
+        LinearLayout choices=optionsList("shop");
+        TextView[] values=new TextView[3];walletTiles(choices,values);
+        Button browse=button(choices,"Browse themes  →",GREEN,BG,()->{showingShop=false;showingThemes=true;showingSettings=false;themeCategory=0;themeAvailability=0;themeQuery="";render();});
+        LinearLayout.LayoutParams browseLp=(LinearLayout.LayoutParams)browse.getLayoutParams();browseLp.topMargin=dp(15);browseLp.bottomMargin=dp(18);browse.setLayoutParams(browseLp);
+        LinearLayout machine=new LinearLayout(this);machine.setOrientation(LinearLayout.VERTICAL);machine.setPadding(dp(15),dp(16),dp(15),dp(15));
+        GradientDrawable frame=rounded(PANEL,24);frame.setStroke(dp(1),blend(PANEL,GOLD,.7f));machine.setBackground(frame);choices.addView(machine);
+        TextView title=studioText("✦  THEME SPIN  ✦",13,GOLD,true);title.setLetterSpacing(.14f);title.setGravity(Gravity.CENTER);title.setPadding(0,0,0,dp(12));machine.addView(title);
+        TokenSlotView slots=new TokenSlotView(this,BG,PANEL,GOLD,INK,reducedMotion);tokenSlot=slots;slots.showResult(lastSpinReward>=0?lastSpinReward:0);machine.addView(slots,new LinearLayout.LayoutParams(-1,dp(192)));
+        TextView outcome=studioText(lastSpinReward>=0?"+"+ThemeProgression.rewardLabel(lastSpinReward):"",17,INK,true);outcome.setGravity(Gravity.CENTER);outcome.setPadding(0,dp(13),0,dp(10));outcome.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);machine.addView(outcome);
+        Button spin=button(machine,"Spin",GOLD,BG,()->{});
+        TextView odds=studioText("View spin odds",13,MUTED,false);odds.setGravity(Gravity.CENTER);odds.setMinHeight(dp(48));odds.setFocusable(true);machine.addView(odds);
+        odds.setOnClickListener(v->showThemedFeedbackDialog(themedFeedbackDialog("Spin odds").setMessage(spinOdds()).setPositiveButton("Done",null).create()));
+        sectionTitle(choices,"EXCHANGE");
+        Button gold=button(choices,"3 Silver  →  1 Gold",PANEL,INK,()->{if(silverTokens<3)return;silverTokens-=3;goldTokens++;saveThemeProgression();render();});
+        Button diamond=button(choices,"3 Gold  →  1 Diamond",PANEL,INK,()->{if(goldTokens<3)return;goldTokens-=3;diamondTokens++;saveThemeProgression();render();});
+        ((LinearLayout.LayoutParams)diamond.getLayoutParams()).topMargin=dp(8);
         boolean[] spinning={false};
         Runnable refresh=()->{
-            balance.setText(walletSummary());odds.setText(spinOdds());
-            spin.setEnabled(!spinning[0] && pendingSpins>0);
-            spin.setText(spinning[0]?"Spinning…":pendingSpins>0?"Spin · " + pendingSpins + " left":"Earn a level for another spin");
-            gold.setEnabled(!spinning[0] && silverTokens>=3);diamond.setEnabled(!spinning[0] && goldTokens>=3);
+            values[0].setText(Integer.toString(silverTokens));values[1].setText(Integer.toString(goldTokens));values[2].setText(Integer.toString(diamondTokens));
+            spin.setEnabled(!spinning[0]&&pendingSpins>0);spin.setAlpha(spin.isEnabled()?1f:.55f);
+            spin.setText(spinning[0]?"Spinning…":pendingSpins>0?"Spin  ·  "+pendingSpins+" left":"No spins available");
+            gold.setEnabled(!spinning[0]&&silverTokens>=3);diamond.setEnabled(!spinning[0]&&goldTokens>=3);gold.setAlpha(gold.isEnabled()?1f:.5f);diamond.setAlpha(diamond.isEnabled()?1f:.5f);
         };
         spin.setOnClickListener(v->{
-            if(spinning[0] || pendingSpins<=0)return;
-            spinning[0]=true;
-            int result=ThemeProgression.roll(rewardRandom.nextInt(100));
-            pendingSpins--;
-            int kind=ThemeProgression.tokenKind(result),count=ThemeProgression.tokenCount(result);
-            if(kind==2)diamondTokens+=count;else if(kind==1)goldTokens+=count;else silverTokens+=count;
-            lastSpinReward=result;
-            // Bank exactly once before starting presentation. Closing, pausing or rotating cannot re-roll it.
-            saveThemeProgression();
-            spin.setEnabled(false);spin.setText("Spinning…");gold.setEnabled(false);diamond.setEnabled(false);
-            outcome.setText("Spinning…");outcome.setTextColor(INK);
+            if(spinning[0]||pendingSpins<=0)return;spinning[0]=true;int result=ThemeProgression.roll(rewardRandom.nextInt(100));pendingSpins--;
+            int kind=ThemeProgression.tokenKind(result),count=ThemeProgression.tokenCount(result);if(kind==2)diamondTokens+=count;else if(kind==1)goldTokens+=count;else silverTokens+=count;lastSpinReward=result;
+            // Persist the single reward before presentation; navigation cannot re-roll or repay it.
+            saveThemeProgression();spin.setEnabled(false);spin.setText("Spinning…");gold.setEnabled(false);diamond.setEnabled(false);outcome.setText(" ");
             slots.spin(result,new TokenSlotView.Listener(){
-                public void onReelStop(){
-                    if(dialog.isShowing() && dialog.getWindow()!=null && dialog.getWindow().getDecorView().hasWindowFocus())playSound(R.raw.bubble_tap,.055f);
-                }
-                public void onComplete(boolean animated){
-                    spinning[0]=false;
-                    if(tokenWalletDialog!=dialog || isDestroyed())return;
-                    outcome.setText("+" + ThemeProgression.rewardLabel(result) + " · Saved");outcome.setTextColor(ThemeProgression.tokenKind(result)==1?GOLD:GREEN);refresh.run();
-                    if(animated && dialog.isShowing() && dialog.getWindow()!=null && dialog.getWindow().getDecorView().hasWindowFocus())playSound(R.raw.bubble_keep,.16f);
-                }
+                public void onReelStop(){if(tokenSlot==slots&&getWindow().getDecorView().hasWindowFocus())playSound(R.raw.bubble_tap,.055f);}
+                public void onComplete(boolean animated){if(tokenSlot!=slots||isDestroyed())return;spinning[0]=false;outcome.setText("+"+ThemeProgression.rewardLabel(result));outcome.setTextColor(kind==1?GOLD:GREEN);refresh.run();if(animated&&getWindow().getDecorView().hasWindowFocus())playSound(R.raw.bubble_keep,.16f);}
             });
         });
-        dialog.setOnDismissListener(d->{
-            slots.dispose();
-            if(tokenWalletDialog==dialog){tokenWalletDialog=null;tokenSlot=null;}
-            if(!isFinishing() && !isDestroyed() && !isChangingConfigurations())render();
-        });
-        tokenWalletDialog=dialog;refresh.run();showThemedFeedbackDialog(dialog);
+        refresh.run();
+        onceTip("shop_spins","Each level earns a spin. Your tokens stay until you use them.");
     }
 
     private void purchaseTheme(int index) {
         if(themeUnlocked(index)){selectTheme(index);return;}
         boolean diamond=themeTier(index)==3;
-        if((diamond?diamondTokens:goldTokens)<=0){showTokenWallet();return;}
+        int cost=ThemeCatalog.cost(themeTier(index));
+        if((diamond?diamondTokens:goldTokens)<cost){showTokenWallet();return;}
         showThemedFeedbackDialog(themedFeedbackDialog("Unlock " + THEME_NAMES[index].split(" · ")[0] + "?")
-                .setMessage("Use 1 " + (diamond?"Diamond":"Gold") + " token. This theme stays yours.")
+                .setMessage("Use " + ThemeCatalog.price(themeTier(index)) + "?")
                 .setNegativeButton("Cancel",null).setPositiveButton("Unlock",(d,w)->{
                     if(ownedThemes.contains(Integer.toString(index)))return;
-                    if(diamond){if(diamondTokens<=0)return;diamondTokens--;}else{if(goldTokens<=0)return;goldTokens--;}
+                    if(diamond){if(diamondTokens<cost)return;diamondTokens-=cost;}else{if(goldTokens<cost)return;goldTokens-=cost;}
                     ownedThemes.add(Integer.toString(index));saveThemeProgression();selectTheme(index);
                 }).create());
     }
@@ -1736,7 +1707,17 @@ public class MainActivity extends ComponentActivity {
             }
             applyTheme(); animateThemeChange = true; render();
         });
-        if (adminMode) settingsRow(list, "✦", "Testing menu", "Add 5 levels and 5 earned spins per tap", this::showAdminTesting);
+        if (adminMode) {
+            settingSwitch(list,"Preview all themes","",getPreferences(MODE_PRIVATE).getBoolean("admin_preview_themes",true),value->{
+                getPreferences(MODE_PRIVATE).edit().putBoolean("admin_preview_themes",value).apply();
+                if(!themeUnlocked(themeChoice)){themeChoice=0;getPreferences(MODE_PRIVATE).edit().putInt("theme",0).apply();}applyTheme();render();
+            });
+            TextView balance=studioText(walletSummary(),16,INK,true);balance.setPadding(dp(12),dp(12),dp(12),dp(14));list.addView(balance);
+            button(list,"Give 5 levels · +5 spins",GREEN,BG,()->{
+                if(!adminMode)return;int before=ThemeProgression.level(xp);xp=ThemeProgression.addLevels(xp,5);pendingSpins+=ThemeProgression.level(xp)-before;saveThemeProgression();balance.setText(walletSummary());
+            });
+            Button shop=button(list,"Open Shop",PANEL,GOLD,this::showTokenWallet);((LinearLayout.LayoutParams)shop.getLayoutParams()).topMargin=dp(8);
+        }
         sectionTitle(list, "LOCAL PROGRESS");
         Button reset = new Button(this); reset.setText("Reset local progress"); reset.setTextColor(INK);
         reset.setBackground(rounded(PANEL, 12)); list.addView(reset, new LinearLayout.LayoutParams(-1, dp(52)));
@@ -1775,85 +1756,101 @@ public class MainActivity extends ComponentActivity {
             reducedMotion = value; getPreferences(MODE_PRIVATE).edit().putBoolean("reduced_motion", value).apply();
             renderedTheme = -1; render();
         });
+        displayPreview=new FrameLayout(this);displayPreview.setBackground(rounded(PANEL,22));displayPreview.setClipToOutline(true);
+        LinearLayout.LayoutParams previewLp=new LinearLayout.LayoutParams(-1,dp(176));previewLp.bottomMargin=dp(14);list.addView(displayPreview,previewLp);
+        displayPreviewImage=new ImageView(this);displayPreviewImage.setImageBitmap(tutorialPicture(-101));displayPreviewImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        FrameLayout.LayoutParams imageLp=new FrameLayout.LayoutParams(dp(150),dp(128),Gravity.CENTER);displayPreview.addView(displayPreviewImage,imageLp);
         addSwipeControls(list);
+        onceTip("gesture_zoom","Tap a photo for full screen, then pinch to zoom.");
+    }
+
+    private FrameLayout displayPreview;
+    private ImageView displayPreviewImage;
+    private void showReviewMenu() {
+        showThemedFeedbackDialog(themedFeedbackDialog("Photo options").setItems(new String[]{"Themes","Shop","Settings","Feedback"},(dialog,which)->{
+            if(which==0){showingThemes=true;themeAnimationsOpen=false;render();}else if(which==1)showTokenWallet();else if(which==2){showingSettings=true;optionsSection=0;render();}else showFeedbackMenu();
+        }).setNegativeButton("Close",null).create());
+    }
+
+    private boolean matchesTheme(int index, String query) {
+        if (!PlayPolicy.themeAllowed(index) || !ThemeCatalog.visible(themeUnlocked(index),themeAvailability)) return false;
+        if (tutorialStep == TUTORIAL_THEME_PICK && themeTier(index) != 2) return false;
+        if (tutorialStep != TUTORIAL_THEME_PICK && themeCategory != 0 && ThemeCatalog.collection(index) != themeCategory) return false;
+        int country=countryCollection(index),holiday=HolidayThemes.collection(index);
+        String searchable=THEME_NAMES[index]+" "+(hasThemeMotion(index)?"animated":"still")+" "+themeAccessLabel(index);
+        if(country>=0)searchable+=" "+COUNTRY_NAMES[country]+" "+COUNTRY_SCENES[country]+" "+COUNTRY_MOTIONS[country];
+        if(holiday>=0)searchable+=" "+HolidayThemes.SEARCH[holiday]+" "+HolidayThemes.SCENES[holiday];
+        return searchable.toLowerCase(Locale.ROOT).contains(query);
     }
 
     private void addThemeOptions(LinearLayout list) {
-        String query = themeQuery.trim().toLowerCase(Locale.ROOT);
-        LinearLayout row = null; int count = 0;
-        for (int index = 0; index < THEME_NAMES.length; index++) {
-            if (!PlayPolicy.themeAllowed(index)) continue;
-            int country = countryCollection(index);
-            int holiday = HolidayThemes.collection(index);
-            if (themeCategory == 5 && holiday < 0) continue;
-            if (themeCategory == 4 && country < 0) continue;
-            if (themeAvailability == 1 && !themeUnlocked(index)) continue;
-            if (themeAvailability == 2 && themeUnlocked(index)) continue;
-            if (tutorialStep == TUTORIAL_THEME_PICK && themeTier(index) != 2) continue;
-            if (tutorialStep != TUTORIAL_THEME_PICK && themeCategory >= 1 && themeCategory <= 3
-                    && themeTier(index) != themeCategory) continue;
-            String searchable = holiday >= 0 ? (holiday == 1 ? "holiday " : "federal holiday ") + HolidayThemes.SEARCH[holiday] + " " + HolidayThemes.SCENES[holiday] + " " + HolidayThemes.MOTIONS[holiday]
-                    : country < 0 ? THEME_NAMES[index]
-                    : THEME_NAMES[COUNTRY_STILL_THEMES[country]] + " "
-                    + THEME_NAMES[COUNTRY_ANIMATED_THEMES[country]] + " "
-                    + COUNTRY_SCENES[country] + " " + COUNTRY_MOTIONS[country];
-            if (!searchable.toLowerCase(Locale.ROOT).contains(query)) continue;
-            if (count++ % 2 == 0) {
-                row = new LinearLayout(this); row.setBaselineAligned(false);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-                lp.bottomMargin = dp(10); list.addView(row, lp);
-            }
-            addThemePreview(row, index, themeUnlocked(index));
+        String query=themeQuery.trim().toLowerCase(Locale.ROOT);
+        if(themeCategory==0&&themeAvailability==0&&query.isEmpty()&&tutorialStep<0){addCollectionFolders(list);return;}
+        LinearLayout row=null;int count=0;Set<String> groups=new HashSet<>();
+        for(int index=0;index<THEME_NAMES.length;index++) {
+            if(!matchesTheme(index,query))continue;
+            int country=countryCollection(index),holiday=HolidayThemes.collection(index);
+            String group=country>=0?"country:"+country:holiday>=0?"holiday:"+holiday:"theme:"+index;
+            if(tutorialStep!=TUTORIAL_THEME_PICK&&!groups.add(group))continue;
+            if(count++%2==0){row=new LinearLayout(this);row.setBaselineAligned(false);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(12);list.addView(row,lp);}
+            if(tutorialStep!=TUTORIAL_THEME_PICK&&(country>=0||holiday>=0)) {
+                int still=country>=0?COUNTRY_STILL_THEMES[country]:HolidayThemes.still(holiday);
+                int animated=country>=0?COUNTRY_ANIMATED_THEMES[country]:still+1;
+                addVariantCard(row,country>=0?COUNTRY_NAMES[country]:HolidayThemes.NAMES[holiday],still,animated,query);
+            } else addThemePreview(row,index,themeUnlocked(index));
         }
-        if (count == 0) {
-            TextView empty = new TextView(this); empty.setText("No matching themes");
-            empty.setTextColor(INK); readableText(empty); list.addView(empty);
-        } else if (count % 2 != 0) row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        if(count==0){TextView empty=studioText("No matching themes",16,MUTED,false);empty.setPadding(0,dp(20),0,0);list.addView(empty);}
+        else if(count%2!=0)row.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
     }
 
-    private void addThemePreview(LinearLayout row, int index, boolean unlocked) {
-        LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(8), dp(8), dp(8), dp(10));
-        GradientDrawable frame = rounded(PANEL, 16);
-        frame.setStroke(dp(themeChoice == index ? 2 : 1), themeChoice == index ? GREEN : MUTED);
-        card.setBackground(frame); card.setClipToOutline(true); card.setFocusable(true); card.setClickable(true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
-        if (row.getChildCount() == 0) lp.rightMargin = dp(8); row.addView(card, lp);
-        ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        image.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{THEME_COLORS[index][0], THEME_COLORS[index][2]}));
-        card.addView(image, new LinearLayout.LayoutParams(-1, dp(110)));
-        loadThemeThumbnail(index, image);
-        int country = countryCollection(index);
-        int holiday = HolidayThemes.collection(index);
-        String[] parts = THEME_NAMES[index].split(" · ", 2);
-        TextView title = new TextView(this);
-        title.setText(holiday >= 0 ? (themeChoice == index ? "✓ " : "") + HolidayThemes.SYMBOLS[holiday] + " " + HolidayThemes.NAMES[holiday] : (themeChoice == index ? "✓ " : "") + (country >= 0 ? COUNTRY_FLAGS[country] + " " : "") + (country >= 0 ? COUNTRY_NAMES[country] : parts[0]));
-        title.setTextSize(15); title.setTextColor(INK); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        title.setPadding(0, dp(7), 0, dp(3)); title.setMinLines(2); card.addView(title);
-        TextView detail = new TextView(this);
-        detail.setText(holiday >= 0 ? HolidayThemes.SCENES[holiday] : country >= 0 ? COUNTRY_SCENES[country] : (parts.length > 1 ? parts[1] : "")); detail.setTextSize(12); detail.setTextColor(MUTED);
-        detail.setMinLines(2); card.addView(detail);
-        TextView badge = new TextView(this); badge.setTextSize(12); badge.setTextColor(unlocked ? GREEN : MUTED);
-        badge.setText("Tier " + themeTier(index) + " · " + (hasThemeMotion(index) ? "Animated" : isColorTheme(index) ? "Color" : "Still scene"));
-        card.addView(badge);
-        TextView availability = new TextView(this); availability.setTextSize(12);
-        availability.setText(themeAccessLabel(index)); availability.setTextColor(unlocked ? GREEN : GOLD);
-        availability.setMinLines(2); availability.setPadding(0, dp(5), 0, 0); card.addView(availability);
-        card.setContentDescription(THEME_NAMES[index] + ", " + badge.getText() + ". " + availability.getText() + (themeChoice == index ? ", selected" : ""));
-        card.setOnClickListener(v -> {
-            if (tutorialStep >= 0) { if (tutorialStep == TUTORIAL_THEME_PICK) selectTheme(index); return; }
-            showThemeDetails(index);
-        });
+    private LinearLayout themeCard(LinearLayout row,int preview,String title) {
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setBackground(rounded(PANEL,20));card.setClipToOutline(true);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);if(row.getChildCount()==0)lp.rightMargin=dp(10);row.addView(card,lp);
+        ImageView image=new ImageView(this);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{THEME_COLORS[preview][0],THEME_COLORS[preview][2]}));
+        image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);card.addView(image,new LinearLayout.LayoutParams(-1,dp(120)));loadThemeThumbnail(preview,image);
+        TextView name=studioText(title,15,INK,true);name.setPadding(dp(12),dp(11),dp(10),dp(6));name.setMinLines(2);card.addView(name);
+        return card;
+    }
+
+    private void addCollectionFolders(LinearLayout list) {
+        int[] previews={0,26,22,44,62,20};
+        LinearLayout row=null;
+        for(int collection=1;collection<=6;collection++) {
+            if(collection%2==1){row=new LinearLayout(this);row.setBaselineAligned(false);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(12);list.addView(row,lp);}
+            final int chosen=collection;
+            LinearLayout card=themeCard(row,previews[collection-1],THEME_CATEGORIES[collection]);
+            TextView status=studioText(collection==1?"Free  ›":"Browse  ›",12,collection==1?GREEN:MUTED,false);status.setPadding(dp(12),0,dp(12),dp(13));card.addView(status);
+            card.setFocusable(true);card.setContentDescription(THEME_CATEGORIES[collection]);card.setOnClickListener(v->{themeCategory=chosen;render();});
+        }
+    }
+
+    private void addVariantCard(LinearLayout row,String title,int still,int animated,String query) {
+        LinearLayout card=themeCard(row,themeChoice==animated?animated:still,title);
+        for(int index:new int[]{still,animated}) {
+            if(!matchesTheme(index,query))continue;
+            Button variant=button(card,(index==still?"Still":"Animated")+"\n"+themeAccessLabel(index),PANEL,themeUnlocked(index)?GREEN:GOLD,()->showThemeDetails(index));
+            variant.setTextSize(12);variant.setGravity(Gravity.CENTER_VERTICAL|Gravity.START);variant.setPadding(dp(12),0,dp(8),0);variant.setMinHeight(dp(48));variant.setMinimumHeight(dp(48));
+            variant.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(60)));variant.setContentDescription(title+", "+(index==still?"Still":"Animated")+", "+themeAccessLabel(index));
+        }
+        card.setPadding(0,0,0,dp(6));
+    }
+
+    private void addThemePreview(LinearLayout row,int index,boolean unlocked) {
+        LinearLayout card=themeCard(row,index,THEME_NAMES[index].split(" · ")[0]);
+        TextView type=studioText(hasThemeMotion(index)?"Animated":isColorTheme(index)?"Color":"Still scene",12,MUTED,false);type.setPadding(dp(12),0,dp(10),dp(6));card.addView(type);
+        TextView price=studioText(themeAccessLabel(index),13,unlocked?GREEN:GOLD,true);price.setPadding(dp(12),0,dp(10),dp(13));
+        if(!unlocked){StudioIcon icon=new StudioIcon(themeTier(index)==3?"Diamond":"Gold",themeTier(index)==3?0xff9defff:GOLD);icon.setBounds(0,0,dp(18),dp(18));price.setCompoundDrawables(icon,null,null,null);price.setCompoundDrawablePadding(dp(5));}
+        card.addView(price);card.setMinimumHeight(dp(48));card.setFocusable(true);card.setClickable(true);
+        card.setContentDescription(THEME_NAMES[index]+", "+type.getText()+", "+themeAccessLabel(index));
+        card.setOnClickListener(v->{if(tutorialStep>=0){if(tutorialStep==TUTORIAL_THEME_PICK)selectTheme(index);return;}showThemeDetails(index);});
     }
 
     private String themeAccessLabel(int index) {
         if (themeUnlocked(index)) {
-            if (getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index) return "✦ Tutorial reward · Unlocked";
-            return themeChoice == index ? "✓ Selected · Unlocked" : "✓ Unlocked";
+            if (getPreferences(MODE_PRIVATE).getInt("tutorial_reward_theme", -1) == index) return themeChoice == index ? "Selected" : "Owned";
+            return themeChoice == index ? "Selected" : themeTier(index)==1 ? "Free" : "Owned";
         }
-        return "1 " + (themeTier(index)==3?"Diamond":"Gold") + " token · Choose to unlock";
+        return ThemeCatalog.price(themeTier(index));
     }
 
     private void showThemeDetails(int index) {
@@ -1865,11 +1862,11 @@ public class MainActivity extends ComponentActivity {
         image.setContentDescription(THEME_NAMES[index] + " artwork preview");
         preview.addView(image, new LinearLayout.LayoutParams(-1, dp(180))); loadThemeThumbnail(index, image);
         TextView detail = new TextView(this); detail.setTextSize(15); detail.setTextColor(INK);
-        detail.setText("Tier " + themeTier(index) + " · " + (hasThemeMotion(index) ? "Animated" : isColorTheme(index) ? "Color" : "Still scene") + "\n" + themeAccessLabel(index));
+        detail.setText((hasThemeMotion(index) ? "Animated" : isColorTheme(index) ? "Color" : "Still scene") + "\n" + themeAccessLabel(index));
         detail.setPadding(0, dp(12), 0, dp(8)); preview.addView(detail);
         android.app.AlertDialog.Builder builder = themedFeedbackDialog(THEME_NAMES[index].split(" · ")[0]).setView(preview).setNegativeButton("Close", null);
         if (themeUnlocked(index)) builder.setPositiveButton("Use theme", (dialog, which) -> selectTheme(index));
-        else builder.setPositiveButton("Unlock · 1 " + (themeTier(index)==3?"Diamond":"Gold"), (dialog, which) -> purchaseTheme(index));
+        else builder.setPositiveButton("Unlock · " + ThemeCatalog.price(themeTier(index)), (dialog, which) -> purchaseTheme(index));
         showThemedFeedbackDialog(builder.create());
     }
 
@@ -1955,53 +1952,35 @@ public class MainActivity extends ComponentActivity {
             if (copy instanceof TextView && !(copy instanceof Button) && copy.getBackground() == null)
                 readableText((TextView) copy);
         }
-        TextView account = new TextView(this); account.setText("Photos and progress stay on this device.");
-        account.setTextColor(INK); account.setTextSize(16); readableText(account); list.addView(account);
-        TextView support = new TextView(this);
-        support.setText("Accounts are optional. Purchases use your Google Play account. Ads and payments are coming later.");
-        support.setTextColor(MUTED); support.setTextSize(14); readableText(support); list.addView(support);
         button(list, "Account & support details", PANEL, INK, this::showSupportDetails);
     }
 
     private void addPrivacyOptions(LinearLayout list) {
-        sectionTitle(list, "PRIVACY & PERMISSIONS");
-        button(list, "Privacy policy", PANEL, INK, () -> accounts.showPrivacy());
-        button(list, "Change photo access", PANEL, INK, this::requestAccess);
-        button(list, "Android app permissions", PANEL, INK, () -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
-        button(list, "Optional prompt-free Trash", PANEL, INK, this::requestMediaManagement);
+        settingsRow(list,"","Photo access","",this::requestAccess);
+        settingsRow(list,"","Android permissions","",()->startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()))));
+        settingsRow(list,"","Privacy policy","",()->accounts.showPrivacy());
+        settingsRow(list,"","On-device data","",()->showThemedFeedbackDialog(themedFeedbackDialog("On-device data").setMessage("Photos and review progress stay on this device. Signing in does not back them up or sync them.").setPositiveButton("Done",null).create()));
+        sectionTitle(list,"TRASH");
+        settingsRow(list,ICON_TRASH,"Prompt-free Trash","Optional Android permission",this::requestMediaManagement);
     }
 
     private void addAudioOptions(LinearLayout list) {
-        sectionTitle(list, "AUDIO");
-        settingSwitch(list, "Swipe sounds", "Soft, bubbly feedback while you swipe", soundEnabled, value -> {
-            soundEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled", value).apply();
-            if (value) playEffect(true);
-        });
-        settingSwitch(list, "D.G.S. Radio", "Lo-fi beats and dreamscape synths", musicEnabled, value -> {
-            musicEnabled = value; getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled", value).apply(); updateMusic();
-            if (radioTrackLabel != null) radioTrackLabel.setText((value ? "Now playing · " : "Track · ") + audio.currentTitle());
-            if (!value) clearRadioBubble();
-        });
-        radioTrackLabel = new TextView(this);
-        radioTrackLabel.setText((musicEnabled ? "Now playing · " : "Track · ") + audio.currentTitle());
-        radioTrackLabel.setTextColor(INK); radioTrackLabel.setTextSize(16); readableText(radioTrackLabel);
-        radioTrackLabel.setPadding(0, dp(14), 0, dp(8));
-        list.addView(radioTrackLabel, new LinearLayout.LayoutParams(-1, -2));
-        button(list, "Next track →", PANEL, INK, () -> {
-            audio.nextTrack();
-            if (!musicEnabled) {
-                musicEnabled = true;
-                getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled", true).apply();
-                updateMusic();
-                render();
-            }
-        });
-        settingSwitch(list, "Loop current track", "Repeat this song instead of changing tracks", audio.isRepeatTrack(), audio::setRepeatTrack);
-        addVolumeControl(list, "Master volume", "master_volume", masterVolume, value -> masterVolume = value);
-        addVolumeControl(list, "Music volume", "music_volume", musicVolume, value -> musicVolume = value);
-        addVolumeControl(list, "VFX sound volume", "vfx_volume", vfxVolume, value -> vfxVolume = value);
-        TextView note = new TextView(this); note.setText("Sounds use your phone's media volume. Music stops when you leave Photo Sweep.");
-        note.setTextColor(MUTED); note.setTextSize(13); readableText(note); list.addView(note);
+        LinearLayout player=new LinearLayout(this);player.setOrientation(LinearLayout.VERTICAL);player.setPadding(dp(18),dp(18),dp(18),dp(15));player.setBackground(rounded(PANEL,23));list.addView(player);
+        TextView radio=studioText("D.G.S. RADIO",11,GREEN,true);radio.setLetterSpacing(.14f);player.addView(radio);
+        radioTrackLabel=studioText(audio.currentTitle(),22,INK,true);radioTrackLabel.setPadding(0,dp(8),0,0);player.addView(radioTrackLabel);
+        player.addView(new StudioWaveView(this,GREEN,reducedMotion,musicEnabled),new LinearLayout.LayoutParams(-1,dp(70)));
+        LinearLayout playback=new LinearLayout(this);player.addView(playback);
+        Button pause=button(playback,musicEnabled?"Pause":"Play",GREEN,BG,()->{musicEnabled=!musicEnabled;getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled",musicEnabled).apply();updateMusic();if(!musicEnabled)clearRadioBubble();render();});
+        LinearLayout.LayoutParams playLp=new LinearLayout.LayoutParams(0,dp(48),1);playLp.rightMargin=dp(8);pause.setLayoutParams(playLp);
+        Button next=button(playback,"Next  →",PANEL,INK,()->{audio.nextTrack();if(!musicEnabled){musicEnabled=true;getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled",true).apply();updateMusic();}render();});next.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));
+        sectionTitle(list,"PLAYBACK");
+        settingSwitch(list,"Music","",musicEnabled,value->{musicEnabled=value;getPreferences(MODE_PRIVATE).edit().putBoolean("music_enabled",value).apply();updateMusic();if(!value)clearRadioBubble();render();});
+        settingSwitch(list,"Loop current track","",audio.isRepeatTrack(),audio::setRepeatTrack);
+        sectionTitle(list,"VOLUME");
+        addVolumeControl(list,"Master","master_volume",masterVolume,value->masterVolume=value);
+        addVolumeControl(list,"Music","music_volume",musicVolume,value->musicVolume=value);
+        addVolumeControl(list,"VFX","vfx_volume",vfxVolume,value->vfxVolume=value);
+        settingSwitch(list,"Swipe sounds","",soundEnabled,value->{soundEnabled=value;getPreferences(MODE_PRIVATE).edit().putBoolean("sound_enabled",value).apply();if(value)playEffect(true);});
     }
 
     private int readVolume(String key, int fallback) {
@@ -2274,7 +2253,7 @@ public class MainActivity extends ComponentActivity {
                 .putBoolean("tutorial_prompt_seen", true).apply();
         if (completed) getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_completed", true).apply();
         if (tutorialLayer != null) { host.removeView(tutorialLayer); tutorialLayer = null; }
-        reviewing = false; showingTrash = false; showingThemes = false; showingSettings = false;
+        reviewing = false; showingShop = false; showingTrash = false; showingThemes = false; showingSettings = false;
         selectedYear = -1; selectedMonth = null; trashSelecting = false; selectedTrash.clear(); render();
         if (completed) {
             getPreferences(MODE_PRIVATE).edit().putBoolean("tutorial_completed", true).apply();
@@ -2347,8 +2326,8 @@ public class MainActivity extends ComponentActivity {
                 "Tap Select. You can restore several photos together.", "Tap the highlighted photo to select it.",
                 "Tap a second photo. The first stays selected.", "Tap Restore to return BOTH selected photos to your gallery together.",
                 "Two photos were restored; the other samples stay in Trash. Tap Photo Sweep.",
-                "Open Themes; you can change them during photo review too.", "Open the collection menu and choose Tier 2 to see your theme choices.",
-                "Tap any Tier 2 theme to try it. Scroll to see more. We will suggest it as your free reward at the end; you can choose another.",
+                "Open Themes; you can change them during photo review too.", "Tap Choose a scene to see your free theme choices.",
+                "Tap a scene to try it. You can keep it as your free theme at the end, or choose another.",
                 "Your chosen theme is now previewed. Tap Photo Sweep to return to your library.",
                 "Open Report a bug to see the three feedback options; close it to finish."};
         final View brightTarget = tutorialTarget;
@@ -2394,10 +2373,10 @@ public class MainActivity extends ComponentActivity {
     private void addSwipeControls(LinearLayout list) {
         sectionTitle(list, "SWIPE ANIMATIONS");
         boolean enabled = canCustomizeSwipe();
-        TextView note = new TextView(this);
-        note.setText(enabled ? "Customize " + THEME_NAMES[themeChoice] + ". " + SwipeTheme.description(SwipeTheme.forTheme(themeChoice)) + ". Each theme remembers its own swipe settings."
-                : "Choose a country, Yin Yang, or Tier 3 theme at level " + TIER_UNLOCK_LEVELS[2] + " to customize swipe effects.");
-        note.setTextColor(MUTED); note.setTextSize(13); readableText(note); list.addView(note);
+        if (!enabled) {
+            TextView availability = studioText("Effect controls are available with scene and animated themes.", 13, MUTED, false);
+            availability.setPadding(0, 0, 0, dp(12)); list.addView(availability);
+        }
         android.widget.Spinner picker = new android.widget.Spinner(this);
         android.widget.ArrayAdapter<String> choices = new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, SWIPE_STYLE_NAMES) {
             @Override public View getView(int position, View convertView, android.view.ViewGroup parent) {
@@ -2459,20 +2438,32 @@ public class MainActivity extends ComponentActivity {
     }
     private void previewSwipe(boolean keep) {
         clearSwipePreview();
-        FrameLayout target = host; SwipeEffect effect = new SwipeEffect(); swipePreviewEffect = effect;
+        FrameLayout target = displayPreview != null && displayPreview.isAttachedToWindow() ? displayPreview : host;
+        ImageView sample = target == displayPreview ? displayPreviewImage : null;
+        SwipeEffect effect = new SwipeEffect(); swipePreviewEffect = effect;
+        if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);}
         target.addView(effect, new FrameLayout.LayoutParams(-1, -1));
         android.animation.ValueAnimator animation = android.animation.ValueAnimator.ofFloat(0f, keep ? 1f : -1f);
         animation.setDuration(900L * 100 / swipeSpeed);
-        animation.addUpdateListener(value -> { effect.progress = (float)value.getAnimatedValue(); effect.invalidate(); });
+        animation.addUpdateListener(value -> {
+            effect.progress = (float)value.getAnimatedValue();
+            if(sample!=null){
+                float dx=effect.progress*target.getWidth()*.8f;sample.setTranslationX(dx);
+                RectF bounds=new RectF(sample.getLeft(),sample.getTop(),sample.getRight(),sample.getBottom());effect.setPhoto(tutorialPicture(-101),bounds,dx,0);
+                if(keep)sample.setClipBounds(new Rect(0,0,Math.max(0,Math.min(sample.getWidth(),(int)(effect.keepClipEdge()-sample.getLeft()-dx))),sample.getHeight()));
+                else sample.setClipBounds(new Rect(Math.max(0,Math.min(sample.getWidth(),(int)(dp(10)-sample.getLeft()-dx))),0,sample.getWidth(),sample.getHeight()));
+            }
+            effect.invalidate();
+        });
         animation.addListener(new android.animation.AnimatorListenerAdapter() {
             private boolean cancelled;
             @Override public void onAnimationCancel(android.animation.Animator value) { cancelled = true; }
             @Override public void onAnimationEnd(android.animation.Animator value) {
                 if (swipePreviewAnimator == value) swipePreviewAnimator = null;
-                if (cancelled) { target.removeView(effect); return; }
+                if (cancelled) { target.removeView(effect); if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);} return; }
                 effect.release(keep);
                 playEffect(keep);
-                Runnable remove = () -> { target.removeView(effect); if (swipePreviewEffect == effect) swipePreviewEffect = null; };
+                Runnable remove = () -> { target.removeView(effect); if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);} if (swipePreviewEffect == effect) swipePreviewEffect = null; };
                 uiHandler.postDelayed(() -> {
                     if (keep && !reducedMotion) { effect.beginKeepClose(); uiHandler.postDelayed(remove, 280); }
                     else remove.run();
@@ -2490,11 +2481,11 @@ public class MainActivity extends ComponentActivity {
     private void settingSwitch(LinearLayout parent, String title, String detail, boolean checked, ToggleAction action) {
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(17), dp(13), dp(15), dp(13)); row.setBackground(rounded(PANEL, 18));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(88)); lp.bottomMargin = dp(10); parent.addView(row, lp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(10); row.setMinimumHeight(dp(64)); parent.addView(row, lp);
         LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
         TextView name = new TextView(this); name.setText(title); name.setTextSize(17); name.setTextColor(INK); name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); copy.addView(name);
-        TextView sub = new TextView(this); sub.setText(detail); sub.setTextSize(12); sub.setTextColor(MUTED); copy.addView(sub);
-        Switch toggle = new Switch(this); toggle.setChecked(checked); toggle.setThumbTintList(android.content.res.ColorStateList.valueOf(checked ? GREEN : MUTED));
+
+        Switch toggle = new Switch(this); toggle.setContentDescription(title); toggle.setChecked(checked); toggle.setThumbTintList(android.content.res.ColorStateList.valueOf(checked ? GREEN : MUTED));
         row.addView(toggle); toggle.setOnCheckedChangeListener((button, value) -> {
             toggle.setThumbTintList(android.content.res.ColorStateList.valueOf(value ? GREEN : MUTED)); action.changed(value);
         });
@@ -2503,7 +2494,7 @@ public class MainActivity extends ComponentActivity {
 
     private void monthsScreen() {
         back("All years", () -> { selectedYear = -1; selectedMonth = null; render(); });
-        heading(Integer.toString(selectedYear), "Choose a month");
+        libraryHeader(Integer.toString(selectedYear));
         addMonthLibrary(selectedYear, "months:" + selectedYear);
     }
 
@@ -2605,13 +2596,13 @@ public class MainActivity extends ComponentActivity {
         select.setEnabled(pendingRestore == -1 && pendingTrash == -1 && !trashEntries.isEmpty());
         root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
         label(trashEntries.size() + (trashEntries.size() == 1 ? " photo" : " photos"), 16, INK, false);
-        label("Latest 20 photos · recover for up to 7 days", 13, MUTED, false);
-        label("Android permissions control final removal.", 12, MUTED, false);
+        label("20 most recent · up to 7 days", 13, MUTED, false);
+        
         addTrashStorageSummary();
         if (trashEntries.isEmpty()) {
             selectedTrash.clear(); trashSelecting = false;
             spacer(36); label("Trash is empty", 21, INK, true);
-            label("Photos you move to Trash will appear here.", 15, MUTED, false);
+
             return;
         }
         ScrollView scroll = boundedScroll();
@@ -2691,7 +2682,7 @@ public class MainActivity extends ComponentActivity {
             restore.setEnabled(enabled); delete.setEnabled(enabled);
             restore.setAlpha(enabled ? 1f : .45f); delete.setAlpha(enabled ? 1f : .45f);
             root.addView(actions);
-            label("Confirm before permanent deletion", 12, MUTED, false);
+            
         }
     }
 
@@ -2799,22 +2790,16 @@ public class MainActivity extends ComponentActivity {
         if (fullScreenReview && current != null) { fullScreenReviewScreen(current, remaining, month.size()); return; }
         if (fullScreenReview) { fullScreenReview = false; applyContentInsets(); }
         LinearLayout reviewToolbar = new LinearLayout(this); reviewToolbar.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(reviewToolbar, new LinearLayout.LayoutParams(-1, dp(64)));
+        root.addView(reviewToolbar, new LinearLayout.LayoutParams(-1, dp(52)));
         topAction(reviewToolbar, "←", "Months", GREEN, "Back to months", () -> {
             reviewing = false; fullScreenReview = false; render();
         });
-        topAction(reviewToolbar, ICON_THEMES, "Themes", GREEN, "Themes and animation settings", () -> {
-            themeAnimationsOpen = false; showingThemes = true; render();
+        topAction(reviewToolbar, ICON_TRASH, "Trash", GOLD, "Open Trash", () -> {
+            if(reviewActionRunning||pendingTrash!=-1||pendingRestore!=-1)return;
+            stopPhotoIdle();if(reviewPage!=null)reviewPage.effect.cancel();trashSelecting=false;selectedTrash.clear();showingTrash=true;render();
         });
-        topAction(reviewToolbar, ICON_FEEDBACK, "Report a bug", GREEN,
-                "Feedback: suggest a theme, suggest a feature, or report a problem", this::showFeedbackMenu);
-        topAction(reviewToolbar, ICON_TRASH, "Trash", GOLD,
-                "Open recently trashed photos and return here", () -> {
-                    if (reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return;
-                    stopPhotoIdle();
-                    if (reviewPage != null) reviewPage.effect.cancel();
-                    trashSelecting = false; selectedTrash.clear(); showingTrash = true; render();
-                });
+        Button more=button(reviewToolbar,"⋯",PANEL,INK,this::showReviewMenu);more.setContentDescription("More: Themes, Shop, Settings, Feedback");
+        LinearLayout.LayoutParams moreLp=new LinearLayout.LayoutParams(dp(48),dp(48));moreLp.leftMargin=dp(7);more.setLayoutParams(moreLp);
         String monthName = ReviewNavigation.title(selectedMonth, true);
         TextView dateHeading = heading(current == null ? monthName : photoDate(current), remaining + " of " + month.size() + " left to review");
         TextView remainingHeading = headingSubtitle;
@@ -2833,7 +2818,7 @@ public class MainActivity extends ComponentActivity {
             fill.setLayoutParams(lp); });
         if (current == null) {
             spacer(65); label("All caught up ✨", 28, INK, true); spacer(12);
-            label("This month is clear. Kept photos are still in your gallery.", 16, MUTED, false);
+            
             if (canUndoLastPhoto()) {
                 spacer(20);
                 addUndoPhotoAction(root);
@@ -3196,11 +3181,12 @@ public class MainActivity extends ComponentActivity {
         FrameLayout.LayoutParams closeLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.TOP | Gravity.END);
         closeLp.setMargins(0, safeInsets.top + dp(18), safeInsets.right + dp(18), 0); overlay.addView(close, closeLp);
         close.setOnClickListener(v -> closePhotoZoom());
-        TextView hint = new TextView(this);
-        hint.setText("Pinch to zoom  ·  Drag to inspect  ·  Double tap");
-        hint.setTextColor(0xFFD2E2EF); hint.setTextSize(13); hint.setGravity(Gravity.CENTER);
-        FrameLayout.LayoutParams hintLp = new FrameLayout.LayoutParams(-1, dp(48), Gravity.BOTTOM);
-        hintLp.bottomMargin = safeInsets.bottom; overlay.addView(hint, hintLp);
+        if (!getPreferences(MODE_PRIVATE).getBoolean("tip_seen_zoom_controls",false)) {
+            TextView hint=studioText("Pinch to zoom · Double tap to exit",13,Color.WHITE,false);hint.setGravity(Gravity.CENTER);hint.setBackground(rounded(PANEL,18));
+            FrameLayout.LayoutParams hintLp=new FrameLayout.LayoutParams(-2,dp(48),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);hintLp.bottomMargin=safeInsets.bottom+dp(12);overlay.addView(hint,hintLp);
+            hint.setOnClickListener(v->overlay.removeView(hint));
+            hint.post(()->{if(hint.isShown()){getPreferences(MODE_PRIVATE).edit().putBoolean("tip_seen_zoom_controls",true).apply();hint.postDelayed(()->overlay.removeView(hint),3500);}});
+        }
         zoomOverlay = overlay;
         FrameLayout content = findViewById(android.R.id.content);
         content.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
@@ -4140,7 +4126,7 @@ public class MainActivity extends ComponentActivity {
                 float dw = art.getWidth() * scale, dh = art.getHeight() * scale;
                 canvas.drawBitmap(art, null, new RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), paint);
             }
-            canvas.drawColor(0x38000000);
+            canvas.drawColor(isColorTheme(themeChoice) ? 0x18000000 : 0x6007111f);
             if (reducedMotion) return;
             if (HolidayThemes.animatedTheme(themeChoice)) {
                 drawHolidayMotion(canvas, w, h, android.os.SystemClock.uptimeMillis() / 1000f);
@@ -4966,9 +4952,9 @@ public class MainActivity extends ComponentActivity {
     private int dp(float n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
     private GradientDrawable rounded(int color, int radius) {
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{blend(color, Color.WHITE, .09f), color, blend(color, BG, .14f)});
+                new int[]{blend(color, Color.WHITE, .07f), color, blend(color, BG, .18f)});
         bg.setCornerRadius(dp(radius));
-        bg.setStroke(dp(1), blend(GOLD, color, .68f)); return bg;
+        bg.setStroke(dp(1), blend(color, GREEN, .3f)); return bg;
     }
     private int blend(int a, int b, float amount) {
         return Color.rgb((int)(Color.red(a) * (1 - amount) + Color.red(b) * amount),
@@ -4976,43 +4962,50 @@ public class MainActivity extends ComponentActivity {
                 (int)(Color.blue(a) * (1 - amount) + Color.blue(b) * amount));
     }
     private Drawable themeButton(int color, int radius) {
-        final int selected = themeChoice;
-        return new Drawable() {
-            final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-            @Override public void draw(Canvas canvas) {
-                android.graphics.Rect bounds = getBounds();
-                RectF box = new RectF(bounds);
-                Path clip = new Path(); clip.addRoundRect(box, dp(radius), dp(radius), Path.Direction.CW);
-                canvas.save(); canvas.clipPath(clip);
-                p.setColor(color); canvas.drawRect(box, p);
-                p.setShader(new LinearGradient(box.left, box.top, box.right, box.bottom,
-                        new int[]{blend(color, Color.WHITE, .20f), color, blend(color, BG, .16f)},
-                        null, Shader.TileMode.CLAMP));
-                canvas.drawRect(box, p); p.setShader(null);
-                Bitmap art = themeBackdrops[selected];
-                if (art != null && !isColorTheme(selected)) {
-                    int left = art.getWidth() / 5, top = art.getHeight() / 3;
-                    p.setAlpha(54);
-                    canvas.drawBitmap(art, new Rect(left, top, art.getWidth() - left, top + art.getHeight() / 3), box, p);
-                    p.setAlpha(255);
-                }
-                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(1.3f));
-                p.setColor(blend(GOLD, color, .45f)); canvas.drawRoundRect(box, dp(radius), dp(radius), p);
-                p.setStyle(Paint.Style.FILL); canvas.restore();
-            }
-            @Override public void setAlpha(int alpha) { p.setAlpha(alpha); invalidateSelf(); }
-            @Override public void setColorFilter(android.graphics.ColorFilter filter) { p.setColorFilter(filter); invalidateSelf(); }
-            @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
-        };
+        GradientDrawable surface=rounded(color,radius);
+        GradientDrawable mask=new GradientDrawable();mask.setColor(Color.WHITE);mask.setCornerRadius(dp(radius));
+        return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x24ffffff),surface,mask);
     }
+
+    private TextView studioText(String value,int size,int color,boolean bold) {
+        TextView text=new TextView(this);text.setText(value);text.setTextSize(size);text.setTextColor(color);
+        if(bold)text.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return text;
+    }
+
+    private void setButtonIcon(Button button,String name,int color) {
+        StudioIcon icon=new StudioIcon(name,color);icon.setBounds(0,0,dp(19),dp(19));button.setCompoundDrawables(icon,null,null,null);button.setCompoundDrawablePadding(dp(7));
+        button.setPadding(dp(12),0,dp(12),0);
+    }
+
+    private TextView firstUseTip;
+    private void dismissTip() {
+        if(firstUseTip!=null){firstUseTip.animate().cancel();if(firstUseTip.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)firstUseTip.getParent()).removeView(firstUseTip);firstUseTip=null;}
+    }
+    private void onceTip(String id,String copy) {
+        final LinearLayout page=root;
+        page.postDelayed(()->{
+            if(page!=root||!page.isAttachedToWindow()||!page.hasWindowFocus()||tutorialStep>=0||tutorialPromptShowing||radioBubble!=null||firstUseTip!=null||isFinishing()||isDestroyed())return;
+            String key="tip_seen_"+id;
+            if(getPreferences(MODE_PRIVATE).getBoolean(key,false))return;
+            TextView bubble=studioText(copy,13,INK,false);bubble.setPadding(dp(16),dp(12),dp(16),dp(12));bubble.setBackground(rounded(PANEL,18));bubble.setElevation(dp(8));
+            bubble.setMaxWidth(dp(300));bubble.setFocusable(true);bubble.setContentDescription(copy+". Dismiss tip");bubble.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+            // Below the header, above interactive content. Tapping dismisses immediately.
+            FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);lp.topMargin=safeInsets.top+dp(72);lp.leftMargin=dp(24);lp.rightMargin=dp(24);
+            host.addView(bubble,lp);firstUseTip=bubble;bubble.setOnClickListener(v->dismissTip());
+            bubble.post(()->{
+                if(firstUseTip!=bubble||!bubble.isShown())return;
+                getPreferences(MODE_PRIVATE).edit().putBoolean(key,true).apply();
+                bubble.postDelayed(()->{if(firstUseTip==bubble){if(reducedMotion)dismissTip();else bubble.animate().alpha(0f).setDuration(180).withEndAction(()->{if(firstUseTip==bubble)dismissTip();}).start();}},3600);
+            });
+        },700);
+    }
+
     private void spacer(int height) { View gap = new View(this); root.addView(gap, new LinearLayout.LayoutParams(1, dp(height))); }
     private void readableText(TextView text) {
-        GradientDrawable backing = new GradientDrawable();
-        backing.setColor(0xB8101826); backing.setCornerRadius(dp(10));
-        text.setBackground(backing);
-        text.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
-        text.setPadding(dp(8), dp(5), dp(8), dp(5));
+        // Plain type on the shaded backdrop; never a separate dark slab behind each line.
+        text.setShadowLayer(dp(1),0,dp(.5f),0x55000000);
     }
+
     private TextView label(String value, int size, int color, boolean bold) {
         TextView text = new TextView(this); text.setText(value); text.setTextSize(size); text.setTextColor(color);
         if (bold) text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -5030,7 +5023,7 @@ public class MainActivity extends ComponentActivity {
     }
     private Button button(LinearLayout parent, String value, int bg, int color, Runnable action) {
         Button button = new Button(this); button.setText(value); button.setAllCaps(false); button.setTextSize(16);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setBackground(themeButton(bg, 18));
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setTextColor(color); button.setMinWidth(0); button.setMinimumWidth(0); button.setPadding(dp(12),0,dp(12),0); button.setBackground(themeButton(bg, 18));
         tutorialBind(button, value);
         button.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); tutorialClick(value, action); });
         parent.addView(button, new LinearLayout.LayoutParams(-1, dp(55))); return button;
@@ -5039,11 +5032,11 @@ public class MainActivity extends ComponentActivity {
         TextView back = label("←  " + value, 18, INK, true);
         back.setGravity(Gravity.CENTER_VERTICAL);
         back.setPadding(dp(18), 0, dp(18), 0);
-        back.setMinWidth(dp(150)); back.setHeight(dp(56));
-        back.setBackground(themeButton(PANEL, 18));
+        back.setMinWidth(dp(100)); back.setHeight(dp(48));
+        back.setBackground(null);
         tutorialBind(back, value);
         back.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); tutorialClick(value, action); });
-        spacer(15);
+        spacer(8);
     }
     private void tile(LinearLayout parent, String title, String detail, Runnable action) {
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
@@ -5062,24 +5055,24 @@ public class MainActivity extends ComponentActivity {
 
     private void settingsRow(LinearLayout parent, String symbol, String title, String detail, Runnable action) {
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(16), dp(16), dp(16)); row.setMinimumHeight(dp(80));
+        row.setPadding(dp(16), dp(16), dp(16), dp(16)); row.setMinimumHeight(dp(68));
         row.setBackground(themeButton(PANEL, 18)); row.setFocusable(true);
         row.setContentDescription(title + ". " + detail);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(9); parent.addView(row, lp);
-        TextView icon = new TextView(this); icon.setText(symbol); icon.setTextColor(GREEN); icon.setTextSize(23);
-        icon.setGravity(Gravity.CENTER); icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(48)));
+        ImageView icon = new ImageView(this); icon.setImageDrawable(new StudioIcon(title, GREEN));
+        icon.setPadding(dp(8), dp(8), dp(8), dp(8)); icon.setBackground(rounded(blend(PANEL,GREEN,.08f),12));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); row.addView(icon,new LinearLayout.LayoutParams(dp(40),dp(40)));
         LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL);
         copy.setPadding(dp(12), 0, dp(8), 0); row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
         TextView name = new TextView(this); name.setText(title); name.setTextSize(17); name.setTextColor(INK);
         name.setTypeface(Typeface.DEFAULT, Typeface.BOLD); copy.addView(name);
-        TextView sub = new TextView(this); sub.setText(detail); sub.setTextSize(13); sub.setTextColor(MUTED);
-        sub.setPadding(0, dp(4), 0, 0); copy.addView(sub);
+
         TextView arrow = new TextView(this); arrow.setText("›"); arrow.setTextColor(MUTED); arrow.setTextSize(25);
         arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); row.addView(arrow);
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
 
 

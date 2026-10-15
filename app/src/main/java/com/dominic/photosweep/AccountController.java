@@ -133,12 +133,12 @@ final class AccountController {
         status.setBackground(surface(panel, blend(panel, accent, .35f)));
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2); statusParams.bottomMargin = dp(16);
         FirebaseUser user = auth == null ? null : auth.getCurrentUser();
-        status.setText(user == null ? "Account: Guest · sign-in is optional" : "Account: "
+        status.setText(user == null ? "Guest" : "Account: "
                 + (user.getDisplayName() == null || user.getDisplayName().isEmpty() ? "" : user.getDisplayName() + "\n") + user.getEmail()
                 + (user.isEmailVerified() ? " · verified" : " · email not verified")); parent.addView(status, statusParams);
         if (auth == null) {
             TextView availability = new TextView(activity); availability.setTextColor(muted);
-            availability.setText("Online accounts are not available in this build. You can use every photo-review feature as a guest."); parent.addView(availability);
+            availability.setText("Sign-in is unavailable in this build."); parent.addView(availability);
         } else if (user == null) {
             com.google.android.gms.common.SignInButton google = new com.google.android.gms.common.SignInButton(activity);
             google.setSize(com.google.android.gms.common.SignInButton.SIZE_WIDE);
@@ -493,3 +493,4 @@ final class AccountController {
             .setPositiveButton("Close",null).show();
     }
 }
+
