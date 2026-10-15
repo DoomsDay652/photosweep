@@ -2319,6 +2319,7 @@ public class MainActivity extends ComponentActivity {
                 if (swipePreviewAnimator == value) swipePreviewAnimator = null;
                 if (cancelled) { target.removeView(effect); return; }
                 effect.release(keep);
+                playEffect(keep);
                 uiHandler.postDelayed(() -> { target.removeView(effect); if (swipePreviewEffect == effect) swipePreviewEffect = null; }, SwipeMotion.releaseDuration(swipeSpeed, keep) + 40);
             }
         });
@@ -2713,8 +2714,10 @@ public class MainActivity extends ComponentActivity {
         overlay.setClickable(false);
         FrameLayout.LayoutParams overlayLp = new FrameLayout.LayoutParams(-1, dp(64), Gravity.CENTER);
         overlayLp.setMargins(dp(22), 0, dp(22), 0); card.addView(overlay, overlayLp);
-        TextView trashAction = swipeOverlayLabel("←  Trash", SwipeMotion.TRASH_COLOR);
-        TextView keepAction = swipeOverlayLabel("Keep  →", SwipeMotion.KEEP_COLOR);
+        TextView trashAction = swipeOverlayLabel("←  🗑", SwipeMotion.TRASH_COLOR);
+        TextView keepAction = swipeOverlayLabel("✓  →", SwipeMotion.KEEP_COLOR);
+        trashAction.setContentDescription("Swipe left to move photo to Trash");
+        keepAction.setContentDescription("Swipe right to keep photo");
         overlay.addView(trashAction, new LinearLayout.LayoutParams(0, -2, 1));
         overlay.addView(keepAction, new LinearLayout.LayoutParams(0, -2, 1));
         if (tutorialStep < 0 && !swipeHintSeen) {
@@ -2854,6 +2857,7 @@ public class MainActivity extends ComponentActivity {
                         committed[0] = true; reviewActionRunning = true;
                         if (fireBorder != null) fireBorder.flare(dx > 0);
                         effect.release(dx > 0);
+                        playEffect(dx > 0);
                         boolean keeping = dx > 0;
                         card.announceForAccessibility(SwipeMotion.actionLabel(keeping));
                         card.animate().translationX((keeping ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
@@ -3577,7 +3581,6 @@ public class MainActivity extends ComponentActivity {
     private void keep(Photo p) {
         if (p.id < 0) { if (tutorialStep == 1) advanceTutorial(); return; }
         if (pendingTrash != -1 || pendingRestore != -1) return;
-        playEffect(true);
         lastUndo = snapshot(p, false);
         if (keptIds.add(Long.toString(p.id))) keptCount++;
         int earned = awardXp(p.id, 10); lastUndo.earnedXp = earned;
@@ -3743,7 +3746,6 @@ public class MainActivity extends ComponentActivity {
             ReviewUndo action = pendingTrashUndo; pendingTrashUndo = null;
             int earned = 0;
             if (resultCode == RESULT_OK) {
-                playEffect(false);
                 if (action != null) {
                     lastUndo = action;
                     TrashEntry entry = new TrashEntry(id, System.currentTimeMillis(), action.timestamp);
@@ -3850,16 +3852,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void playEffect(boolean keep) {
-        playSound(keep ? R.raw.bubble_keep : R.raw.bubble_trash, .30f);
-        int accent;
-        switch (selectedSwipeProfile()) {
-            case FIRE: accent = R.raw.bubble_fire; break;
-            case WATER: accent = R.raw.bubble_water; break;
-            case TOXIC: accent = R.raw.bubble_toxic; break;
-            case CANDY: accent = R.raw.bubble_candy; break;
-            default: return;
-        }
-        playSound(accent, .13f);
+        // One clear sonic identity per action. Do not mask it with destructive theme accents.
+        playSound(keep ? R.raw.bubble_keep : R.raw.bubble_trash, keep ? .27f : .38f);
     }
 
     private void playMonthComplete() {

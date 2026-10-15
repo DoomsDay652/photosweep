@@ -143,31 +143,37 @@ class SwipeVfxView extends View {
         if(isAttachedToWindow() && ((enabled && released==0) || (released!=0 && impact<1)))postInvalidateOnAnimation();
     }
     private void drawActionBadge(Canvas canvas,float w,float h,boolean keep,float opacity) {
-        float alpha=reducedMotion?1f:Math.max(.5f,opacity);
-        String text=SwipeMotion.actionLabel(keep);
-        paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD));
-        paint.setTextSize(dp(17));paint.setTextAlign(Paint.Align.LEFT);
-        float icon=dp(22), pad=dp(14), width=Math.min(w-dp(16),paint.measureText(text)+icon+pad*3);
-        float left=(w-width)/2, top=Math.max(dp(8),h*.055f), height=dp(46);
-        bounds.set(left,top,left+width,top+height);
-        paint.setColor(withAlpha(0xFF121B25,(int)(240*alpha)));canvas.drawRoundRect(bounds,dp(18),dp(18),paint);
-        paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));
-        paint.setColor(withAlpha(SwipeMotion.actionColor(keep),(int)(255*alpha)));
-        canvas.drawRoundRect(bounds,dp(18),dp(18),paint);
-        float x=left+pad,y=top+height/2;
-        paint.setStrokeWidth(dp(2.7f));paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
-        path.reset();
-        if(keep) { path.moveTo(x,y);path.lineTo(x+dp(6),y+dp(6));path.lineTo(x+dp(18),y-dp(7)); }
-        else {
-            path.moveTo(x,y-dp(7));path.lineTo(x+dp(18),y-dp(7));
-            path.moveTo(x+dp(6),y-dp(11));path.lineTo(x+dp(12),y-dp(11));
-            path.moveTo(x+dp(2),y-dp(3));path.lineTo(x+dp(4),y+dp(10));path.lineTo(x+dp(14),y+dp(10));path.lineTo(x+dp(16),y-dp(3));
+        // Icon-only feedback. Spoken action names remain on the photo for accessibility.
+        float alpha=reducedMotion?1f:Math.max(.45f,opacity);
+        float phase=released==0?0:SwipeMotion.clamp((SystemClock.uptimeMillis()-released)
+                /(float)SwipeMotion.releaseDuration(speed,keep));
+        float radius=dp(25), x=keep?w*.80f:w*.20f, y=Math.max(dp(30),h*.10f);
+        int save=canvas.save();
+        if(!reducedMotion) {
+            float scale=released==0?.88f+.12f*SwipeMotion.clamp(Math.abs(progress)*3)
+                    :keep?1f+.10f*(float)Math.sin(phase*Math.PI):1f-.16f*SwipeMotion.ease(phase);
+            canvas.scale(scale,scale,x,y);
         }
-        canvas.drawPath(path,paint);
-        paint.setStyle(Paint.Style.FILL);paint.setColor(withAlpha(Color.WHITE,(int)(255*alpha)));
-        Paint.FontMetrics metrics=paint.getFontMetrics();
-        canvas.drawText(text,x+icon+pad,y-(metrics.ascent+metrics.descent)/2,paint);
-        paint.setTypeface(Typeface.DEFAULT);paint.setAlpha(255);
+        paint.setShader(null);paint.setStyle(Paint.Style.FILL);
+        paint.setColor(withAlpha(0xFF121B25,(int)(225*alpha)));
+        canvas.drawCircle(x,y,radius,paint);
+        paint.setColor(withAlpha(SwipeMotion.actionColor(keep),(int)(255*alpha)));
+        paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));
+        canvas.drawCircle(x,y,radius,paint);
+        paint.setStrokeWidth(dp(3));paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
+        path.reset();
+        if(keep) {
+            path.moveTo(x-dp(11),y);path.lineTo(x-dp(3),y+dp(8));path.lineTo(x+dp(12),y-dp(9));
+        } else {
+            path.moveTo(x-dp(10),y-dp(8));path.lineTo(x+dp(10),y-dp(8));
+            path.moveTo(x-dp(4),y-dp(13));path.lineTo(x+dp(4),y-dp(13));
+            path.moveTo(x-dp(8),y-dp(3));path.lineTo(x-dp(6),y+dp(12));
+            path.lineTo(x+dp(6),y+dp(12));path.lineTo(x+dp(8),y-dp(3));
+            path.moveTo(x-dp(2),y);path.lineTo(x-dp(2),y+dp(7));
+            path.moveTo(x+dp(3),y);path.lineTo(x+dp(3),y+dp(7));
+        }
+        canvas.drawPath(path,paint);canvas.restoreToCount(save);
+        paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);
     }
 
     private void drawStructure(Canvas c,float w,float h,float x,float y,float time,float impact,float strength,int sign,int color) {
