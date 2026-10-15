@@ -706,6 +706,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onPause() {
+        if(tokenSlot!=null)tokenSlot.finishImmediately();
         photoIdleResumed = false;
         stopPhotoIdle();
         clearRadioBubble();
@@ -718,6 +719,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override public void onDestroy() {
+        if(tokenSlot!=null){tokenSlot.dispose();tokenSlot=null;}
+        if(tokenWalletDialog!=null){tokenWalletDialog.setOnDismissListener(null);tokenWalletDialog.dismiss();tokenWalletDialog=null;}
         stopPhotoIdle();
         clearRadioBubble();
         if (playUpdates != null) playUpdates.close();
@@ -1598,6 +1601,9 @@ public class MainActivity extends ComponentActivity {
     }
 
     private int pendingSpins, silverTokens, goldTokens, diamondTokens, diamondMisses;
+    private int lastSpinToken=-1;
+    private android.app.AlertDialog tokenWalletDialog;
+    private TokenSlotView tokenSlot;
     private Set<String> ownedThemes = new HashSet<>();
     private final java.security.SecureRandom rewardRandom = new java.security.SecureRandom();
 
@@ -1609,6 +1615,7 @@ public class MainActivity extends ComponentActivity {
         goldTokens = Math.max(0,prefs.getInt("progress_gold",0));
         diamondTokens = Math.max(0,prefs.getInt("progress_diamond",0));
         diamondMisses = Math.max(0,Math.min(9,prefs.getInt("progress_misses",0)));
+        lastSpinToken=prefs.getInt("progress_last_token",-1);
         if (!prefs.getBoolean("progress_v1",false)) {
             int oldLevel = Math.max(0,xp)/500+1;
             for (int i=0;i<THEME_NAMES.length;i++)
@@ -1623,7 +1630,7 @@ public class MainActivity extends ComponentActivity {
         getPreferences(MODE_PRIVATE).edit().putBoolean("progress_v1",true).putInt("xp",xp)
                 .putInt("progress_spins",pendingSpins).putInt("progress_silver",silverTokens)
                 .putInt("progress_gold",goldTokens).putInt("progress_diamond",diamondTokens)
-                .putInt("progress_misses",diamondMisses)
+                .putInt("progress_misses",diamondMisses).putInt("progress_last_token",lastSpinToken)
                 .putStringSet("progress_owned",new HashSet<>(ownedThemes))
                 .putStringSet("rewarded",new HashSet<>(rewarded)).apply();
     }
@@ -1633,32 +1640,79 @@ public class MainActivity extends ComponentActivity {
                 + silverTokens + " Silver · " + goldTokens + " Gold · " + diamondTokens + " Diamond";
     }
 
+    private String tokenName(int result) { return result==2?"Diamond":result==1?"Gold":"Silver"; }
+
+    private String spinOdds() {
+        return "Normal odds · Silver 70% · Gold 25% · Diamond 5%\nDiamond guaranteed in "
+                + (10-diamondMisses) + " or fewer spins.";
+    }
+
     private void showTokenWallet() {
-        if (tutorialStep>=0) return;
+        if (tutorialStep>=0 || (tokenWalletDialog!=null && tokenWalletDialog.isShowing())) return;
         LinearLayout choices = new LinearLayout(this); choices.setOrientation(LinearLayout.VERTICAL);
-        choices.setPadding(dp(20),0,dp(20),dp(8));
-        TextView info = new TextView(this); info.setText(walletSummary()
-                + "\n\nEvery level earns a spin. Each new photo gives 5 XP, with +10 XP every 10 photos. Keep and Trash earn equally.\n\nGold unlocks any Tier 2 theme. Diamond unlocks any Tier 3 theme.\n\nSpin odds: Silver 70%, Gold 25%, Diamond 5%. Guaranteed Diamond within 10 spins (" + (10-diamondMisses) + " or fewer left). Tokens never expire.");
-        info.setTextColor(INK); info.setTextSize(14); choices.addView(info);
+        choices.setPadding(dp(18),0,dp(18),dp(10));
+        TextView balance = new TextView(this); balance.setText(walletSummary()); balance.setTextSize(14); balance.setTextColor(INK);
+        balance.setPadding(0,dp(4),0,dp(12)); choices.addView(balance);
+        TokenSlotView slots = new TokenSlotView(this,BG,PANEL,GREEN,INK,reducedMotion); tokenSlot=slots;
+        slots.showResult(lastSpinToken>=0?lastSpinToken:0);
+        choices.addView(slots,new LinearLayout.LayoutParams(-1,dp(184)));
+        TextView outcome = new TextView(this); outcome.setTextSize(18); outcome.setTextColor(GREEN);
+        outcome.setTypeface(Typeface.DEFAULT_BOLD);outcome.setGravity(Gravity.CENTER);outcome.setPadding(0,dp(12),0,dp(5));
+        outcome.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        outcome.setText(lastSpinToken>=0?"Last spin · +1 " + tokenName(lastSpinToken) + " token":"Your next theme starts here");choices.addView(outcome);
+        TextView note = new TextView(this);note.setText("One token per spin · Tokens never expire");note.setTextSize(12);note.setTextColor(MUTED);
+        note.setGravity(Gravity.CENTER);note.setPadding(0,0,0,dp(9));choices.addView(note);
+        Button spin=button(choices,"Spin",PANEL,GREEN,()->{});
+        TextView odds=new TextView(this);odds.setTextSize(12);odds.setTextColor(MUTED);odds.setPadding(0,dp(9),0,dp(9));choices.addView(odds);
         android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(choices);
         android.app.AlertDialog dialog = themedFeedbackDialog("Theme tokens").setView(scroll).setNegativeButton("Done",null).create();
-        Button spin = button(choices,"Spin · " + pendingSpins + " available",PANEL,GREEN,() -> {
-            if (pendingSpins<=0) return;
-            int result = ThemeProgression.roll(rewardRandom.nextInt(100),diamondMisses);
+        LinearLayout exchanges = new LinearLayout(this); choices.addView(exchanges,new LinearLayout.LayoutParams(-1,-2));
+        Button gold=button(exchanges,"3 Silver → Gold",PANEL,GOLD,()->{
+            if(silverTokens<3)return;silverTokens-=3;goldTokens++;saveThemeProgression();dialog.dismiss();showTokenWallet();
+        });
+        LinearLayout.LayoutParams goldLp=new LinearLayout.LayoutParams(0,dp(56),1);goldLp.rightMargin=dp(6);gold.setLayoutParams(goldLp);gold.setTextSize(12);
+        Button diamond=button(exchanges,"3 Gold → Diamond",PANEL,GOLD,()->{
+            if(goldTokens<3)return;goldTokens-=3;diamondTokens++;saveThemeProgression();dialog.dismiss();showTokenWallet();
+        });diamond.setLayoutParams(new LinearLayout.LayoutParams(0,dp(56),1));diamond.setTextSize(12);
+        TextView guide=new TextView(this);guide.setText("Gold → choose Tier 2 · Diamond → choose Tier 3\n200 XP per level = 1 spin\n5 XP per new photo · +10 XP every 10 photos");
+        guide.setTextSize(12);guide.setTextColor(MUTED);guide.setPadding(0,dp(10),0,0);choices.addView(guide);
+        boolean[] spinning={false};
+        Runnable refresh=()->{
+            balance.setText(walletSummary());odds.setText(spinOdds());
+            spin.setEnabled(!spinning[0] && pendingSpins>0);
+            spin.setText(spinning[0]?"Spinning…":pendingSpins>0?"Spin · " + pendingSpins + " left":"Earn a level for another spin");
+            gold.setEnabled(!spinning[0] && silverTokens>=3);diamond.setEnabled(!spinning[0] && goldTokens>=3);
+        };
+        spin.setOnClickListener(v->{
+            if(spinning[0] || pendingSpins<=0)return;
+            spinning[0]=true;
+            int result=ThemeProgression.roll(rewardRandom.nextInt(100),diamondMisses);
             pendingSpins--;
-            if (result==2) { diamondTokens++; diamondMisses=0; }
-            else { diamondMisses++; if (result==1) goldTokens++; else silverTokens++; }
-            saveThemeProgression(); dialog.dismiss(); render();
-            showThemedFeedbackDialog(themedFeedbackDialog(new String[]{"Silver token ✦","Gold token ✦","Diamond token ✦"}[result])
-                    .setMessage(walletSummary()).setPositiveButton("Tokens",(d,w)->showTokenWallet()).setNegativeButton("Done",null).create());
-        }); spin.setEnabled(pendingSpins>0);
-        Button gold = button(choices,"3 Silver → 1 Gold",PANEL,GOLD,() -> {
-            if(silverTokens<3)return; silverTokens-=3; goldTokens++;saveThemeProgression();dialog.dismiss();render();showTokenWallet();
-        }); gold.setEnabled(silverTokens>=3);
-        Button diamond = button(choices,"3 Gold → 1 Diamond",PANEL,GOLD,() -> {
-            if(goldTokens<3)return;goldTokens-=3;diamondTokens++;saveThemeProgression();dialog.dismiss();render();showTokenWallet();
-        }); diamond.setEnabled(goldTokens>=3);
-        showThemedFeedbackDialog(dialog);
+            if(result==2){diamondTokens++;diamondMisses=0;}
+            else{diamondMisses++;if(result==1)goldTokens++;else silverTokens++;}
+            lastSpinToken=result;
+            // Bank exactly once before starting presentation. Closing, pausing or rotating cannot re-roll it.
+            saveThemeProgression();
+            spin.setEnabled(false);spin.setText("Spinning…");gold.setEnabled(false);diamond.setEnabled(false);
+            outcome.setText("Spinning…");outcome.setTextColor(INK);
+            slots.spin(result,new TokenSlotView.Listener(){
+                public void onReelStop(){
+                    if(dialog.isShowing() && dialog.getWindow()!=null && dialog.getWindow().getDecorView().hasWindowFocus())playSound(R.raw.bubble_tap,.055f);
+                }
+                public void onComplete(boolean animated){
+                    spinning[0]=false;
+                    if(tokenWalletDialog!=dialog || isDestroyed())return;
+                    outcome.setText("+1 " + tokenName(result) + " token · Saved");outcome.setTextColor(result==1?GOLD:GREEN);refresh.run();
+                    if(animated && dialog.isShowing() && dialog.getWindow()!=null && dialog.getWindow().getDecorView().hasWindowFocus())playSound(R.raw.bubble_keep,.16f);
+                }
+            });
+        });
+        dialog.setOnDismissListener(d->{
+            slots.dispose();
+            if(tokenWalletDialog==dialog){tokenWalletDialog=null;tokenSlot=null;}
+            if(!isFinishing() && !isDestroyed() && !isChangingConfigurations())render();
+        });
+        tokenWalletDialog=dialog;refresh.run();showThemedFeedbackDialog(dialog);
     }
 
     private void purchaseTheme(int index) {
@@ -2038,7 +2092,7 @@ public class MainActivity extends ComponentActivity {
                     for (String key : prefs.getAll().keySet()) if (ResetPolicy.clears(key)) editor.remove(key);
                     editor.apply();
                     reviewed.clear(); rewarded.clear(); keptIds.clear(); trashedIds.clear();
-                    pendingSpins=0;silverTokens=0;goldTokens=0;diamondTokens=0;diamondMisses=0;ownedThemes.clear();
+                    pendingSpins=0;silverTokens=0;goldTokens=0;diamondTokens=0;diamondMisses=0;lastSpinToken=-1;ownedThemes.clear();
                     xp = 0; saveThemeProgression(); keptCount = 0; trashedCount = 0; restoredCount = 0;
                     lastUndo = null; pendingTrashUndo = null; adminMode = false; themeChoice = 0;
                     statsExpanded = false; swipeHintSeen = false; fullScreenReview = false;
@@ -5030,6 +5084,7 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
 
 
