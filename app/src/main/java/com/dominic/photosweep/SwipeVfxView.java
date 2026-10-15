@@ -14,16 +14,20 @@ class SwipeVfxView extends View {
     private final RectF photo = new RectF(), target = new RectF();
     private final Path path = new Path();
     private final boolean enabled, reducedMotion;
-    private final RectF glyph = new RectF();
     private final RectF bladeRect = new RectF();
-    private static Bitmap pocketArt, ribbonArt, bladeArt;
-    private final Bitmap pocketLight, ribbonLight, sawBlade;
-    private final float[] ribbonMesh = new float[(24+1)*(4+1)*2];
-    private final RectF pocketRect = new RectF();
+    private static Bitmap bladeArt;
+    private final Bitmap sawBlade;
+    private final RectF sleeveRect = new RectF(), fitPhoto = new RectF();
+    private final Path lightPath = new Path(), ribbonPath = new Path();
+    private final PathMeasure measure = new PathMeasure();
+    private final float[] position = new float[2];
+    private final Matrix veilMatrix = new Matrix();
+    private final LinearGradient veil = new LinearGradient(0,0,1,0,
+            new int[]{0x00FFF4D5,0x14FFF5DF,0x28FFFBEF},null,Shader.TileMode.CLAMP);
     private boolean holding;
     private long returning, closing, lastFrame;
     private float restRight, open, returnOpen, returnAlpha;
-    private float haloX, haloY, haloRadius, haloHeight;
+    private float haloX, haloY;
     private final int intensity, speed;
     private final Random random = new Random();
     private final Chip[] chips = new Chip[224];
@@ -44,14 +48,10 @@ class SwipeVfxView extends View {
         this.reducedMotion=reducedMotion;
         // Share immutable textures; decode once at bounded sizes, never in a draw frame.
         BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;options.inSampleSize=2;
-        if(pocketArt==null || pocketArt.isRecycled())
-            pocketArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.keep_light_pocket,options);
-        if(ribbonArt==null || ribbonArt.isRecycled())
-            ribbonArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.keep_flow_ribbon,options);
         options.inSampleSize=4;
         if(bladeArt==null || bladeArt.isRecycled())
             bladeArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.grinder_saw_blade,options);
-        pocketLight=pocketArt;ribbonLight=ribbonArt;sawBlade=bladeArt;
+        sawBlade=bladeArt;
         for(int i=0;i<chips.length;i++)chips[i]=new Chip();
         setClickable(false);setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
@@ -74,7 +74,7 @@ class SwipeVfxView extends View {
     }
     void hold(float x,float y) {
         clearChips();onGrinderShake(0);released=0;returning=0;closing=0;
-        started=SystemClock.uptimeMillis();lastFrame=started;progress=0;open=0;tracked=false;holding=true;invalidate();
+        started=SystemClock.uptimeMillis();lastFrame=started;progress=0;open=0;tracked=false;holding=true;sleeveRect.setEmpty();invalidate();
     }
     void follow(float x,float y) { if(progress>=0){clearChips();onGrinderShake(0);}invalidate(); }
     void release(boolean keep) { onGrinderShake(0);holding=false;returning=0;progress=keep?1:-1;released=SystemClock.uptimeMillis();invalidate(); }
@@ -86,7 +86,7 @@ class SwipeVfxView extends View {
     void beginKeepClose() { closing=SystemClock.uptimeMillis();invalidate(); }
     void cancel() {
         onGrinderShake(0);holding=false;returning=0;closing=0;open=0;
-        progress=0;released=0;tracked=false;bitmap=null;photo.setEmpty();clearChips();invalidate();
+        progress=0;released=0;tracked=false;bitmap=null;photo.setEmpty();sleeveRect.setEmpty();clearChips();invalidate();
     }
     @Override protected void onDetachedFromWindow() { cancel();super.onDetachedFromWindow(); }
     private void clearChips() { for(Chip chip:chips){chip.born=0;chip.bitmap=null;}feed=0; }
@@ -144,17 +144,29 @@ class SwipeVfxView extends View {
         alpha*=1-SwipeMotion.clamp(-progress*4);
         haloX=getWidth()-dp(7);haloY=photo.isEmpty()?getHeight()*.5f:photo.centerY();
         haloY=Math.max(dp(20),Math.min(getHeight()-dp(20),haloY));
-        float width=photo.isEmpty()?getWidth()*.65f:photo.width();
-        float height=photo.isEmpty()?getHeight()*.55f:photo.height();
-        haloRadius=Math.min(getWidth()*.48f,width*.62f);
-        haloHeight=SwipeMotion.spellHalfHeight(height*1.16f,getHeight(),haloY,dp(8));
+        if(photo.isEmpty()) {
+            float shift=Math.max(0,progress)*getWidth()*.36f;
+            fitPhoto.set(getWidth()*.16f+shift,getHeight()*.32f,getWidth()*.78f+shift,getHeight()*.68f);
+        } else fitPhoto.set(photo);
         float o=SwipeMotion.clamp(open);
-        paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);
-        if(o>.006f && pocketLight!=null) {
-            float w=dp(4)+haloRadius*o,h=dp(3)+haloHeight*o;
-            pocketRect.set(haloX-w*.86f,haloY-h,haloX+w*.14f,haloY+h);
-            paint.setAlpha((int)(225*alpha));canvas.drawBitmap(pocketLight,null,pocketRect,paint);
-            if(o>.03f && ribbonLight!=null) {
+        paint.setShader(null);paint.setStyle(Paint.Style.FILL);
+        if(o>.006f) {
+            float right=Math.min(haloX,fitPhoto.right);
+            if(fitPhoto.left<right) {
+                float left=SwipeMotion.keepSleeveLeft(fitPhoto.left,fitPhoto.width(),right,o);
+                sleeveRect.set(left,haloY+(fitPhoto.top-haloY)*o,right,haloY+(fitPhoto.bottom-haloY)*o);
+            } else if(!sleeveRect.isEmpty() && closing!=0) {
+                sleeveRect.top=haloY+(fitPhoto.top-haloY)*o;
+                sleeveRect.bottom=haloY+(fitPhoto.bottom-haloY)*o;
+            }
+            if(!sleeveRect.isEmpty()) {
+                float corner=Math.min(dp(9),Math.min(sleeveRect.width(),sleeveRect.height())*.22f);
+                veilMatrix.setScale(Math.max(1,sleeveRect.width()),1);veilMatrix.postTranslate(sleeveRect.left,0);
+                veil.setLocalMatrix(veilMatrix);paint.setShader(veil);paint.setAlpha((int)(255*alpha));
+                canvas.drawRoundRect(sleeveRect,corner,corner,paint);paint.setShader(null);
+                lightPath.reset();lightPath.addRoundRect(sleeveRect,corner,corner,Path.Direction.CW);
+                glowStroke(canvas,lightPath,alpha,.85f);
+                if(animate)pathParticles(canvas,lightPath,time,.14f,12+intensity/10,alpha);
                 drawRibbon(canvas,-1,o,alpha,time,animate);
                 drawRibbon(canvas,1,o,alpha,time,animate);
             }
@@ -172,28 +184,45 @@ class SwipeVfxView extends View {
         }
     }
     private void drawRibbon(Canvas canvas,int side,float opening,float alpha,float time,boolean animate) {
-        float left=photo.isEmpty()?getWidth()*.22f:photo.left-photo.width()*.18f;
-        left=Math.min(haloX-dp(80),left);
-        float photoY=photo.isEmpty()?haloY+side*haloHeight*.50f:(side<0?photo.top:photo.bottom);
-        float endY=haloY+side*haloHeight*.67f*opening;
-        float startY=haloY+(photoY-haloY)*opening;
-        float endX=haloX-haloRadius*.30f*opening;
-        float wave=animate?dp(9)*(float)Math.sin(time*1.35f+side*.8f):0;
-        int index=0;
-        for(int row=0;row<=4;row++)for(int col=0;col<=24;col++) {
-            float u=col/24f,bend=SwipeMotion.ease(u);
-            float y=startY+(endY-startY)*bend+side*(float)Math.sin(Math.PI*u)*(dp(17)*opening+wave);
-            float thickness=dp(35)*opening*(.70f+.30f*(float)Math.sin(Math.PI*u));
-            ribbonMesh[index++]=left+(endX-left)*u;
-            ribbonMesh[index++]=y+(row/4f-.5f)*thickness*2;
+        float startX=Math.min(sleeveRect.left-dp(28),fitPhoto.left-fitPhoto.width()*.16f);
+        float edgeY=side<0?sleeveRect.top:sleeveRect.bottom;
+        float wave=animate?dp(5)*(float)Math.sin(time*1.2f+side):0;
+        float startY=edgeY+side*(dp(10)+wave)*opening;
+        for(int strand=0;strand<3;strand++) {
+            float offset=side*dp(strand*1.5f)*opening;
+            ribbonPath.reset();ribbonPath.moveTo(startX,startY+offset);
+            ribbonPath.cubicTo(startX+(sleeveRect.left-startX)*.45f,startY+side*dp(13)*opening+offset,
+                    sleeveRect.left-dp(12),edgeY+offset,sleeveRect.left+dp(9),edgeY+offset);
+            ribbonPath.cubicTo(sleeveRect.left+sleeveRect.width()*.45f,edgeY+offset,
+                    sleeveRect.right-dp(12),edgeY+offset,sleeveRect.right,edgeY+side*dp(3));
+            glowStroke(canvas,ribbonPath,alpha*opening*(strand==0?.65f:.22f),strand==0?.62f:.34f);
+            if(animate && strand==0)pathParticles(canvas,ribbonPath,time+(side<0?0:.8f),.26f,14+intensity/12,alpha*opening);
         }
-        paint.setColor(Color.WHITE);paint.setAlpha((int)(185*alpha*opening));
-        canvas.drawBitmapMesh(ribbonLight,24,4,ribbonMesh,0,null,0,paint);
-        // Moving glints use the same curve as the ribbon, flowing INTO the pocket.
-        if(animate)for(int i=0;i<3;i++) {
-            float u=(time*.28f+i/3f+(side>0?.16f:0))%1;
-            float y=startY+(endY-startY)*SwipeMotion.ease(u)+side*(float)Math.sin(Math.PI*u)*(dp(17)*opening+wave);
-            sparkle(canvas,left+(endX-left)*u,y,dp(1.6f),alpha*opening*(float)Math.sin(Math.PI*u));
+    }
+    private void glowStroke(Canvas canvas,Path line,float alpha,float width) {
+        paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeCap(Paint.Cap.ROUND);
+        for(int layer=3;layer>=0;layer--) {
+            paint.setColor(layer==0?0xFFFFFCEF:0xFFFFD996);
+            paint.setStrokeWidth(dp(width+(layer==3?7:layer==2?3.5f:layer==1?1.5f:0)));
+            paint.setAlpha((int)((layer==3?12:layer==2?25:layer==1?85:205)*SwipeMotion.clamp(alpha)));
+            canvas.drawPath(line,paint);
+        }
+        paint.setStyle(Paint.Style.FILL);
+    }
+    private void pathParticles(Canvas canvas,Path line,float time,float rate,int count,float alpha) {
+        measure.setPath(line,false);float length=measure.getLength();
+        if(length<1)return;
+        for(int i=0;i<count;i++) {
+            float u=(time*rate+i/(float)count)%1;
+            if(!measure.getPosTan(length*u,position,null))continue;
+            float shimmer=(.55f+.45f*(float)Math.sin(time*1.8f+i*2.3f));
+            float strength=alpha*(float)Math.sin(Math.PI*u)*shimmer;
+            if(i%5==0)sparkle(canvas,position[0],position[1],dp(1.1f+i%2*.3f),strength);
+            else {
+                paint.setColor(i%3==0?0xFFFFDDA1:0xFFFFFCEF);
+                paint.setAlpha((int)(185*SwipeMotion.clamp(strength)));
+                canvas.drawCircle(position[0],position[1],dp(.65f+i%3*.18f),paint);
+            }
         }
     }
     private void sparkle(Canvas canvas,float x,float y,float size,float alpha) {
@@ -241,6 +270,7 @@ class SwipeVfxView extends View {
         }
     }
 }
+
 
 
 
