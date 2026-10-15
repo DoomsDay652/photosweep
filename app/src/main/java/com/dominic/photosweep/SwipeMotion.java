@@ -8,6 +8,16 @@ final class SwipeMotion {
     static float deepestBite(float previous,float cut,float photoWidth) {
         return Math.max(clamp(previous),clamp(cut/Math.max(1,photoWidth)));
     }
+    static float freshBite(float previous,float cut,float photoWidth) {
+        return Math.max(0,deepestBite(previous,cut,photoWidth)-clamp(previous))*Math.max(1,photoWidth);
+    }
+    static float portalFront(float centerX,float radiusX,float centerY,float radiusY,float y) {
+        float v=Math.max(-1,Math.min(1,(y-centerY)/Math.max(1,radiusY)));
+        return centerX-radiusX*(float)Math.sqrt(Math.max(0,1-v*v));
+    }
+    static float portalDepth(float distance,float reach) {
+        return 1f-(float)Math.exp(-Math.max(0,distance)/Math.max(1,reach));
+    }
     static int duration(int speed) { return Math.max(220, Math.min(620, 36000 / Math.max(50, speed))); }
     // Shared semantic cues do not change with the selected theme or custom VFX.
     static final int KEEP_COLOR = 0xFF80E3BF, TRASH_COLOR = 0xFFFF959D;
