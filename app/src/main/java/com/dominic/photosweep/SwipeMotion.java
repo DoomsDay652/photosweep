@@ -25,6 +25,9 @@ final class SwipeMotion {
     static float grinderProximity(float photoLeft, float edge, float range) {
         return clamp(1f-Math.max(0,photoLeft-edge)/Math.max(1,range));
     }
+    static float pocketOpening(float restRight, float currentRight, float edge, float minimumTravel) {
+        return ease((currentRight-restRight)/Math.max(1,Math.max(minimumTravel,edge-restRight)));
+    }
     static float grinderShake(float seconds, float proximity) {
         return ease(proximity)*(float)(Math.sin(seconds*89)*.68+Math.sin(seconds*137)*.32);
     }
@@ -39,6 +42,7 @@ final class SwipeMotion {
     static boolean shouldCommit(float dx, float dy, float threshold) { return Math.abs(dx)>threshold && Math.abs(dx)>Math.abs(dy)*1.2f; }
     static float falling(float seconds) { return 32f * seconds * seconds; }
 }
+
 
 
 

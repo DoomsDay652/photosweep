@@ -2320,7 +2320,11 @@ public class MainActivity extends ComponentActivity {
                 if (cancelled) { target.removeView(effect); return; }
                 effect.release(keep);
                 playEffect(keep);
-                uiHandler.postDelayed(() -> { target.removeView(effect); if (swipePreviewEffect == effect) swipePreviewEffect = null; }, SwipeMotion.releaseDuration(swipeSpeed, keep) + 40);
+                Runnable remove = () -> { target.removeView(effect); if (swipePreviewEffect == effect) swipePreviewEffect = null; };
+                uiHandler.postDelayed(() -> {
+                    if (keep && !reducedMotion) { effect.beginKeepClose(); uiHandler.postDelayed(remove, 280); }
+                    else remove.run();
+                }, SwipeMotion.releaseDuration(swipeSpeed, keep) + 40);
             }
         });
         swipePreviewAnimator = animation; animation.start();
@@ -2842,7 +2846,7 @@ public class MainActivity extends ComponentActivity {
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
                 multitouch[0] = action == MotionEvent.ACTION_POINTER_DOWN;
                 if (fireBorder != null) fireBorder.cool();
-                effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start();
+                effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).start();
                 if (action == MotionEvent.ACTION_CANCEL) schedulePhotoIdle(card);
                 return true;
             }
@@ -2860,7 +2864,7 @@ public class MainActivity extends ComponentActivity {
             if (action == MotionEvent.ACTION_UP) {
                 if (shown.id < 0 && ((tutorialStep == 1 && dx < 0) || (tutorialStep == 3 && dx > 0))) {
                     if (fireBorder != null) fireBorder.cool();
-                    effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
+                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
                 }
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
                     {
@@ -2879,16 +2883,21 @@ public class MainActivity extends ComponentActivity {
                                 .setDuration(reducedMotion ? 80 : SwipeMotion.releaseDuration(swipeSpeed, keeping))
                                 .setUpdateListener(frame -> effect.track(card))
                                 .withEndAction(() -> {
-                                    effect.cancel();
-                                    if (fireBorder != null) fireBorder.stop();
-                                    reviewActionRunning = false;
-                                    if (isDestroyed()) return;
-                                    if (dx > 0) keep(shown); else trash(shown);
+                                    Runnable finish = () -> {
+                                        effect.cancel();
+                                        if (fireBorder != null) fireBorder.stop();
+                                        reviewActionRunning = false;
+                                        if (isDestroyed()) return;
+                                        if (dx > 0) keep(shown); else trash(shown);
+                                    };
+                                    if (keeping && !reducedMotion) {
+                                        effect.beginKeepClose(); uiHandler.postDelayed(finish, 280);
+                                    } else finish.run();
                                 }).start();
                     }
                 } else {
                     if (fireBorder != null) fireBorder.cool();
-                    effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(200).start();
+                    effect.retreat(); card.animate().translationX(0).rotation(0).setDuration(200).start();
                     schedulePhotoIdle(card);
                     if (shown.id >= 0 && tap != null && Math.abs(dx) < dp(12) && Math.abs(dy) < dp(12)) tap.run();
                 }
@@ -3604,6 +3613,10 @@ public class MainActivity extends ComponentActivity {
                         0, card.getWidth(), card.getHeight());
                 card.setClipBounds(clip);
             } else card.setClipBounds(null);
+        }
+        @Override void retreat() {
+            super.retreat();
+            if (reviewPage != null && reviewPage.effect == this) reviewPage.card.setClipBounds(null);
         }
         @Override void cancel() {
             super.cancel();
@@ -4904,6 +4917,7 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
 
 
