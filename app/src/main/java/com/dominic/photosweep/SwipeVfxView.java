@@ -20,7 +20,7 @@ class SwipeVfxView extends View {
     private static Bitmap bladeArt;
     private static float[][] bladeOutline;
     private final Bitmap sawBlade;
-    private final RectF sleeveRect = new RectF(), fitPhoto = new RectF();
+    private final RectF sleeveRect = new RectF();
     private final Path lightPath = new Path(), ribbonPath = new Path();
     private final PathMeasure measure = new PathMeasure();
     private final float[] position = new float[2];
@@ -75,7 +75,7 @@ class SwipeVfxView extends View {
     private float haloX, haloY;
     private final int intensity, speed;
     private final Random random = new Random();
-    private final Chip[] chips = new Chip[320];
+    private final Chip[] chips = new Chip[480];
     private Bitmap bitmap;
     private long released, started;
     private float feed;
@@ -144,8 +144,11 @@ class SwipeVfxView extends View {
             }
         }
     }
+    private float grinderTop() { return dp(5); }
+    private float grinderBottom() { return Math.max(grinderTop(),getHeight()-dp(5)); }
     private float toothEdge(float y,float time) {
-        float top=Math.max(dp(5),photo.top),spacing=dp(49),edge=0;
+        float top=grinderTop(),spacing=dp(49),edge=0;
+        if(y<top || y>=grinderBottom())return 0;
         int nearest=Math.max(0,(int)((y-top)/spacing));
         for(int index=Math.max(0,nearest-1);index<=nearest+1;index++) {
             float offset=(y-(top+index*spacing))/dp(1);
@@ -230,8 +233,8 @@ class SwipeVfxView extends View {
             damageBitmap.setPixels(damagePixels,0,MASK_W,0,0,MASK_W,MASK_H);
         }
         if(fresh>0) {
-            feed+=fresh*cellArea/(dp(14)*dp(14))*(1.1f+intensity/100f);
-            int count=Math.min(48,(int)feed);feed=Math.min(48,feed-count);
+            feed+=fresh*cellArea/(dp(10)*dp(10))*(1.1f+intensity/100f);
+            int count=Math.min(72,(int)feed);feed=Math.min(72,feed-count);
             for(int n=0;n<count;n++) {
                 float pick=random.nextFloat()*fresh;int at=0;
                 while(at<changed-1 && pick>=freshWeights[at])pick-=freshWeights[at++];
@@ -265,8 +268,8 @@ class SwipeVfxView extends View {
     private void spawnChip(float x,float y,float u,float v) {
         Chip chip=chips[nextChip++%chips.length];chip.born=SystemClock.uptimeMillis();
         chip.x=x;chip.y=y;
-        chip.size=dp(1.4f+random.nextFloat()*6.6f);chip.vx=dp(65+random.nextFloat()*205);
-        chip.vy=dp(-115+random.nextFloat()*175);chip.angle=random.nextFloat()*180;
+        chip.size=dp(1.8f+random.nextFloat()*8.2f);chip.vx=dp(75+random.nextFloat()*245);
+        chip.vy=dp(-135+random.nextFloat()*215);chip.angle=random.nextFloat()*180;
         chip.spin=-540+random.nextFloat()*1080;chip.bitmap=bitmap;
         if(bitmap!=null && !bitmap.isRecycled()) {
             int bw=bitmap.getWidth(),bh=bitmap.getHeight();
@@ -366,15 +369,13 @@ class SwipeVfxView extends View {
         float energy=photo.isEmpty()?0:SwipeMotion.clamp((photo.right-(getWidth()-dp(65)))/dp(100));
         if(progress<0 || returning!=0 || closing!=0)energy=0;
         entryEnergy+=(energy-entryEnergy)*SwipeMotion.followFactor(dt,70);
-        haloX=getWidth();haloY=photo.isEmpty()?getHeight()*.5f:photo.centerY();
-        haloY=Math.max(dp(12),Math.min(getHeight()-dp(12),haloY));
-        if(photo.isEmpty())fitPhoto.set(getWidth()*.18f,getHeight()*.25f,getWidth()*.82f,getHeight()*.75f);
-        else fitPhoto.set(photo);
+        // The receiving portal belongs to the screen; only its opening reacts to approach.
+        haloX=getWidth();haloY=getHeight()*.5f;
         float o=SwipeMotion.clamp(open);
         // A side-on oval opens in two dimensions. Its near lip is also the photo's cut boundary.
-        portalX=getWidth()-dp(8)*o;
+        portalX=getWidth();
         portalRadius=dp(42)*(float)Math.pow(o,.78);
-        portalHeight=Math.max(dp(2),(fitPhoto.height()*.5f+dp(20))*SwipeMotion.ease(o));
+        portalHeight=Math.max(dp(2),(getHeight()*.5f-dp(12))*SwipeMotion.ease(o));
         float top=haloY-portalHeight,bottom=haloY+portalHeight;
         sleeveRect.set(portalX-portalRadius,top,portalX+portalRadius,bottom);
         lightPath.reset();lightPath.moveTo(portalX,top);
@@ -649,8 +650,7 @@ class SwipeVfxView extends View {
         path.lineTo(x-size*2,y);path.lineTo(x-size*.35f,y-size*.35f);path.close();canvas.drawPath(path,paint);
     }
     private void drawGrinder(Canvas canvas,float time,float amount,float fade,long now) {
-        float top=photo.isEmpty()?getHeight()*.20f:Math.max(dp(5),photo.top);
-        float bottom=photo.isEmpty()?getHeight()*.80f:Math.min(getHeight()-dp(5),photo.bottom);
+        float top=grinderTop(),bottom=grinderBottom();
         // Only transparent teeth are drawn here: no rectangular rail behind the saws.
         paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);paint.setAlpha((int)(235*SwipeMotion.ease(amount)*fade));
         int save=canvas.save();canvas.clipRect(0,top,dp(22),bottom);

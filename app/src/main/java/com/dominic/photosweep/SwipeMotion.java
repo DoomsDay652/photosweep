@@ -20,10 +20,11 @@ final class SwipeMotion {
                 float c=(float)Math.cos(angle),s=(float)Math.sin(angle);
                 float rx=c*gripX-s*gripY,ry=s*gripX+c*gripY;
                 float ex=targetX+gripX-x-rx,ey=targetY+gripY-y-ry;
-                float fx=1900*ex-68*(vx-omega*ry),fy=1900*ey-68*(vy+omega*rx);
+                // More mass gives direction changes a deliberate, soft pull at the grip.
+                float fx=(1900*ex-78*(vx-omega*ry))/1.5f,fy=(1900*ey-78*(vy+omega*rx))/1.5f;
                 vx+=fx*h;vy+=fy*h;
                 float upright=(float)Math.atan2(Math.sin(angle),Math.cos(angle));
-                omega+=((rx*fy-ry*fx)/inertia-7*upright-4.8f*omega)*h;
+                omega+=((rx*fy-ry*fx)/inertia-7*upright-4.4f*omega)*h;
                 omega=Math.max(-9,Math.min(9,omega));
                 x+=vx*h;y+=vy*h;angle+=omega*h;
                 // A short tether keeps a fast flick responsive even on a delayed frame.
@@ -31,7 +32,7 @@ final class SwipeMotion {
                 ex=targetX+gripX-x-(c*gripX-s*gripY);
                 ey=targetY+gripY-y-(s*gripX+c*gripY);
                 float lag=(float)Math.hypot(ex,ey);
-                if(lag>38){x+=ex*(1-38/lag);y+=ey*(1-38/lag);}
+                if(lag>48){x+=ex*(1-48/lag);y+=ey*(1-48/lag);}
                 accumulator-=h;
             }
         }
