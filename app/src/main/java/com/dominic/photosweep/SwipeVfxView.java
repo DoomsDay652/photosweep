@@ -176,8 +176,9 @@ class SwipeVfxView extends View {
     }
     private void preparePocket(long now) {
         // Touch, clipping and foreground drawing share one geometry sample per frame.
-        if(geometryFrame!=0 && now-geometryFrame<8)return;
-        float dt=geometryFrame==0?16:Math.min(50,now-geometryFrame);geometryFrame=now;
+        long frame=getDrawingTime();if(frame<=0)frame=now;
+        if(geometryFrame==frame)return;
+        float dt=geometryFrame==0?16:Math.min(50,Math.max(0,frame-geometryFrame));geometryFrame=frame;
         lightAlpha=holding?SwipeMotion.ease((now-started)/160f):1;
         float wanted=photo.isEmpty()?Math.max(0,progress):
                 SwipeMotion.pocketOpening(restRight,photo.right,keepMouthX()-dp(16),dp(70));
