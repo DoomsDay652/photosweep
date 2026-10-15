@@ -4,6 +4,18 @@ import java.util.*;
 public class ReviewLogicCheck {
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     public static void main(String[] args) {
+        check(ThemeProgression.level(0)==1 && ThemeProgression.level(199)==1 && ThemeProgression.level(200)==2,"200 XP level boundary");
+        check(ThemeProgression.addLevels(245,5)==1245,"admin adds exactly five levels preserving progress");
+        check(ThemeProgression.level(ThemeProgression.migratedXp(2750))==6,"migration preserves earned level");
+        check(ThemeProgression.reviewXp(9)==5 && ThemeProgression.reviewXp(10)==15 && ThemeProgression.reviewXp(20)==15,"unique review milestone bonus");
+        int[] odds=new int[3];for(int i=0;i<100;i++)odds[ThemeProgression.roll(i,0)]++;
+        check(odds[0]==70 && odds[1]==25 && odds[2]==5,"token odds exactly 70/25/5");
+        for(int i=0;i<100;i++)check(ThemeProgression.roll(i,9)==2,"tenth spin guarantees diamond");
+        check(SwipeMotion.keepClipRight(100,400,368,1)==268,"photo passes behind pocket mouth");
+        check(SwipeMotion.keepClipRight(900,400,368,1)==0,"fully received photo is occluded");
+        check(SwipeMotion.keepClipRight(-100,400,368,1)==400,"reverse movement restores photo");
+        check(SwipeMotion.keepClipRight(100,400,368,1.025f)==266,"occlusion accounts for release scale");
+        check(ResetPolicy.clears("progress_spins") && ResetPolicy.clears("progress_owned"),"reset includes tokens, spins and ownership");
         check(SwipeMotion.travel(.7f,true)>0 && SwipeMotion.travel(.7f,false)<0,"directional VFX follow gesture");
         check(SwipeMotion.intent(0)==0 && SwipeMotion.intent(.03f)==0 && SwipeMotion.intent(-.03f)==0,"touch and center crossing have no action");
         check(SwipeMotion.intent(SwipeMotion.dragProgress(20,100,400))==0,"vertical gestures show no review action");
@@ -92,8 +104,8 @@ public class ReviewLogicCheck {
             ReviewUndo undo=new ReviewUndo(7,"2026-10",1,trash,false,false,false);undo.earnedXp=trash?15:10;
             reviewed.add("7");kept.add("7");trashed.add("7");rewarded.add("7");
             undo.rollback(reviewed,kept,trashed,rewarded);
-            check(reviewed.isEmpty()&&kept.isEmpty()&&trashed.isEmpty()&&rewarded.isEmpty(),"undo both action types");
-            check(undo.restoredXp(100+undo.earnedXp)==100,"undo XP refund");
+            check(reviewed.isEmpty()&&kept.isEmpty()&&trashed.isEmpty()&&rewarded.contains("7"),"undo restores photo state and retains earned credit");
+            check(undo.restoredXp(100+undo.earnedXp)==100+undo.earnedXp,"undo keeps earned XP and cannot farm levels");
         }
         ReviewUndo prior=new ReviewUndo(7,"2026-10",1,false,true,true,true);
         Set<String> marks=new HashSet<>(Collections.singleton("7"));
