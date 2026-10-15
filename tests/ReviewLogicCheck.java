@@ -5,7 +5,28 @@ public class ReviewLogicCheck {
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     public static void main(String[] args) {
         check(SwipeMotion.travel(.7f,true)>0 && SwipeMotion.travel(.7f,false)<0,"directional VFX follow gesture");
-        check(Math.abs(SwipeMotion.travel(.7f,true)+SwipeMotion.travel(.7f,false))<.0001,"mirrored trajectories");
+        check(SwipeMotion.intent(0)==0 && SwipeMotion.intent(.03f)==0 && SwipeMotion.intent(-.03f)==0,"touch and center crossing have no action");
+        check(SwipeMotion.intent(SwipeMotion.dragProgress(20,100,400))==0,"vertical gestures show no review action");
+        check(SwipeMotion.dragProgress(150,10,400)>0 && SwipeMotion.dragProgress(-150,10,400)<0,"horizontal action follows current drag");
+        check(SwipeMotion.dragProgress(0,0,0)==0,"zero-size layout stays neutral");
+        check(SwipeMotion.intent(.1f)==1 && SwipeMotion.intent(-.1f)==-1,"drag direction selects correct action");
+        check(!SwipeMotion.actionLabel(true).equals(SwipeMotion.actionLabel(false)),"keep and trash use different labels");
+        check(SwipeMotion.actionColor(true)!=SwipeMotion.actionColor(false),"theme-independent semantic colors differ");
+        for (boolean keep : new boolean[]{false,true}) {
+            check(SwipeMotion.cardScale(0,keep)==1 && SwipeMotion.cardAlpha(0,keep)==1 && SwipeMotion.cardVertical(0,keep)==0,"new photo starts intact");
+            for (float phase : new float[]{-.5f,0,.25f,.5f,.75f,1,1.5f}) {
+                check(SwipeMotion.cardScale(phase,keep)>0,"release scale remains valid");
+                check(SwipeMotion.cardAlpha(phase,keep)>=0 && SwipeMotion.cardAlpha(phase,keep)<=1,"release alpha remains valid");
+                if (keep) check(SwipeMotion.cardAlpha(phase,true)==1,"kept photos never dissolve");
+            }
+        }
+        check(SwipeMotion.cardScale(1,false)<.75f && SwipeMotion.cardAlpha(1,false)<.1f,"trash visibly shrinks and dissolves");
+        check(SwipeMotion.cardScale(1,true)>=1 && SwipeMotion.cardVertical(1,true)<0,"keep lifts intact");
+        check(SwipeMotion.cardVertical(1,false)>0,"trash falls instead of lifting");
+        for (int speed : new int[]{0,50,100,200,500}) {
+            check(SwipeMotion.releaseDuration(speed,false)>SwipeMotion.releaseDuration(speed,true),"trash dissolve has its own timing");
+            check(SwipeMotion.releaseDuration(speed,true)>=220 && SwipeMotion.releaseDuration(speed,false)<=710,"release timing stays bounded");
+        }
         check(SwipeMotion.ease(-1)==0 && SwipeMotion.ease(2)==1,"clamped drag progression");
         check(SwipeMotion.falling(.8f)>SwipeMotion.falling(.2f),"candy and petals fall down");
         check(SwipeMotion.duration(200)<SwipeMotion.duration(50),"speed changes completion time");
@@ -68,3 +89,4 @@ public class ReviewLogicCheck {
         System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }
+
