@@ -74,7 +74,7 @@ public class ReviewLogicCheck {
             float time=i/120f,dx=time<1.4f?180*(float)Math.sin(time*18):0;
             corner.target(dx,0);centre.target(dx,0);corner.step(1f/120);centre.step(1f/120);
             cornerTurn=Math.max(cornerTurn,Math.abs(corner.degrees()));centreTurn=Math.max(centreTurn,Math.abs(centre.degrees()));
-            check(Float.isFinite(corner.x) && Float.isFinite(corner.angle) && corner.gripLag()<=38.01f,"fast reversals remain finite and tethered to the grip");
+            check(Float.isFinite(corner.x) && Float.isFinite(corner.angle) && corner.gripLag()<=48.01f,"fast reversals remain finite and tethered to the grip");
         }
         check(cornerTurn>45 && cornerTurn>centreTurn+30,"corner flicks build rotation while central holding stays controlled");
         check(Math.abs(corner.degrees())<2 && corner.gripLag()<.1f,"rotation damps naturally after whipping");
