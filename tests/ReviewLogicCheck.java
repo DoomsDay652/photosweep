@@ -20,11 +20,14 @@ public class ReviewLogicCheck {
                 if (keep) check(SwipeMotion.cardAlpha(phase,true)==1,"kept photos never dissolve");
             }
         }
-        check(SwipeMotion.cardScale(1,false)<.75f && SwipeMotion.cardAlpha(1,false)<.1f,"trash visibly shrinks and dissolves");
+        check(SwipeMotion.cardScale(1,false)==1 && SwipeMotion.cardAlpha(1,false)==1,"trash feeds intact into the edge before being clipped");
         check(SwipeMotion.cardScale(1,true)>=1 && SwipeMotion.cardVertical(1,true)<0,"keep lifts intact");
-        check(SwipeMotion.cardVertical(1,false)>0,"trash falls instead of lifting");
+        check(SwipeMotion.cardVertical(1,false)==0 && SwipeMotion.cardRotation(false)==0,"trash feeds straight into grinder");
+        check(SwipeMotion.grinderClipLeft(-100,400,9)==109,"grinder clipping stays fixed at screen edge");
+        check(SwipeMotion.grinderClipLeft(-900,400,9)==400,"fully consumed photo is fully clipped");
+        check(SwipeMotion.grinderClipLeft(20,400,9)==0,"reversed drag restores the whole card");
         for (int speed : new int[]{0,50,100,200,500}) {
-            check(SwipeMotion.releaseDuration(speed,false)>SwipeMotion.releaseDuration(speed,true),"trash dissolve has its own timing");
+            check(SwipeMotion.releaseDuration(speed,false)>SwipeMotion.releaseDuration(speed,true),"grinder feeding has its own timing");
             check(SwipeMotion.releaseDuration(speed,true)>=220 && SwipeMotion.releaseDuration(speed,false)<=710,"release timing stays bounded");
         }
         check(SwipeMotion.ease(-1)==0 && SwipeMotion.ease(2)==1,"clamped drag progression");
@@ -89,4 +92,5 @@ public class ReviewLogicCheck {
         System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }
+
 
