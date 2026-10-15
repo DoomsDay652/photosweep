@@ -60,7 +60,25 @@ public class ReviewLogicCheck {
             }
         }
         check(SwipeMotion.cardScale(1,false)==1 && SwipeMotion.cardAlpha(1,false)==1,"trash feeds intact into the edge before being clipped");
-        check(SwipeMotion.cardScale(1,true)>=1 && SwipeMotion.cardVertical(1,true)<0,"keep lifts intact");
+        check(SwipeMotion.cardScale(1,true)==1 && SwipeMotion.cardVertical(1,true)==0,"keep entry never enlarges or lifts the photo");
+        SwipeMotion.Body body60=new SwipeMotion.Body(),body120=new SwipeMotion.Body();
+        body60.begin(30,-90,200,320);body120.begin(30,-90,200,320);
+        body60.target(140,10);body120.target(140,10);
+        for(int i=0;i<240;i++)body60.step(1f/60);
+        for(int i=0;i<480;i++)body120.step(1f/120);
+        check(Math.abs(body60.x-body120.x)<.01f && Math.abs(body60.angle-body120.angle)<.001f,"weighted dragging is consistent at 60 and 120 Hz");
+        check(body120.gripLag()<.1f && Math.abs(body120.degrees())<1,"holding still settles the photo at the grip");
+        SwipeMotion.Body corner=new SwipeMotion.Body(),centre=new SwipeMotion.Body();
+        corner.begin(25,-100,200,320);centre.begin(0,0,200,320);float cornerTurn=0,centreTurn=0;
+        for(int i=0;i<360;i++) {
+            float time=i/120f,dx=time<1.4f?180*(float)Math.sin(time*18):0;
+            corner.target(dx,0);centre.target(dx,0);corner.step(1f/120);centre.step(1f/120);
+            cornerTurn=Math.max(cornerTurn,Math.abs(corner.degrees()));centreTurn=Math.max(centreTurn,Math.abs(centre.degrees()));
+            check(Float.isFinite(corner.x) && Float.isFinite(corner.angle) && corner.gripLag()<=38.01f,"fast reversals remain finite and tethered to the grip");
+        }
+        check(cornerTurn>45 && cornerTurn>centreTurn+30,"corner flicks build rotation while central holding stays controlled");
+        check(Math.abs(corner.degrees())<2 && corner.gripLag()<.1f,"rotation damps naturally after whipping");
+        check(Math.abs(corner.releaseDegrees())<=100,"release momentum is bounded");
         check(SwipeMotion.cardVertical(1,false)==0 && SwipeMotion.cardRotation(false)==0,"trash feeds straight into grinder");
         check(SwipeMotion.grinderClipLeft(-100,400,9)==109,"grinder clipping stays fixed at screen edge");
         check(SwipeMotion.grinderClipLeft(-900,400,9)==400,"fully consumed photo is fully clipped");
