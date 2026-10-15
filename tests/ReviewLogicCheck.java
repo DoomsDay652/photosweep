@@ -27,6 +27,11 @@ public class ReviewLogicCheck {
         check(SwipeMotion.grinderClipLeft(-900,400,9)==400,"fully consumed photo is fully clipped");
         check(SwipeMotion.grinderClipLeft(20,400,9)==0,"reversed drag restores the whole card");
         check(SwipeMotion.grinderProximity(150,9,100)==0,"distant photos do not shake");
+        check(SwipeMotion.pocketOpening(300,300,400,70)==0,"holding starts at a dot");
+        check(SwipeMotion.pocketOpening(300,400,400,70)==1,"approaching edge opens pocket");
+        check(SwipeMotion.pocketOpening(300,330,400,70)<SwipeMotion.pocketOpening(300,370,400,70),"pocket follows approach and retreat");
+        check(SwipeMotion.pocketOpening(380,390,400,70)<.1f,"edge-adjacent photos do not jump fully open");
+        check(SwipeMotion.pocketOpening(300,250,400,70)==0,"left swipe leaves pocket closed");
         check(SwipeMotion.grinderProximity(9,9,100)==1,"contact reaches full grinder strength");
         check(SwipeMotion.grinderProximity(60,9,100)<SwipeMotion.grinderProximity(30,9,100),"shake increases near teeth");
         check(SwipeMotion.spellHalfHeight(300,800,400,10)>SwipeMotion.spellHalfHeight(150,800,400,10),"spell height follows portrait and landscape photos");
@@ -102,6 +107,7 @@ public class ReviewLogicCheck {
         System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }
+
 
 
 
