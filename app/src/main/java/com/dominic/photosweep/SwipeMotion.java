@@ -5,6 +5,9 @@ final class SwipeMotion {
     static float clamp(float value) { return Math.max(0f, Math.min(1f, value)); }
     static float ease(float value) { float t = clamp(value); return t * t * (3f - 2f * t); }
     static float followFactor(float milliseconds,float response) { return 1f-(float)Math.exp(-Math.max(0,milliseconds)/Math.max(1,response)); }
+    static float deepestBite(float previous,float cut,float photoWidth) {
+        return Math.max(clamp(previous),clamp(cut/Math.max(1,photoWidth)));
+    }
     static int duration(int speed) { return Math.max(220, Math.min(620, 36000 / Math.max(50, speed))); }
     // Shared semantic cues do not change with the selected theme or custom VFX.
     static final int KEEP_COLOR = 0xFF80E3BF, TRASH_COLOR = 0xFFFF959D;

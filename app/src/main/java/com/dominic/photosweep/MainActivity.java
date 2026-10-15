@@ -2487,7 +2487,7 @@ public class MainActivity extends ComponentActivity {
                 RectF bounds=new RectF();
                 if(visiblePhotoBounds(sample,bounds))effect.setPhoto(tutorialPicture(-101),bounds,dx,0);
                 if(keep){sample.setClipBounds(null);sample.invalidate();}
-                else sample.setClipBounds(new Rect(Math.max(0,Math.min(sample.getWidth(),(int)(dp(10)-sample.getLeft()-dx))),0,sample.getWidth(),sample.getHeight()));
+                else sample.setClipBounds(new Rect(Math.max(0,Math.min(sample.getWidth(),(int)(effect.grinderEdge()-sample.getLeft()-dx))),0,sample.getWidth(),sample.getHeight()));
             }
             effect.invalidate();
         });
@@ -3786,7 +3786,7 @@ public class MainActivity extends ComponentActivity {
                 setPhoto(bitmap, trackedBounds, card.getTranslationX(), card.getTranslationY());
             }
             if (!reducedMotion && progress < 0) {
-                clip.set(SwipeMotion.grinderClipLeft(card.getTranslationX(), card.getWidth(), dp(9)),
+                clip.set(SwipeMotion.grinderClipLeft(card.getTranslationX(), card.getWidth(), grinderEdge()),
                         0, card.getWidth(), card.getHeight());
                 card.setClipBounds(clip);
             } else { card.setClipBounds(null);card.invalidate(); }

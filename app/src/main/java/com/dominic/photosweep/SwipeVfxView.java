@@ -25,7 +25,11 @@ class SwipeVfxView extends View {
     private final float[] position = new float[2];
     private final Path visiblePath = new Path(), localClip = new Path();
     private final Matrix inverse = new Matrix();
-    private static Bitmap glowArt;
+    private static Bitmap glowArt, rayArt;
+    private final Path biteMask=new Path(), biteEdge=new Path();
+    private final float[] biteNoise=new float[64];
+    private float deepestBite;
+    private long mendStarted;
     private View clippedPhoto;
     private float lightAlpha;
     private long geometryFrame;
@@ -55,7 +59,7 @@ class SwipeVfxView extends View {
     private float haloX, haloY;
     private final int intensity, speed;
     private final Random random = new Random();
-    private final Chip[] chips = new Chip[224];
+    private final Chip[] chips = new Chip[320];
     private Bitmap bitmap;
     private long released, started, lastPreviewChip;
     private float lastLeft, feed;
@@ -84,54 +88,75 @@ class SwipeVfxView extends View {
                     new float[]{0,.08f,.28f,.56f,1},Shader.TileMode.CLAMP));
             glowCanvas.drawCircle(48,48,48,soft);
         }
+        if(rayArt==null) {
+            // Small soft beam texture, generated once; no shaders or bitmaps allocated per frame.
+            int w=160,h=96;int[] pixels=new int[w*h];
+            for(int x=0;x<w;x++) {
+                float t=x/(float)(w-1),spread=2+36*(float)Math.pow(t,.8);
+                float lengthFade=(float)Math.pow(Math.sin(Math.PI*t),.85)*(1-t);
+                for(int y=0;y<h;y++) {
+                    float d=(y-h*.5f)/spread;
+                    int a=(int)(210*lengthFade*Math.exp(-d*d*3.2));
+                    pixels[y*w+x]=(a<<24)|(255<<16)|((int)(246-46*t)<<8)|(int)(216-85*t);
+                }
+            }
+            rayArt=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);rayArt.setPixels(pixels,0,w,0,0,w,h);
+        }
         for(int i=0;i<chips.length;i++)chips[i]=new Chip();
+        resetBites();
         setClickable(false);setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
     private float dp(float value) { return value*getResources().getDisplayMetrics().density; }
     protected void onGrinderShake(float offset) { }
+    float grinderEdge() { return dp(14); }
+    private void resetBites() {
+        deepestBite=0;mendStarted=0;
+        for(int i=0;i<biteNoise.length;i++)biteNoise[i]=random.nextFloat();
+    }
     void setPhoto(Bitmap image, RectF bounds, float dx, float dy) {
         bitmap=image;photo.set(bounds);photo.offset(dx,dy);
         if(!tracked)restRight=bounds.right;
-        float edge=dp(9),width=Math.max(1,photo.width());
+        float edge=grinderEdge(),width=Math.max(1,photo.width());
         float oldCut=Math.max(0,Math.min(width,edge-lastLeft));
         float newCut=Math.max(0,Math.min(width,edge-photo.left));
         float travel=tracked?Math.max(0,newCut-oldCut):0;
         lastLeft=photo.left;tracked=true;
+        if(enabled && !reducedMotion && progress<0)deepestBite=SwipeMotion.deepestBite(deepestBite,newCut,width);
         if(enabled && !reducedMotion && progress<0 && travel>0) {
-            feed+=travel/dp(2.3f)*(1.1f+intensity/100f);
-            int count=Math.min(36,(int)feed);feed=Math.min(36,feed-count);
+            feed+=travel/dp(1.65f)*(1.1f+intensity/100f);
+            int count=Math.min(48,(int)feed);feed=Math.min(48,feed-count);
             for(int i=0;i<count;i++)spawnChip();
         } else feed=0;
         invalidate();
     }
     void hold(float x,float y) {
-        clearChips();onGrinderShake(0);released=0;returning=0;closing=0;
+        clearChips();resetBites();onGrinderShake(0);released=0;returning=0;closing=0;
         started=SystemClock.uptimeMillis();lastFrame=started;progress=0;open=0;tracked=false;holding=true;geometryFrame=0;sleeveRect.setEmpty();invalidate();
     }
-    void follow(float x,float y) { if(progress>=0){clearChips();onGrinderShake(0);}invalidate(); }
-    void release(boolean keep) { onGrinderShake(0);holding=false;returning=0;progress=keep?1:-1;released=SystemClock.uptimeMillis();invalidate(); }
+    void follow(float x,float y) { if(progress>=0)onGrinderShake(0);invalidate(); }
+    void release(boolean keep) { onGrinderShake(0);holding=false;returning=0;progress=keep?1:-1;released=SystemClock.uptimeMillis();if(keep)mendStarted=released;invalidate(); }
     void retreat() {
-        onGrinderShake(0);clearChips();returnOpen=open;
+        onGrinderShake(0);mendStarted=SystemClock.uptimeMillis();returnOpen=open;
         returnAlpha=SwipeMotion.ease((SystemClock.uptimeMillis()-started)/140f)*(1-SwipeMotion.clamp(-progress*4));
         holding=false;released=0;closing=0;returning=SystemClock.uptimeMillis();progress=0;invalidate();
     }
     void beginKeepClose() { returnOpen=open;closing=SystemClock.uptimeMillis();invalidate(); }
     void cancel() {
         onGrinderShake(0);holding=false;returning=0;closing=0;open=0;
-        progress=0;released=0;tracked=false;bitmap=null;photo.setEmpty();sleeveRect.setEmpty();visiblePath.reset();geometryFrame=0;clearChips();
+        progress=0;released=0;tracked=false;deepestBite=0;mendStarted=0;bitmap=null;photo.setEmpty();sleeveRect.setEmpty();visiblePath.reset();geometryFrame=0;clearChips();
         if(clippedPhoto!=null){clippedPhoto.invalidate();clippedPhoto=null;}invalidate();
     }
     @Override protected void onDetachedFromWindow() { cancel();super.onDetachedFromWindow(); }
     private void clearChips() { for(Chip chip:chips){chip.born=0;chip.bitmap=null;}feed=0; }
     private void spawnChip() {
         Chip chip=chips[nextChip++%chips.length];chip.born=SystemClock.uptimeMillis();
-        chip.x=dp(9);chip.y=photo.top+photo.height()*(.03f+random.nextFloat()*.94f);
-        chip.size=dp(2+random.nextFloat()*6);chip.vx=dp(60+random.nextFloat()*185);
+        chip.x=grinderEdge();chip.y=photo.top+photo.height()*(.03f+random.nextFloat()*.94f);
+        chip.size=dp(1.4f+random.nextFloat()*6.6f);chip.vx=dp(65+random.nextFloat()*205);
         chip.vy=dp(-115+random.nextFloat()*175);chip.angle=random.nextFloat()*180;
         chip.spin=-540+random.nextFloat()*1080;chip.bitmap=bitmap;
         if(bitmap!=null && !bitmap.isRecycled()) {
             int bw=bitmap.getWidth(),bh=bitmap.getHeight();
-            int sx=Math.max(0,Math.min(bw-1,(int)((dp(9)-photo.left)/Math.max(1,photo.width())*bw)));
+            int sx=Math.max(0,Math.min(bw-1,(int)((grinderEdge()-photo.left)/Math.max(1,photo.width())*bw)));
             int sy=Math.max(0,Math.min(bh-1,(int)((chip.y-photo.top)/Math.max(1,photo.height())*bh)));
             int side=Math.max(1,(int)(chip.size/Math.max(1,photo.width())*bw));
             chip.source.set(sx,sy,Math.min(bw,sx+side),Math.min(bh,sy+side));
@@ -146,18 +171,20 @@ class SwipeVfxView extends View {
         float amount=SwipeMotion.clamp(Math.abs(progress));
         float fade=released==0?1:1-SwipeMotion.ease(phase);
         if(released==0) {
-            float proximity=progress<0&&!photo.isEmpty()?SwipeMotion.grinderProximity(photo.left,dp(9),dp(110)):0;
+            float proximity=progress<0&&!photo.isEmpty()?SwipeMotion.grinderProximity(photo.left,grinderEdge(),dp(110)):0;
             onGrinderShake(enabled&&!reducedMotion?dp(2.6f)*SwipeMotion.grinderShake((now-started)/1000f,proximity):0);
         }
         boolean lightVisible=holding || returning!=0 || (released!=0 && progress>0) || progress>0;
         int frame=canvas.save();canvas.clipRect(0,0,getWidth(),getHeight());
         if(lightVisible)drawHeavenly(canvas,time,dt,now);
+        drawBiteEdge(canvas,now);
         if(SwipeMotion.intent(progress)<0)drawGrinder(canvas,time,amount,fade,now);
+        if(enabled && !reducedMotion)drawChips(canvas,fade,now);
         canvas.restoreToCount(frame);
         paint.setShader(null);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);
         boolean tail=returning!=0 && now-returning<280;
-        if(returning!=0 && !tail){returning=0;open=0;photo.setEmpty();bitmap=null;}
-        if(isAttachedToWindow() && (holding || tail || (released!=0 && (progress>0 || phase<1)) || progress>0)) {
+        if(returning!=0 && !tail){returning=0;open=0;deepestBite=0;mendStarted=0;photo.setEmpty();bitmap=null;}
+        if(isAttachedToWindow() && (holding || tail || hasChips(now) || (released!=0 && (progress>0 || phase<1)) || progress>0)) {
             if(clippedPhoto!=null)clippedPhoto.postInvalidateOnAnimation();
             postInvalidateOnAnimation();
         }
@@ -166,13 +193,53 @@ class SwipeVfxView extends View {
     float keepClipEdge() { preparePocket(SystemClock.uptimeMillis());return sleeveRect.left; }
     private void clipPhoto(Canvas canvas,View view) {
         clippedPhoto=view;
+        if(buildBiteMask(SystemClock.uptimeMillis()))clipStagePath(canvas,view,biteMask);
         if(!(progress>0 || returning!=0 || closing!=0))return;
         preparePocket(SystemClock.uptimeMillis());
         if(open<.001f || visiblePath.isEmpty())return;
-        localClip.set(visiblePath);localClip.offset(-view.getLeft(),-view.getTop());
+        clipStagePath(canvas,view,visiblePath);
+    }
+    private void clipStagePath(Canvas canvas,View view,Path stagePath) {
+        localClip.set(stagePath);localClip.offset(-view.getLeft(),-view.getTop());
         if(view.getMatrix().invert(inverse)) {
             localClip.transform(inverse);canvas.clipPath(localClip);
         }
+    }
+    private boolean buildBiteMask(long now) {
+        if(photo.isEmpty() || deepestBite<=0 || reducedMotion || !enabled)return false;
+        long frame=getDrawingTime();if(frame>0)now=frame;
+        float recovery=mendStarted==0?1:1-SwipeMotion.ease((now-mendStarted)/280f);
+        if(recovery<=0)return false;
+        float cut=deepestBite*photo.width()*recovery;
+        float roughness=dp(8)*Math.min(1,cut/dp(12))*recovery;
+        int segments=Math.max(8,Math.min(62,(int)(photo.height()/dp(8))));
+        biteEdge.reset();biteMask.reset();
+        float x=photo.left+cut;
+        biteMask.moveTo(x,-getHeight()*4f);biteMask.lineTo(x,photo.top);
+        biteEdge.moveTo(x,photo.top);
+        for(int i=1;i<segments;i++) {
+            float y=photo.top+photo.height()*i/segments;
+            float tooth=(i%3==0?.08f:.35f+.65f*biteNoise[i]);
+            x=Math.min(photo.right,photo.left+cut+roughness*tooth);
+            biteMask.lineTo(x,y);biteEdge.lineTo(x,y);
+        }
+        x=photo.left+cut;biteMask.lineTo(x,photo.bottom);biteEdge.lineTo(x,photo.bottom);
+        biteMask.lineTo(x,getHeight()*4f);biteMask.lineTo(getWidth()*4f,getHeight()*4f);
+        biteMask.lineTo(getWidth()*4f,-getHeight()*4f);biteMask.close();
+        return true;
+    }
+    private void drawBiteEdge(Canvas canvas,long now) {
+        if(!buildBiteMask(now))return;
+        int save=canvas.save();
+        if(progress>0 && open>.001f)canvas.clipPath(visiblePath);
+        paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(.65f));
+        paint.setColor(0xFFEEE0C7);paint.setAlpha((int)(85*(mendStarted==0?1:1-SwipeMotion.ease((now-mendStarted)/280f))));
+        canvas.drawPath(biteEdge,paint);paint.setStyle(Paint.Style.FILL);canvas.restoreToCount(save);
+    }
+    private boolean hasChips(long now) {
+        if(!enabled || reducedMotion)return false;
+        for(Chip chip:chips)if(chip.born!=0 && now-chip.born<1050)return true;
+        return false;
     }
     private void preparePocket(long now) {
         // Touch, clipping and foreground drawing share one geometry sample per frame.
@@ -219,13 +286,14 @@ class SwipeVfxView extends View {
             float top=sleeveRect.top,bottom=sleeveRect.bottom,h=bottom-top,mouth=sleeveRect.left;
             // Diffuse light is concentrated on the receiving seam, not a panel over the image.
             glow(canvas,mouth+dp(7)*o,haloY,dp(25)*o,h*.60f,alpha*.40f);
+            if(animate)drawPortalRays(canvas,time,o,alpha);
             glowStroke(canvas,lightPath,alpha,1.15f);
             if(animate) {
                 pathParticles(canvas,lightPath,time,.16f,36+intensity/8,alpha*o);
                 drawRibbon(canvas,-1,o,alpha,time);
                 drawRibbon(canvas,1,o,alpha,time);
                 // Staggered curved motes drift into the seam; no fence of identical straight rays.
-                for(int i=0;i<26;i++) {
+                for(int i=0;i<18;i++) {
                     float u=(time*(.20f+(i%5)*.027f)+i*.618034f)%1;
                     float v=.07f+.86f*((i*.381966f)%1);
                     float reach=dp(12+(i*17)%35)*o;
@@ -245,6 +313,39 @@ class SwipeVfxView extends View {
             float t=(time*.32f+i*.25f)%1,angle=i*2.4f+time*.18f;
             float reach=dp(4+13*t),x=haloX+(float)Math.cos(angle)*reach,y=haloY+(float)Math.sin(angle)*reach;
             sparkle(canvas,x,y,dp(.9f),dot*(float)Math.sin(Math.PI*t));
+        }
+    }
+    private void drawPortalRays(Canvas canvas,float time,float opening,float alpha) {
+        measure.setPath(lightPath,false);float length=measure.getLength();
+        if(length<1)return;
+        float strength=alpha*opening*Math.min(1.25f,.65f+intensity/200f);
+        for(int i=0;i<9;i++) {
+            float v=.08f+.84f*((i*.618034f+.13f)%1);
+            if(!measure.getPosTan(length*v,position,null))continue;
+            float pulse=.40f+.60f*(float)Math.pow(Math.sin(time*(.43f+i*.043f)+i*2.1f),2);
+            float angle=180-(v-.5f)*48+4*(float)Math.sin(time*.37f+i);
+            float reach=Math.min(getWidth()*.48f,dp(84+(i*29)%65))*opening;
+            float width=dp(18+(i*13)%26)*opening;
+            int save=canvas.save();canvas.rotate(angle,position[0],position[1]);
+            target.set(position[0],position[1]-width*.5f,position[0]+reach,position[1]+width*.5f);
+            paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);paint.setAlpha((int)(195*strength*pulse));
+            canvas.drawBitmap(rayArt,null,target,paint);canvas.restoreToCount(save);
+        }
+        // Each glint has its own lifetime and direction, streaming out towards the photo.
+        for(int i=0;i<18;i++) {
+            float u=(time*(.28f+(i%5)*.041f)+i*.618034f)%1;
+            float v=.04f+.92f*((i*.381966f+.21f)%1);
+            if(!measure.getPosTan(length*v,position,null))continue;
+            float reach=dp(30+(i*23)%83)*opening;
+            float x=position[0]-reach*u,y=position[1]+(v-.5f)*dp(54)*u*opening;
+            float a=strength*(float)Math.pow(Math.sin(Math.PI*u),1.4)*(.45f+(i%3)*.13f);
+            glow(canvas,x,y,dp(3+(i%3)),dp(3+(i%3)),a*.8f);
+            if(i%3==0)sparkle(canvas,x,y,dp(1.1f+(i%4)*.25f),a);
+            else {
+                paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeCap(Paint.Cap.ROUND);
+                paint.setColor(0xFFFFE5AE);paint.setAlpha((int)(145*a));paint.setStrokeWidth(dp(.7f));
+                canvas.drawLine(x,y,x+dp(3+u*6)*opening,y-(v-.5f)*dp(3)*opening,paint);paint.setStyle(Paint.Style.FILL);
+            }
         }
     }
     private void drawRibbon(Canvas canvas,int side,float opening,float alpha,float time) {
@@ -301,10 +402,10 @@ class SwipeVfxView extends View {
         float bottom=photo.isEmpty()?getHeight()*.80f:Math.min(getHeight()-dp(5),photo.bottom);
         // Only transparent teeth are drawn here: no rectangular rail behind the saws.
         paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);paint.setAlpha((int)(235*SwipeMotion.ease(amount)*fade));
-        int save=canvas.save();canvas.clipRect(0,top,dp(15),bottom);
+        int save=canvas.save();canvas.clipRect(0,top,dp(22),bottom);
         int index=0;
-        for(float y=top;y<bottom+dp(27);y+=dp(40)) {
-            float radius=dp(27),cx=-dp(14);
+        for(float y=top;y<bottom+dp(34);y+=dp(49)) {
+            float radius=dp(34),cx=-dp(16);
             int blade=canvas.save();
             canvas.rotate(enabled&&!reducedMotion?(time*115*(index%2==0?1:-1)+index*29)%360:0,cx,y);
             bladeRect.set(cx-radius,y-radius,cx+radius,y+radius);
@@ -316,8 +417,10 @@ class SwipeVfxView extends View {
         // Preview has no real photo. Show paper-colored chips instead of fabricating a photo.
         if(bitmap==null && now-lastPreviewChip>=35) {
             lastPreviewChip=now;photo.set(0,getHeight()*.20f,getWidth()*.6f,getHeight()*.80f);
-            for(int i=0;i<3;i++)spawnChip();
+            for(int i=0;i<4;i++)spawnChip();
         }
+    }
+    private void drawChips(Canvas canvas,float fade,long now) {
         for(Chip chip:chips) {
             if(chip.born==0)continue;
             float age=(now-chip.born)/1000f;
