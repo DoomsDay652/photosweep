@@ -2867,6 +2867,7 @@ public class MainActivity extends ComponentActivity {
                 for (TrashEntry entry : entries) { uris.add(entry.uri); pendingTrashSelection.add(entry.id); }
                 // Reuse the existing media-operation gate while Android's confirmation is open.
                 pendingRestore = entries.get(0).id;
+                invalidateMediaSnapshot();
                 refreshTrashSelection();
                 PendingIntent intent = delete ? MediaStore.createDeleteRequest(getContentResolver(), uris)
                         : MediaStore.createTrashRequest(getContentResolver(), uris, false);
@@ -3980,6 +3981,7 @@ public class MainActivity extends ComponentActivity {
         try {
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(p.uri), true);
             pendingTrash = p.id; pendingTrashUndo = snapshot(p, true);
+            invalidateMediaSnapshot();
             render();
             startIntentSenderForResult(request.getIntentSender(), TRASH_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
@@ -3995,6 +3997,7 @@ public class MainActivity extends ComponentActivity {
         try {
             pendingRestore = entry.id;
             PendingIntent request = MediaStore.createTrashRequest(getContentResolver(), Collections.singletonList(entry.uri), false);
+            invalidateMediaSnapshot();
             startIntentSenderForResult(request.getIntentSender(), RESTORE_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
             pendingRestore = -1; pendingRestoreUndo = false; skipMediaReloadOnResume = false; Toast.makeText(this, "Could not restore photo", Toast.LENGTH_SHORT).show();
