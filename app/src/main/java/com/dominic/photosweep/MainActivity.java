@@ -2713,8 +2713,8 @@ public class MainActivity extends ComponentActivity {
         overlay.setClickable(false);
         FrameLayout.LayoutParams overlayLp = new FrameLayout.LayoutParams(-1, dp(64), Gravity.CENTER);
         overlayLp.setMargins(dp(22), 0, dp(22), 0); card.addView(overlay, overlayLp);
-        TextView trashAction = swipeOverlayLabel("←  Trash", RED);
-        TextView keepAction = swipeOverlayLabel("Keep  →", GREEN);
+        TextView trashAction = swipeOverlayLabel("←  Trash", SwipeMotion.TRASH_COLOR);
+        TextView keepAction = swipeOverlayLabel("Keep  →", SwipeMotion.KEEP_COLOR);
         overlay.addView(trashAction, new LinearLayout.LayoutParams(0, -2, 1));
         overlay.addView(keepAction, new LinearLayout.LayoutParams(0, -2, 1));
         if (tutorialStep < 0 && !swipeHintSeen) {
@@ -2846,6 +2846,7 @@ public class MainActivity extends ComponentActivity {
             }
             if (action == MotionEvent.ACTION_UP) {
                 if (shown.id < 0 && ((tutorialStep == 1 && dx < 0) || (tutorialStep == 3 && dx > 0))) {
+                    if (fireBorder != null) fireBorder.cool();
                     effect.cancel(); card.animate().translationX(0).rotation(0).setDuration(180).start(); return true;
                 }
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
