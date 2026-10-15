@@ -22,6 +22,9 @@ public class ReviewLogicCheck {
         check(ThemeProgression.tokenCount(3)==2 && ThemeProgression.tokenKind(3)==1,"2 Gold bundle");
         check(ThemeProgression.legacyReward(0)==0 && ThemeProgression.legacyReward(1)==2 && ThemeProgression.legacyReward(2)==4 && ThemeProgression.legacyReward(-1)==-1,"last-result migration preserves token kind");
         check("3 Silver tokens".equals(ThemeProgression.rewardLabel(1)) && "2 Gold tokens".equals(ThemeProgression.rewardLabel(3)) && "1 Diamond token".equals(ThemeProgression.rewardLabel(4)),"reward descriptions match amounts");
+        check(SwipeMotion.deepestBite(.4f,20,200)==.4f,"pulling away preserves the deepest bite within a gesture");
+        check(SwipeMotion.deepestBite(.1f,100,200)==.5f,"feeding further increases the bite");
+        check(SwipeMotion.deepestBite(.2f,900,200)==1 && SwipeMotion.deepestBite(0,-5,200)==0,"bite depth stays in photo bounds");
         float response60=0,response120=0;
         for(int i=0;i<60;i++)response60+=(1-response60)*SwipeMotion.followFactor(1000f/60,32);
         for(int i=0;i<120;i++)response120+=(1-response120)*SwipeMotion.followFactor(1000f/120,32);
