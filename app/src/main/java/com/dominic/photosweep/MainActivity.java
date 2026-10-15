@@ -1691,7 +1691,7 @@ public class MainActivity extends ComponentActivity {
 
     private void refreshExchangeButton(Button control, String offer, int balance, String currency, boolean spinning) {
         boolean enough = balance >= 3;
-        int statusColor = enough ? GREEN : RED;
+        int statusColor = enough ? 0xFF71E4AF : 0xFFFF8794;
         String availability = balance + " " + currency + " available";
         android.text.SpannableString copy = new android.text.SpannableString(offer + "\n" + availability);
         int start = offer.length() + 1;
