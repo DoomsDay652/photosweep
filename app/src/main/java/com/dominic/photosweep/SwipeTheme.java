@@ -45,6 +45,7 @@ final class SwipeTheme {
         }
     }
     static String description(Kind kind) {
-        return "Keep: gentle shine, check mark and lift · Trash: shrinking, fading sweep to the left";
+        return "Keep: warm glow and sparkles · Trash: photo chips at the left edge. Style changes the sparkle accents.";
     }
 }
+

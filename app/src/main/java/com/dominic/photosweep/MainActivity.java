@@ -1195,7 +1195,7 @@ public class MainActivity extends ComponentActivity {
             stopPhotoIdle();
             page.card.animate().cancel();
             page.card.setTranslationX(0); page.card.setTranslationY(0); page.card.setRotation(0); page.card.setAlpha(1f);
-            page.card.setScaleX(1f); page.card.setScaleY(1f);
+            page.card.setScaleX(1f); page.card.setScaleY(1f); page.card.setClipBounds(null);
             page.effect.cancel();
             if (page.border != null) page.border.stop();
             if (page.image instanceof ReviewZoomImage) ((ReviewZoomImage) page.image).resetZoom();
@@ -2714,8 +2714,8 @@ public class MainActivity extends ComponentActivity {
         overlay.setClickable(false);
         FrameLayout.LayoutParams overlayLp = new FrameLayout.LayoutParams(-1, dp(64), Gravity.CENTER);
         overlayLp.setMargins(dp(22), 0, dp(22), 0); card.addView(overlay, overlayLp);
-        TextView trashAction = swipeOverlayLabel("←  🗑", SwipeMotion.TRASH_COLOR);
-        TextView keepAction = swipeOverlayLabel("✓  →", SwipeMotion.KEEP_COLOR);
+        TextView trashAction = swipeOverlayLabel("←", SwipeMotion.TRASH_COLOR);
+        TextView keepAction = swipeOverlayLabel("→", SwipeMotion.KEEP_COLOR);
         trashAction.setContentDescription("Swipe left to move photo to Trash");
         keepAction.setContentDescription("Swipe right to keep photo");
         overlay.addView(trashAction, new LinearLayout.LayoutParams(0, -2, 1));
@@ -2827,7 +2827,7 @@ public class MainActivity extends ComponentActivity {
                 multitouch[0] = false;
                 start[0] = event.getRawX(); start[1] = event.getRawY(); stage.getLocationOnScreen(position);
                 if (fireBorder != null) fireBorder.stop();
-                effect.hold(start[0] - position[0], start[1] - position[1]); return true;
+                effect.hold(start[0] - position[0], start[1] - position[1]); effect.track(card); return true;
             }
             float dx = event.getRawX() - start[0], dy = event.getRawY() - start[1];
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
@@ -2842,9 +2842,10 @@ public class MainActivity extends ComponentActivity {
                 return true;
             }
             if (action == MotionEvent.ACTION_MOVE) {
-                card.setTranslationX(dx); card.setRotation(Math.max(-13, Math.min(13, dx / dp(28))));
+                card.setTranslationX(dx); card.setRotation(0);
                 effect.progress = SwipeMotion.dragProgress(dx, dy, card.getWidth());
-                if (fireBorder != null) fireBorder.followIntent(SwipeMotion.intent(effect.progress));
+                if (fireBorder != null) fireBorder.stop();
+                effect.track(card);
                 effect.follow(event.getRawX() - position[0], event.getRawY() - position[1]); return true;
             }
             if (action == MotionEvent.ACTION_UP) {
@@ -2855,7 +2856,7 @@ public class MainActivity extends ComponentActivity {
                 if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
                     {
                         committed[0] = true; reviewActionRunning = true;
-                        if (fireBorder != null) fireBorder.flare(dx > 0);
+                        if (fireBorder != null) fireBorder.stop();
                         effect.release(dx > 0);
                         playEffect(dx > 0);
                         boolean keeping = dx > 0;
@@ -2867,6 +2868,7 @@ public class MainActivity extends ComponentActivity {
                                 .alpha(reducedMotion ? 1 : SwipeMotion.cardAlpha(1, keeping))
                                 .rotation(reducedMotion ? 0 : SwipeMotion.cardRotation(keeping))
                                 .setDuration(reducedMotion ? 80 : SwipeMotion.releaseDuration(swipeSpeed, keeping))
+                                .setUpdateListener(frame -> effect.track(card))
                                 .withEndAction(() -> {
                                     effect.cancel();
                                     if (fireBorder != null) fireBorder.stop();
@@ -3568,6 +3570,32 @@ public class MainActivity extends ComponentActivity {
         }
     }
     private class SwipeEffect extends SwipeVfxView {
+        private final RectF trackedBounds = new RectF();
+        private final Rect clip = new Rect();
+        void track(FrameLayout card) {
+            if (reviewPage == null || reviewPage.card != card) return;
+            ImageView image = reviewPage.image;
+            if (visiblePhotoBounds(image, trackedBounds)) {
+                float cx=card.getWidth()/2f, cy=card.getHeight()/2f;
+                trackedBounds.set(cx+(trackedBounds.left-cx)*card.getScaleX(),
+                        cy+(trackedBounds.top-cy)*card.getScaleY(),
+                        cx+(trackedBounds.right-cx)*card.getScaleX(),
+                        cy+(trackedBounds.bottom-cy)*card.getScaleY());
+                Drawable art = image.getDrawable();
+                Bitmap bitmap = art instanceof android.graphics.drawable.BitmapDrawable
+                        ? ((android.graphics.drawable.BitmapDrawable) art).getBitmap() : null;
+                setPhoto(bitmap, trackedBounds, card.getTranslationX(), card.getTranslationY());
+            }
+            if (!reducedMotion && progress < 0) {
+                clip.set(SwipeMotion.grinderClipLeft(card.getTranslationX(), card.getWidth(), dp(9)),
+                        0, card.getWidth(), card.getHeight());
+                card.setClipBounds(clip);
+            } else card.setClipBounds(null);
+        }
+        @Override void cancel() {
+            super.cancel();
+            if (reviewPage != null && reviewPage.effect == this) reviewPage.card.setClipBounds(null);
+        }
         SwipeEffect() {
             super(MainActivity.this, MainActivity.this::selectedSwipeSprite,
                     countryCollection(themeChoice) >= 0 && (swipeStyle == 0 || swipeStyle == 8)
@@ -3853,7 +3881,7 @@ public class MainActivity extends ComponentActivity {
 
     private void playEffect(boolean keep) {
         // One clear sonic identity per action. Do not mask it with destructive theme accents.
-        playSound(keep ? R.raw.bubble_keep : R.raw.bubble_trash, keep ? .27f : .38f);
+        playSound(keep ? R.raw.bubble_keep : R.raw.bubble_trash, .28f);
     }
 
     private void playMonthComplete() {
@@ -4863,5 +4891,6 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
 

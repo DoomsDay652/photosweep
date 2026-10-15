@@ -4,238 +4,149 @@ import android.content.Context;
 import android.graphics.*;
 import android.os.SystemClock;
 import android.view.View;
+import java.util.Random;
 
-/** Theme-specific hold loops and release bursts, above the photo without consuming gestures. */
+/** Wordless photo feedback: feed actual photo chips left; bathe kept photos in light. */
 class SwipeVfxView extends View {
     interface Sprites { Bitmap get(boolean keep); }
     float progress;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-    private final RectF bounds = new RectF();
+    private final RectF photo = new RectF(), target = new RectF();
     private final Path path = new Path();
-    private final Sprites sprites;
-    private final String flag;
     private final boolean enabled, reducedMotion;
-    private final SwipeTheme.Kind kind;
+    private final Sprites sprites;
+    private final RectF glyph = new RectF();
     private final int intensity, speed;
-    private long started, released;
-    private boolean held;
-    private float fingerX=-1, fingerY=-1;
+    private final Random random = new Random();
+    private final Chip[] chips = new Chip[96];
+    private Bitmap bitmap;
+    private long released, started;
+    private float lastLeft, feed;
+    private boolean tracked;
+    private int nextChip;
+    private static class Chip {
+        Bitmap bitmap;
+        final Rect source = new Rect();
+        float x,y,vx,vy,size,angle,spin;
+        long born;
+    }
     SwipeVfxView(Context context, Sprites sprites, String flag, SwipeTheme.Kind kind, boolean enabled,
                  int intensity, int speed, boolean reducedMotion) {
-        super(context); this.sprites=sprites; this.flag=flag; this.kind=kind; this.enabled=enabled;
-        this.intensity=intensity; this.speed=speed; this.reducedMotion=reducedMotion;
-        setClickable(false); setFocusable(false); setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        super(context); this.sprites=sprites; this.enabled=enabled; this.intensity=intensity; this.speed=speed;
+        this.reducedMotion=reducedMotion;
+        for(int i=0;i<chips.length;i++)chips[i]=new Chip();
+        setClickable(false);setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
-    void hold(float x,float y) { held=true; released=0; started=SystemClock.uptimeMillis(); progress=0; follow(x,y); }
-    void follow(float x,float y) { fingerX=x; fingerY=y; invalidate(); }
-    void cancel() { held=false; progress=0; released=0; started=0; invalidate(); }
-    void release(boolean keep) { held=false; progress=keep?1f:-1f; released=SystemClock.uptimeMillis(); invalidate(); }
-    private float dp(float value) { return value * getResources().getDisplayMetrics().density; }
-    private static float loop(float value) { return value-(float)Math.floor(value); }
+    private float dp(float value) { return value*getResources().getDisplayMetrics().density; }
+    void setPhoto(Bitmap image, RectF bounds, float dx, float dy) {
+        bitmap=image;photo.set(bounds);photo.offset(dx,dy);
+        float travel=tracked?Math.max(0,lastLeft-photo.left):0;
+        lastLeft=photo.left;tracked=true;
+        if(enabled && progress<0 && photo.left<dp(10) && photo.right>0) {
+            feed+=travel/dp(7)*(.4f+intensity/75f);
+            int count=Math.min(10,(int)feed);feed-=count;
+            for(int i=0;i<count;i++)spawnChip();
+        } else feed=0;
+        invalidate();
+    }
+    void hold(float x,float y) { clearChips(); released=0;started=SystemClock.uptimeMillis();progress=0;tracked=false; }
+    void follow(float x,float y) { if(progress>=0)clearChips();invalidate(); }
+    void release(boolean keep) { progress=keep?1:-1;released=SystemClock.uptimeMillis();invalidate(); }
+    void cancel() { progress=0;released=0;tracked=false;bitmap=null;photo.setEmpty();clearChips();invalidate(); }
+    private void clearChips() { for(Chip chip:chips){chip.born=0;chip.bitmap=null;}feed=0; }
+    private void spawnChip() {
+        Chip chip=chips[nextChip++%chips.length];chip.born=SystemClock.uptimeMillis();
+        chip.x=dp(9);chip.y=photo.top+photo.height()*(.03f+random.nextFloat()*.94f);
+        chip.size=dp(3+random.nextFloat()*6);chip.vx=dp(22+random.nextFloat()*100);
+        chip.vy=dp(-50+random.nextFloat()*75);chip.angle=random.nextFloat()*180;
+        chip.spin=-210+random.nextFloat()*420;chip.bitmap=bitmap;
+        if(bitmap!=null && !bitmap.isRecycled()) {
+            int bw=bitmap.getWidth(),bh=bitmap.getHeight();
+            int sx=Math.max(0,Math.min(bw-1,(int)((dp(9)-photo.left)/Math.max(1,photo.width())*bw)));
+            int sy=Math.max(0,Math.min(bh-1,(int)((chip.y-photo.top)/Math.max(1,photo.height())*bh)));
+            int side=Math.max(1,(int)(chip.size/Math.max(1,photo.width())*bw));
+            chip.source.set(sx,sy,Math.min(bw,sx+side),Math.min(bh,sy+side));
+        }
+    }
     @Override protected void onDraw(Canvas canvas) {
-        float amount=SwipeMotion.clamp(Math.abs(progress)), w=getWidth(), h=getHeight();
-        if (SwipeMotion.intent(progress)==0 || w<=0 || h<=0) return;
-        boolean keep=progress>0; int sign=keep?1:-1, color=SwipeTheme.color(kind);
-        long now=SystemClock.uptimeMillis(); if(started==0) started=now;
+        if(SwipeMotion.intent(progress)==0 || getWidth()==0 || getHeight()==0)return;
+        long now=SystemClock.uptimeMillis();if(started==0)started=now;
         float time=(now-started)/1000f*speed/100f;
-        float impact=released==0?0:SwipeMotion.clamp((now-released)/(float)(reducedMotion ? 80 : SwipeMotion.releaseDuration(speed, keep)));
-        float fade=released==0?1:1-SwipeMotion.ease(impact);
-        float strength=(held?.32f+.68f*SwipeMotion.ease(amount):SwipeMotion.ease(amount))*fade;
-        float cx=fingerX<0?w*(keep?.7f:.3f):Math.max(w*.12f,Math.min(w*.88f,fingerX));
-        float cy=fingerY<0?h*.55f:Math.max(h*.18f,Math.min(h*.82f,fingerY));
-        if(enabled) {
-            drawStructure(canvas,w,h,cx,cy,time,impact,strength,sign,color);
-            Bitmap sprite=sprites.get(keep);
-            boolean quiet=kind==SwipeTheme.Kind.MLK || kind==SwipeTheme.Kind.MEMORIAL || kind==SwipeTheme.Kind.VETERANS;
-            int count=quiet ? 6 : 8+intensity/6;
-            for(int i=0;i<count;i++) {
-                float phase=loop(time*.6f+i*.618034f), theta=i*2.399963f+time*.35f;
-                float lane=((i*37)%101)/100f, x=cx, y=cy, rotation=sign*(phase*65+i*19);
-                float radius=dp(13+i%4*5)*(.7f+.4f*amount);
-                if(released!=0) {
-                    float motion=SwipeMotion.ease(impact);
-                    if(keep) {
-                        // A calm ascending shine. Never burn, shatter or explode a kept photo.
-                        x=cx+dp((lane-.5f)*100)+motion*w*.30f;
-                        y=cy-dp(25+lane*85)*motion+(float)Math.sin(theta)*dp(12);
-                        radius*=.7f*(1-.45f*motion); rotation=i*19;
-                    } else {
-                        // Debris collapses into the leftward sweep and falls, rather than celebrating.
-                        x=cx-motion*w*(.30f+lane*.48f);
-                        y=cy+(float)Math.sin(theta)*dp(30)*(1-motion)+dp(120)*motion*motion;
-                        radius*=1-.82f*motion; rotation=-i*19-impact*130;
-                        if(kind==SwipeTheme.Kind.WATER || kind==SwipeTheme.Kind.ONE_PIECE || kind==SwipeTheme.Kind.TOXIC)
-                            y+=dp(45)*motion*motion;
-                    }
-                } else if(keep) {
-                    x=cx+dp((lane-.5f)*100)+phase*dp(34);
-                    y=cy-dp(12+phase*44)+(float)Math.sin(time+i)*dp(5);
-                    radius*=.65f; rotation=i*19;
-                } else {
-                    switch(kind) {
-                        case CHRISTMAS:case HALLOWEEN:case THANKSGIVING:case MLK:case MEMORIAL:case LABOR:case COLUMBUS:case VETERANS:
-                            x=loop(lane+sign*time*.045f)*w; y=h*(.12f+phase*.76f)+(float)Math.sin(time+i)*dp(8);
-                            rotation=kind==SwipeTheme.Kind.MLK || kind==SwipeTheme.Kind.COLUMBUS ? 0 : (float)Math.sin(time+i)*18;break;
-                        case INDEPENDENCE:case NEW_YEAR:case PRESIDENTS:case JUNETEENTH:
-                            x=cx+(float)Math.cos(theta+time*.4f)*dp(30+lane*75); y=cy+(float)Math.sin(theta+time*.4f)*dp(30+lane*75);rotation=time*20+i*18;break;
-                        case FIRE:
-                            x=i%3==0?(i%2==0?dp(14):w-dp(14)):w*lane+sign*phase*dp(18)*amount;
-                            y=i%3==0?h*(.2f+lane*.6f):h-phase*h*.3f;
-                            radius*=1.35f; rotation=(float)Math.sin(time*6+i)*9; break;
-                        case WATER:case ONE_PIECE:
-                            x=loop(phase+amount*.35f)*w; if(sign<0)x=w-x;
-                            y=h*(.68f+lane*.18f)+(float)Math.sin(time*3+lane*7)*dp(25); rotation=sign*20; radius*=1.3f;break;
-                        case ICE:
-                            x=i%2==0?dp(15):w-dp(15); y=h*(.13f+lane*.74f);
-                            radius*=.7f+amount*.8f+(float)Math.sin(time+i)*.15f; rotation=i*47;break;
-                        case CANDY:
-                            x=loop(lane+sign*time*.08f)*w;
-                            y=h*(.56f+lane*.23f)-Math.abs((float)Math.sin(time*2.5+i))*dp(45);rotation=time*sign*55+i*20;break;
-                        case TOXIC:
-                            x=w*lane; y=h*(.1f+phase*.8f); radius*=.55f+phase*.85f;rotation=0;break;
-                        case LIGHTNING:case THUNDER:case MY_HERO:
-                            x=cx+(float)Math.cos(theta)*dp(42+lane*70);
-                            y=cy+(float)Math.sin(theta)*dp(42+lane*70);radius*=.7f+Math.abs((float)Math.sin(time*8+i))*.6f;rotation=i*67;break;
-                        case SPACE:
-                            x=cx+(float)Math.cos(theta)*dp(35+lane*100); y=cy+(float)Math.sin(theta)*dp(20+lane*65);rotation=theta*57.3f-135;break;
-                        case WEB:
-                            x=i%2==0?dp(20):w-dp(20);y=h*(.15f+lane*.6f)+(float)Math.sin(time+i)*dp(12);radius*=.7f;rotation=0;break;
-                        case GOLD:case SOLAR:
-                            x=cx+(float)Math.cos(theta)*dp(40+lane*90);y=cy+(float)Math.sin(theta)*dp(40+lane*90);radius*=.7f+.4f*(float)Math.sin(time*3+i);break;
-                        case GAMMA:case DRAGONBALL:
-                            x=cx+(float)Math.cos(theta)*dp(25+phase*75);y=cy+(float)Math.sin(theta)*dp(25+phase*75);radius*=1.1f;rotation=theta*57.3f;break;
-                        case SHIELD:case SCARLET:case NARUTO:case YIN_YANG:
-                            x=cx+(float)Math.cos(theta+time*sign)*dp(45+lane*65);y=cy+(float)Math.sin(theta+time*sign)*dp(45+lane*65);rotation=time*sign*95+i*40;break;
-                        case COSMIC:case NEBULA:case SKY:case WISPS:
-                            x=cx+(float)Math.cos(theta+time*.5f)*w*.28f;y=cy+(float)Math.sin(theta*1.3f+time*.3f)*h*.26f;radius*=kind==SwipeTheme.Kind.NEBULA?1.35f:.85f;break;
-                        case STEALTH:
-                            x=w*(.14f+(i%4)*.24f);y=h*(.2f+(i%3)*.27f);radius*=.65f;rotation=0;break;
-                        case BLEACH:
-                            x=cx+sign*dp((phase-.5f)*100);y=cy+(i-count/2)*dp(9);rotation=sign*65;radius*=.95f;break;
-                        case JAPAN:case KOREA:
-                            x=w*lane+(float)Math.sin(time+i)*dp(16);y=h*(.15f+loop(phase*(kind==SwipeTheme.Kind.KOREA?-1:1))*.7f);rotation=(float)Math.sin(time+i)*16;break;
-                        case SPAIN:
-                            x=cx+(float)Math.cos(theta)*dp(80);y=cy+(float)Math.sin(theta)*dp(60);rotation=sign*(float)Math.sin(time*2+i)*60;break;
-                        case USA:
-                            x=cx+(float)Math.cos(theta+time)*dp(35+lane*95);y=cy+(float)Math.sin(theta+time)*dp(35+lane*95);rotation=time*45+i*18;break;
-                        case MEXICO:
-                            x=cx+(float)Math.cos(theta)*dp(45+phase*80);y=cy+(float)Math.sin(theta)*dp(45+phase*80);rotation=time*70+i*30;break;
-                        case BRAZIL:case FRANCE:case ITALY:case EARTH:case SAKURA:
-                            x=loop(lane+sign*time*.07f)*w; y=h*(.12f+phase*.76f)+(float)Math.sin(time+i)*dp(12);rotation=(float)Math.sin(time*1.3f+i)*(kind==SwipeTheme.Kind.ITALY?20:40);break;
-                        default:
-                            x=cx+sign*phase*w*.26f;y=h*(.12f+lane*.75f);break;
-                    }
-                }
-                float alpha=strength*(released!=0?1f:.5f+.5f*(float)Math.sin(Math.PI*phase));
-                paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);paint.setAlpha((int)(220*alpha));
-                canvas.save();canvas.translate(x,y);
-                if(flag!=null && i%3==0) {
-                    paint.setTextAlign(Paint.Align.CENTER);paint.setTextSize(radius*2);canvas.drawText(flag,0,radius*.65f,paint);
-                } else if(sprite!=null && !sprite.isRecycled()) {
-                    canvas.rotate(rotation);// Preserve the orientation of country emblems and theme artwork.
-                    float rh=radius*sprite.getHeight()/sprite.getWidth();bounds.set(-radius,-rh,radius,rh);canvas.drawBitmap(sprite,null,bounds,paint);
-                }
-                canvas.restore();
+        float phase=released==0?0:SwipeMotion.clamp((now-released)/(float)(reducedMotion?80:SwipeMotion.releaseDuration(speed,progress>0)));
+        float amount=SwipeMotion.clamp(Math.abs(progress));
+        float fade=released==0?1:1-SwipeMotion.ease(phase);
+        if(progress>0)drawHeavenly(canvas,time,amount,fade);
+        else drawGrinder(canvas,time,amount,fade,now);
+        paint.setShader(null);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);
+        if(isAttachedToWindow() && enabled && (!reducedMotion || released!=0))postInvalidateOnAnimation();
+    }
+    private void drawHeavenly(Canvas canvas,float time,float amount,float fade) {
+        RectF rim=photo;
+        if(rim.isEmpty()) {target.set(getWidth()*.20f,getHeight()*.25f,getWidth()*.80f,getHeight()*.75f);rim=target;}
+        float strength=(.20f+.80f*amount)*fade;
+        paint.setShader(null);paint.setStyle(Paint.Style.STROKE);
+        for(int layer=3;layer>0;layer--) {
+            paint.setStrokeWidth(dp(layer*6));paint.setColor(0xFFFFF0BD);
+            paint.setAlpha((int)((layer==1?140:layer==2?50:18)*strength));
+            canvas.drawRoundRect(rim,dp(8),dp(8),paint);
+        }
+        if(!enabled || reducedMotion)return;
+        int save=canvas.save();canvas.clipRect(rim);
+        float band=rim.left+((time*.75f)%1.6f-.3f)*rim.width();
+        paint.setStyle(Paint.Style.FILL);
+        paint.setShader(new LinearGradient(band-dp(55),rim.top,band+dp(55),rim.bottom,
+                new int[]{0x00FFFFFF,0x88FFF5D6,0x00FFFFFF},null,Shader.TileMode.CLAMP));
+        paint.setAlpha((int)(100*strength));canvas.drawRect(rim,paint);paint.setShader(null);
+        canvas.restoreToCount(save);
+        Bitmap motif=sprites.get(true);
+        int count=12+intensity/5;
+        for(int i=0;i<count;i++) {
+            float lane=((i*43)%101)/100f, phase=(time*.40f+i*.137f)%1f;
+            float x=rim.left+rim.width()*lane+(float)Math.sin(time*.8f+i)*dp(9);
+            float y=rim.bottom-phase*rim.height();
+            float size=dp(2.5f+i%4)*(.35f+.65f*(float)Math.sin(Math.PI*phase));
+            paint.setColor(i%3==0?0xFFFFE8A4:Color.WHITE);paint.setAlpha((int)(220*strength*Math.sin(Math.PI*phase)));
+            path.reset();path.moveTo(x,y-size*1.6f);path.lineTo(x+size*.35f,y-size*.25f);
+            path.lineTo(x+size,y);path.lineTo(x+size*.25f,y+size*.3f);path.lineTo(x,y+size*1.6f);
+            path.lineTo(x-size*.3f,y+size*.25f);path.lineTo(x-size,y);path.lineTo(x-size*.25f,y-size*.3f);path.close();
+            canvas.drawPath(path,paint);
+            if(i%7==0 && motif!=null && !motif.isRecycled()) {
+                float half=dp(7),hh=half*motif.getHeight()/motif.getWidth();
+                glyph.set(x-half,y-hh,x+half,y+hh);paint.setColor(Color.WHITE);
+                paint.setAlpha((int)(100*strength*Math.sin(Math.PI*phase)));
+                canvas.drawBitmap(motif,null,glyph,paint);
             }
         }
-        // Meaning stays visible with VFX Off and Reduced motion, in every theme.
-        drawActionBadge(canvas,w,h,keep,released==0 ? Math.min(1f,amount*4f) : fade);
-        if(isAttachedToWindow() && ((enabled && released==0) || (released!=0 && impact<1)))postInvalidateOnAnimation();
     }
-    private void drawActionBadge(Canvas canvas,float w,float h,boolean keep,float opacity) {
-        // Icon-only feedback. Spoken action names remain on the photo for accessibility.
-        float alpha=reducedMotion?1f:Math.max(.45f,opacity);
-        float phase=released==0?0:SwipeMotion.clamp((SystemClock.uptimeMillis()-released)
-                /(float)SwipeMotion.releaseDuration(speed,keep));
-        float radius=dp(25), x=keep?w*.80f:w*.20f, y=Math.max(dp(30),h*.10f);
-        int save=canvas.save();
-        if(!reducedMotion) {
-            float scale=released==0?.88f+.12f*SwipeMotion.clamp(Math.abs(progress)*3)
-                    :keep?1f+.10f*(float)Math.sin(phase*Math.PI):1f-.16f*SwipeMotion.ease(phase);
-            canvas.scale(scale,scale,x,y);
+    private void drawGrinder(Canvas canvas,float time,float amount,float fade,long now) {
+        float top=photo.isEmpty()?getHeight()*.20f:Math.max(dp(5),photo.top);
+        float bottom=photo.isEmpty()?getHeight()*.80f:Math.min(getHeight()-dp(5),photo.bottom);
+        paint.setStyle(Paint.Style.FILL);paint.setColor(0xFFFFC995);paint.setAlpha((int)(70*amount*fade));
+        canvas.drawRoundRect(0,top,dp(15),bottom,dp(7),dp(7),paint);
+        paint.setColor(0xFFFFE7C5);paint.setAlpha((int)(210*amount*fade));
+        float shift=enabled&&!reducedMotion?(time*dp(35))%dp(13):0;
+        int save=canvas.save();canvas.clipRect(0,top,dp(15),bottom);
+        for(float y=top-dp(13)+shift;y<bottom;y+=dp(13)) {
+            path.reset();path.moveTo(dp(2),y);path.lineTo(dp(12),y+dp(5));path.lineTo(dp(2),y+dp(10));path.close();canvas.drawPath(path,paint);
         }
-        paint.setShader(null);paint.setStyle(Paint.Style.FILL);
-        paint.setColor(withAlpha(0xFF121B25,(int)(225*alpha)));
-        canvas.drawCircle(x,y,radius,paint);
-        paint.setColor(withAlpha(SwipeMotion.actionColor(keep),(int)(255*alpha)));
-        paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));
-        canvas.drawCircle(x,y,radius,paint);
-        paint.setStrokeWidth(dp(3));paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
-        path.reset();
-        if(keep) {
-            path.moveTo(x-dp(11),y);path.lineTo(x-dp(3),y+dp(8));path.lineTo(x+dp(12),y-dp(9));
-        } else {
-            path.moveTo(x-dp(10),y-dp(8));path.lineTo(x+dp(10),y-dp(8));
-            path.moveTo(x-dp(4),y-dp(13));path.lineTo(x+dp(4),y-dp(13));
-            path.moveTo(x-dp(8),y-dp(3));path.lineTo(x-dp(6),y+dp(12));
-            path.lineTo(x+dp(6),y+dp(12));path.lineTo(x+dp(8),y-dp(3));
-            path.moveTo(x-dp(2),y);path.lineTo(x-dp(2),y+dp(7));
-            path.moveTo(x+dp(3),y);path.lineTo(x+dp(3),y+dp(7));
+        canvas.restoreToCount(save);
+        if(!enabled || reducedMotion)return;
+        // Preview has no real photo. Show paper-colored chips instead of fabricating a photo.
+        if(bitmap==null && random.nextFloat()<.45f) {
+            photo.set(0,getHeight()*.20f,getWidth()*.6f,getHeight()*.80f);spawnChip();
         }
-        canvas.drawPath(path,paint);canvas.restoreToCount(save);
-        paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);
+        for(Chip chip:chips) {
+            if(chip.born==0)continue;
+            float age=(now-chip.born)/1000f;
+            if(age>.85f){chip.born=0;chip.bitmap=null;continue;}
+            float x=chip.x+chip.vx*age,y=chip.y+chip.vy*age+dp(130)*age*age;
+            float size=chip.size*(1-age*.65f);
+            paint.setColor(0xFFFFE8CB);paint.setAlpha((int)(235*(1-age/.85f)*fade));
+            int piece=canvas.save();canvas.rotate(chip.angle+chip.spin*age,x,y);
+            target.set(x-size,y-size*.65f,x+size,y+size*.65f);
+            if(chip.bitmap!=null && !chip.bitmap.isRecycled() && !chip.source.isEmpty())canvas.drawBitmap(chip.bitmap,chip.source,target,paint);
+            else canvas.drawRect(target,paint);
+            canvas.restoreToCount(piece);
+        }
     }
-
-    private void drawStructure(Canvas c,float w,float h,float x,float y,float time,float impact,float strength,int sign,int color) {
-        paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));paint.setStrokeCap(Paint.Cap.ROUND);
-        if(sign>0) {
-            // A single passing highlight, with open arcs instead of destructive theme structures.
-            paint.setColor(withAlpha(SwipeMotion.KEEP_COLOR,(int)(170*strength)));
-            float radius=dp(36+impact*55);
-            c.drawArc(x-radius,y-radius,x+radius,y+radius,210,110,false,paint);
-            float xx=x+dp((released==0 ? loop(time*.6f) : impact)*85-42);
-            paint.setColor(withAlpha(Color.WHITE,(int)(185*strength)));
-            c.drawLine(xx-dp(6),y-dp(18),xx+dp(6),y+dp(18),paint);
-            paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);return;
-        }
-        if(released!=0) {
-            // Short leftward fragments, never an expanding success ring or firework burst.
-            paint.setColor(withAlpha(SwipeMotion.TRASH_COLOR,(int)(125*strength)));
-            for(int i=0;i<5;i++) {
-                float yy=y+dp((i-2)*15)+dp(60)*impact*impact;
-                float xx=x-impact*w*(.25f+i*.07f);
-                c.drawLine(xx,yy,xx+dp(10)*(1-impact),yy,paint);
-            }
-            paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);return;
-        }
-        paint.setColor(withAlpha(color,(int)(145*strength)));
-        float r=dp(38+impact*125),pulse=dp(4*(float)Math.sin(time*3));
-        switch(kind) {
-            case INDEPENDENCE:case NEW_YEAR:
-                for(int i=0;i<12;i++){float a=i*.524f;c.drawLine(x+(float)Math.cos(a)*r*.65f,y+(float)Math.sin(a)*r*.65f,x+(float)Math.cos(a)*r,y+(float)Math.sin(a)*r,paint);}break;
-            case MLK:case MEMORIAL:case VETERANS:
-                paint.setAlpha(0);break;
-            case WEB:
-                for(int i=0;i<9;i++) { float a=i*.698f;c.drawLine(x,y,x+(float)Math.cos(a)*w,y+(float)Math.sin(a)*h,paint); }
-                for(int i=1;i<4;i++)c.drawCircle(x,y,r*i*.55f,paint);break;
-            case WATER:case ONE_PIECE:
-                for(int i=0;i<3;i++){float yy=y+dp(i*20);path.reset();path.moveTo(0,yy);
-                    for(int j=1;j<=20;j++)path.lineTo(w*j/20,yy+(float)Math.sin(j*.7f-time*sign*3)*dp(12+impact*22));c.drawPath(path,paint);}break;
-            case LIGHTNING:case THUNDER:case MY_HERO:
-                for(int i=0;i<(kind==SwipeTheme.Kind.THUNDER?5:3);i++){path.reset();path.moveTo(x,y);
-                    for(int j=1;j<=6;j++)path.lineTo(x+sign*j*dp(20+impact*8),y+(i-1)*dp(40)+(float)Math.sin(time*14+i*7+j*5)*dp(22));c.drawPath(path,paint);}break;
-            case SHIELD:
-                c.drawCircle(x,y,r,paint);c.drawCircle(x,y,r*.72f,paint);c.drawArc(x-r,y-r,x+r,y+r,time*100,120,false,paint);break;
-            case SCARLET:case SKY:
-                c.drawCircle(x,y,r+pulse,paint);for(int i=0;i<6;i++){float a=i*1.047f+time*.3f;
-                    c.drawLine(x+(float)Math.cos(a)*r*.7f,y+(float)Math.sin(a)*r*.7f,x+(float)Math.cos(a+.7f)*r,y+(float)Math.sin(a+.7f)*r,paint);}break;
-            case STEALTH:
-                for(int i=0;i<6;i++)c.drawLine(w*(.14f+(i%3)*.32f),h*(.2f+(i%2)*.5f),w*(.14f+((i+1)%3)*.32f),h*(.2f+((i+1)%2)*.5f),paint);break;
-            case BLEACH:
-                paint.setStrokeWidth(dp(4+impact*8));c.drawLine(x-sign*w*.3f,y+dp(40),x+sign*w*.4f,y-dp(40),paint);break;
-            case NARUTO:case COSMIC:case YIN_YANG:
-                path.reset();for(int i=0;i<65;i++){float a=i*.2f+time*sign,rr=r*i/65;
-                    float xx=x+(float)Math.cos(a)*rr,yy=y+(float)Math.sin(a)*rr;if(i==0)path.moveTo(xx,yy);else path.lineTo(xx,yy);}c.drawPath(path,paint);break;
-            case SOLAR:case GOLD:case DRAGONBALL:
-                for(int i=0;i<12;i++){float a=i*.524f+time*.1f;c.drawLine(x+(float)Math.cos(a)*r*.4f,y+(float)Math.sin(a)*r*.4f,x+(float)Math.cos(a)*r*1.5f,y+(float)Math.sin(a)*r*1.5f,paint);}break;
-            case ICE:
-                for(int i=0;i<6;i++){float a=i*1.047f;c.drawLine(x,y,x+(float)Math.cos(a)*(r+pulse),y+(float)Math.sin(a)*(r+pulse),paint);}break;
-            case GAMMA:
-                c.drawOval(x-r*1.2f,y-r*.7f,x+r*1.2f,y+r*.7f,paint);c.drawOval(x-r*.7f,y-r*1.2f,x+r*.7f,y+r*1.2f,paint);break;
-            default: if(impact>0)c.drawCircle(x,y,r,paint);break;
-        }
-        paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);
-    }
-    private static int withAlpha(int color,int alpha) { return Color.argb(Math.max(0,Math.min(255,alpha)),Color.red(color),Color.green(color),Color.blue(color)); }
 }
-

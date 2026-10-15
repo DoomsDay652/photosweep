@@ -15,12 +15,16 @@ final class SwipeMotion {
     static int actionColor(boolean keep) { return keep ? KEEP_COLOR : TRASH_COLOR; }
     static String actionLabel(boolean keep) { return keep ? "Keep" : "Move to Trash"; }
     static int releaseDuration(int speed, boolean keep) { return duration(speed) + (keep ? 0 : 90); }
-    static float cardScale(float phase, boolean keep) { return 1f + (keep ? .025f : -.32f) * ease(phase); }
-    static float cardAlpha(float phase, boolean keep) { return keep ? 1f : 1f - .94f * ease(phase); }
-    static float cardVertical(float phase, boolean keep) { return (keep ? -18f : 64f) * ease(phase); }
-    static float cardRotation(boolean keep) { return keep ? 6f : -23f; }
+    static float cardScale(float phase, boolean keep) { return 1f + (keep ? .025f : 0f) * ease(phase); }
+    static float cardAlpha(float phase, boolean keep) { return 1f; }
+    static float cardVertical(float phase, boolean keep) { return (keep ? -18f : 0f) * ease(phase); }
+    static float cardRotation(boolean keep) { return 0f; }
+    static int grinderClipLeft(float translationX, int width, float edge) {
+        return Math.max(0, Math.min(width, (int)Math.ceil(edge-translationX)));
+    }
     static float travel(float phase, boolean keep) { return (keep ? 1f : -1f) * ease(phase); }
     static boolean shouldCommit(float dx, float dy, float threshold) { return Math.abs(dx)>threshold && Math.abs(dx)>Math.abs(dy)*1.2f; }
     static float falling(float seconds) { return 32f * seconds * seconds; }
 }
+
 
