@@ -28,6 +28,10 @@ public class ReviewLogicCheck {
         check(SwipeMotion.grinderClipLeft(20,400,9)==0,"reversed drag restores the whole card");
         check(SwipeMotion.grinderProximity(150,9,100)==0,"distant photos do not shake");
         check(SwipeMotion.pocketOpening(300,300,400,70)==0,"holding starts at a dot");
+        check(SwipeMotion.keepSleeveLeft(100,200,300,0)==300,"closed sleeve stays a narrow seam");
+        check(SwipeMotion.keepSleeveLeft(100,200,300,1)==204,"open sleeve wraps the entering portion of the photo");
+        check(SwipeMotion.keepSleeveLeft(280,200,300,1)==280,"light cannot extend beyond photo left edge");
+        check(SwipeMotion.keepSleeveLeft(350,200,300,1)==300,"offscreen photos never create inverted light bounds");
         check(SwipeMotion.pocketOpening(300,400,400,70)==1,"approaching edge opens pocket");
         check(SwipeMotion.pocketOpening(300,330,400,70)<SwipeMotion.pocketOpening(300,370,400,70),"pocket follows approach and retreat");
         check(SwipeMotion.pocketOpening(380,390,400,70)<.1f,"edge-adjacent photos do not jump fully open");
@@ -107,6 +111,7 @@ public class ReviewLogicCheck {
         System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }
+
 
 
 
