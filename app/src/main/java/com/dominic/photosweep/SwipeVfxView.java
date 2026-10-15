@@ -70,6 +70,7 @@ class SwipeVfxView extends View {
         }
     }
     private boolean holding;
+    private boolean holdEffectsVisible;
     private long returning, closing, lastFrame;
     private float restRight, open, returnOpen, returnAlpha;
     private float haloX, haloY;
@@ -125,6 +126,14 @@ class SwipeVfxView extends View {
         setClickable(false);setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
     private float dp(float value) { return value*getResources().getDisplayMetrics().density; }
+    void setHoldEffectsVisible(boolean value) { holdEffectsVisible=value;invalidate(); }
+    private boolean heldEffectsActive() { return holdEffectsVisible && (holding || returning!=0 || released!=0); }
+    private float heldEffectsAlpha(long now) {
+        if(holding)return 1;
+        if(returning!=0)return 1-SwipeMotion.ease((now-returning)/280f);
+        if(released!=0)return 1-SwipeMotion.ease((now-released)/(float)(reducedMotion?80:SwipeMotion.releaseDuration(speed,progress>0)));
+        return 0;
+    }
     protected void onGrinderShake(float offset) { }
     float grinderEdge() { return 0; }
     private static void buildBladeOutline(Bitmap blade) {
@@ -291,10 +300,12 @@ class SwipeVfxView extends View {
             float proximity=progress<0&&!photo.isEmpty()?SwipeMotion.grinderProximity(visibleLeft,dp(14),dp(110)):0;
             onGrinderShake(enabled&&!reducedMotion?dp(2.6f)*SwipeMotion.grinderShake((now-started)/1000f,proximity):0);
         }
-        boolean lightVisible=holding || returning!=0 || (released!=0 && progress>0) || progress>0;
+        boolean steady=heldEffectsActive();
+        boolean lightVisible=steady || holding || returning!=0 || (released!=0 && progress>0) || progress>0;
         int frame=canvas.save();canvas.clipRect(0,0,getWidth(),getHeight());
         if(lightVisible)drawHeavenly(canvas,time,dt,now);
-        if(SwipeMotion.intent(progress)<0)drawGrinder(canvas,time,amount,fade,now);
+        if(steady)drawGrinder(canvas,time,1,heldEffectsAlpha(now),now);
+        else if(SwipeMotion.intent(progress)<0)drawGrinder(canvas,time,amount,fade,now);
         if(enabled && !reducedMotion)drawChips(canvas,fade,now);
         canvas.restoreToCount(frame);
         paint.setShader(null);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);
@@ -358,14 +369,16 @@ class SwipeVfxView extends View {
                 SwipeMotion.pocketOpening(restRight,photo.right,keepMouthX()-dp(16),dp(70));
         if(progress<0)wanted=0;
         if(released!=0 && progress>0)wanted=Math.max(wanted,open);
-        if(returning!=0) {
+        if(heldEffectsActive()) {
+            open=1;lightAlpha=heldEffectsAlpha(now);
+        } else if(returning!=0) {
             open=returnOpen*(1-SwipeMotion.ease((now-returning)/220f));
             lightAlpha=returnAlpha*(1-SwipeMotion.ease((now-returning)/280f));
         } else if(closing!=0) {
             open=returnOpen*(1-SwipeMotion.ease((now-closing)/220f));
             lightAlpha=1-SwipeMotion.ease(Math.max(0,now-closing-100)/180f);
         } else open+= (wanted-open)*SwipeMotion.followFactor(dt,32);
-        lightAlpha*=1-SwipeMotion.ease(SwipeMotion.clamp(-progress*4));
+        if(!heldEffectsActive())lightAlpha*=1-SwipeMotion.ease(SwipeMotion.clamp(-progress*4));
         float energy=photo.isEmpty()?0:SwipeMotion.clamp((photo.right-(getWidth()-dp(65)))/dp(100));
         if(progress<0 || returning!=0 || closing!=0)energy=0;
         entryEnergy+=(energy-entryEnergy)*SwipeMotion.followFactor(dt,70);
@@ -459,7 +472,7 @@ class SwipeVfxView extends View {
         if(o>.006f && alpha>.001f) {
             float top=sleeveRect.top,bottom=sleeveRect.bottom,h=bottom-top,mouth=sleeveRect.left;
             drawPortalWell(canvas,time,o,alpha);
-            drawEnteringPhoto(canvas);
+            if(progress>0)drawEnteringPhoto(canvas);
             glow(canvas,mouth+dp(3)*o,haloY,dp(30+12*entryEnergy)*o,h*.52f,alpha*(.33f+.18f*entryEnergy));
             if(animate) {
                 drawPortalRays(canvas,time,o,alpha);

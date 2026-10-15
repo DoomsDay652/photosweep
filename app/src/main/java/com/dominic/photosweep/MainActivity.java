@@ -546,6 +546,7 @@ public class MainActivity extends ComponentActivity {
     private boolean reducedMotion, testingVisible, trashSizesLoading;
     private int themeChoice, musicVolume, masterVolume, vfxVolume;
     private int swipeStyle, swipeIntensity = 55, swipeSpeed = 100;
+    private boolean swipeHoldVisible;
     private android.animation.ValueAnimator swipePreviewAnimator;
     private SwipeEffect swipePreviewEffect;
     private AudioController audio;
@@ -2073,11 +2074,13 @@ public class MainActivity extends ComponentActivity {
         swipeStyle = Math.max(0, Math.min(SWIPE_STYLE_NAMES.length - 1, getPreferences(MODE_PRIVATE).getInt("swipe_style" + suffix, 0)));
         swipeIntensity = Math.max(15, Math.min(100, getPreferences(MODE_PRIVATE).getInt("swipe_intensity" + suffix, 55)));
         swipeSpeed = Math.max(50, Math.min(200, getPreferences(MODE_PRIVATE).getInt("swipe_speed" + suffix, 100)));
+        swipeHoldVisible = getPreferences(MODE_PRIVATE).getBoolean("swipe_hold_visible" + suffix, false);
     }
     private void saveSwipePreferences() {
         String suffix = "_" + themeChoice;
         getPreferences(MODE_PRIVATE).edit().putInt("swipe_style" + suffix, swipeStyle)
-                .putInt("swipe_intensity" + suffix, swipeIntensity).putInt("swipe_speed" + suffix, swipeSpeed).apply();
+                .putInt("swipe_intensity" + suffix, swipeIntensity).putInt("swipe_speed" + suffix, swipeSpeed)
+                .putBoolean("swipe_hold_visible" + suffix, swipeHoldVisible).apply();
     }
     private Bitmap effectSprite(int selected) {
         if (selected < 0 || selected >= THEME_FX_IDS.length || THEME_FX_IDS[selected] == 0) return null;
@@ -2405,6 +2408,9 @@ public class MainActivity extends ComponentActivity {
     private boolean canCustomizeSwipe() { return hasThemeMotion(themeChoice) || countryCollection(themeChoice) >= 0 || HolidayThemes.collection(themeChoice) >= 0 || themeChoice == 61; }
     private void addSwipeControls(LinearLayout list) {
         sectionTitle(list, "SWIPE ANIMATIONS");
+        settingSwitch(list, "Show both effects while holding", "", swipeHoldVisible, value -> {
+            swipeHoldVisible=value;saveSwipePreferences();clearSwipePreview();
+        });
         boolean enabled = canCustomizeSwipe();
         if (!enabled) {
             TextView availability = studioText("Effect controls are available with scene and animated themes.", 13, MUTED, false);
@@ -2483,6 +2489,7 @@ public class MainActivity extends ComponentActivity {
         SwipeEffect effect = new SwipeEffect(); swipePreviewEffect = effect;
         if(sample!=null){sample.setTranslationX(0);sample.setClipBounds(null);((SwipeVfxView.PreviewPhoto)sample).effect=effect;} 
         target.addView(effect, new FrameLayout.LayoutParams(-1, -1));
+        effect.hold(target.getWidth()*.5f,target.getHeight()*.5f);
         android.animation.ValueAnimator animation = android.animation.ValueAnimator.ofFloat(0f, keep ? 1f : -1f);
         animation.setDuration(900L * 100 / swipeSpeed);
         animation.addUpdateListener(value -> {
@@ -3852,6 +3859,7 @@ public class MainActivity extends ComponentActivity {
                     selectedSwipeProfile(),
                     !reducedMotion && (!canCustomizeSwipe() || swipeStyle != 9),
                     swipeIntensity, swipeSpeed, reducedMotion);
+            setHoldEffectsVisible(swipeHoldVisible);
         }
     }
 
