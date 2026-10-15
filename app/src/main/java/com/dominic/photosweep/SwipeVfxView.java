@@ -32,6 +32,8 @@ class SwipeVfxView extends View {
     private static final int BITE_SEGMENTS=64, MESH_X=40, MESH_Y=40;
     private final float[] foldedPhoto=new float[(MESH_X+1)*(MESH_Y+1)*2];
     private final Path aperture=new Path(), backRim=new Path(), foldWindow=new Path(), innerRim=new Path();
+    private final Path glitterBand=new Path();
+    private final float[] bandX=new float[49],bandY=new float[49],bandWidth=new float[49];
     private float portalX,portalRadius,portalHeight;
     private float deepestBite;
     private long mendStarted;
@@ -395,7 +397,10 @@ class SwipeVfxView extends View {
             drawPortalWell(canvas,time,o,alpha);
             drawEnteringPhoto(canvas);
             glow(canvas,mouth+dp(3)*o,haloY,dp(30)*o,h*.52f,alpha*.33f);
-            if(animate)drawPortalRays(canvas,time,o,alpha);
+            if(animate) {
+                drawPortalRays(canvas,time,o,alpha);
+                drawGlitterBands(canvas,time,o,alpha);
+            }
             // The near lip is drawn last, crossing in front of the curled photo strip.
             glowStroke(canvas,lightPath,alpha,1.55f);
             if(animate) {
@@ -491,6 +496,61 @@ class SwipeVfxView extends View {
             pathParticles(canvas,ribbonPath,-time+10+strand*.4f,.24f,9,alpha*opening*.8f);
         }
     }
+    private void drawGlitterBands(Canvas canvas,float time,float opening,float alpha) {
+        float strength=alpha*opening*Math.min(1.2f,.65f+intensity/200f);
+        // Broad bloom stays beside the mouth, leaving the centre of the photo readable.
+        float breath=.82f+.18f*(float)Math.sin(time*.72f);
+        glow(canvas,sleeveRect.left+dp(6)*opening,haloY,dp(56)*opening,
+                portalHeight*.76f,strength*.18f*breath);
+        for(int band=0;band<2;band++) {
+            float side=band==0?-1:1;
+            float anchorY=haloY+side*portalHeight*(.48f+.055f*(float)Math.sin(time*.36f+band));
+            float anchorX=frontAt(anchorY);
+            float reach=Math.min(getWidth()*.34f,dp(94+band*17))*opening;
+            float phase=time*(.82f+band*.11f)+band*2.7f;
+            for(int i=0;i<=48;i++) {
+                float u=i/48f;
+                bandX[i]=anchorX-reach*u;
+                bandY[i]=anchorY+side*dp(22)*opening*(float)Math.sin(u*Math.PI)
+                        +dp(10)*opening*u*(float)Math.sin(u*7-phase);
+                bandWidth[i]=dp(1+4*(float)Math.sin(Math.PI*u))*opening*(1-u);
+            }
+            glitterBand.reset();glitterBand.moveTo(bandX[0],bandY[0]-bandWidth[0]);
+            for(int i=1;i<=48;i++)glitterBand.lineTo(bandX[i],bandY[i]-bandWidth[i]);
+            for(int i=48;i>=0;i--)glitterBand.lineTo(bandX[i],bandY[i]+bandWidth[i]);
+            glitterBand.close();
+            paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(0xFFFFDEA0);
+            paint.setAlpha((int)(28*strength));canvas.drawPath(glitterBand,paint);
+            for(int i=1;i<=48;i++) {
+                float u=i/48f,taper=(float)Math.pow(1-u,1.5);
+                float shimmer=.68f+.32f*(float)Math.sin(u*8-time*1.4f+band);
+                float a=strength*taper*shimmer;
+                // The luminous core, wide haze and glitter all follow one flowing band.
+                paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeCap(Paint.Cap.ROUND);
+                paint.setColor(0xFFFFF3D5);paint.setAlpha((int)(115*a));paint.setStrokeWidth(dp(.6f+1.1f*taper));
+                canvas.drawLine(bandX[i-1],bandY[i-1],bandX[i],bandY[i],paint);
+                if(i%3==0)glow(canvas,bandX[i],bandY[i],dp(9)*opening,dp(7)*opening,a*.28f);
+            }
+            for(int i=0;i<22;i++) {
+                float u=(time*(.19f+band*.027f)+i*.618034f)%1;
+                float index=u*48;int at=Math.min(47,(int)index);float f=index-at;
+                float x=bandX[at]+(bandX[at+1]-bandX[at])*f;
+                float width=bandWidth[at]+(bandWidth[at+1]-bandWidth[at])*f;
+                float y=bandY[at]+(bandY[at+1]-bandY[at])*f+width*(float)Math.sin(i*2.4f+time*.65f);
+                float a=strength*(float)Math.pow(Math.sin(Math.PI*u),.8)
+                        *(.35f+.65f*(float)Math.pow(Math.sin(time*(1.1f+(i%4)*.13f)+i*1.9f),2));
+                if(i%6==0) {
+                    glow(canvas,x,y,dp(6)*opening,dp(6)*opening,a*.65f);
+                    paint.setStyle(Paint.Style.FILL);sparkle(canvas,x,y,dp(1.1f)*opening,a*.85f);
+                } else {
+                    paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(i%3==0?0xFFFFCE7E:0xFFFFFAEB);
+                    paint.setAlpha((int)(205*a));canvas.drawCircle(x,y,dp(.45f+(i%3)*.2f)*opening,paint);
+                }
+            }
+            glow(canvas,anchorX,anchorY,dp(18)*opening,dp(24)*opening,strength*.42f*breath);
+        }
+        paint.setStyle(Paint.Style.FILL);
+    }
     private void glow(Canvas canvas,float x,float y,float rx,float ry,float alpha) {
         if(rx<=0 || ry<=0 || alpha<=0)return;
         paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);
@@ -508,6 +568,7 @@ class SwipeVfxView extends View {
         paint.setStyle(Paint.Style.FILL);
     }
     private void pathParticles(Canvas canvas,Path line,float time,float rate,int count,float alpha) {
+        paint.setStyle(Paint.Style.FILL);
         measure.setPath(line,false);float length=measure.getLength();if(length<1)return;
         for(int i=0;i<count;i++) {
             float u=((time*rate+i*.618034f)%1+1)%1;
