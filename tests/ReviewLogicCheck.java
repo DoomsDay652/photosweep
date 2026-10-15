@@ -22,6 +22,11 @@ public class ReviewLogicCheck {
         check(ThemeProgression.tokenCount(3)==2 && ThemeProgression.tokenKind(3)==1,"2 Gold bundle");
         check(ThemeProgression.legacyReward(0)==0 && ThemeProgression.legacyReward(1)==2 && ThemeProgression.legacyReward(2)==4 && ThemeProgression.legacyReward(-1)==-1,"last-result migration preserves token kind");
         check("3 Silver tokens".equals(ThemeProgression.rewardLabel(1)) && "2 Gold tokens".equals(ThemeProgression.rewardLabel(3)) && "1 Diamond token".equals(ThemeProgression.rewardLabel(4)),"reward descriptions match amounts");
+        float response60=0,response120=0;
+        for(int i=0;i<60;i++)response60+=(1-response60)*SwipeMotion.followFactor(1000f/60,32);
+        for(int i=0;i<120;i++)response120+=(1-response120)*SwipeMotion.followFactor(1000f/120,32);
+        check(Math.abs(response60-response120)<.00001f,"pocket response is independent of refresh rate");
+        check(SwipeMotion.followFactor(-1,32)==0 && SwipeMotion.followFactor(16,32)>0 && SwipeMotion.followFactor(50,32)<1,"pocket easing cannot overshoot");
         check(SwipeMotion.keepClipRight(100,400,368,1)==268,"photo passes behind pocket mouth");
         check(SwipeMotion.keepClipRight(900,400,368,1)==0,"fully received photo is occluded");
         check(SwipeMotion.keepClipRight(-100,400,368,1)==400,"reverse movement restores photo");
@@ -134,6 +139,7 @@ public class ReviewLogicCheck {
         System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }
+
 
 
 
