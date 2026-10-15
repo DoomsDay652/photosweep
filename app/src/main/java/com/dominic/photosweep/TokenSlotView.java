@@ -8,7 +8,7 @@ import android.graphics.*;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
 
-/** Three decorative reels reveal one already-banked token; never computes or grants a reward. */
+/** Three decorative reels reveal one already-banked reward; never computes or grants a reward. */
 final class TokenSlotView extends View {
     interface Listener { void onReelStop(); void onComplete(boolean animated); }
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -38,13 +38,13 @@ final class TokenSlotView extends View {
                 (int)(Color.green(a)*(1-t)+Color.green(b)*t),(int)(Color.blue(a)*(1-t)+Color.blue(b)*t));
     }
     void showResult(int result) {
-        token=Math.max(0,Math.min(2,result));
+        token=Math.max(0,Math.min(ThemeProgression.REWARD_TYPES-1,result));
         for(int i=0;i<3;i++){positions[i]=token;stopped[i]=true;}
         reveal=1;invalidate();
     }
     void spin(int result,Listener callback) {
         if(running)return;
-        token=Math.max(0,Math.min(2,result));listener=callback;
+        token=Math.max(0,Math.min(ThemeProgression.REWARD_TYPES-1,result));listener=callback;
         running=true;reveal=0;
         for(int i=0;i<3;i++) {
             starts[i]=TokenReelMotion.symbol(Math.round(positions[i]));
@@ -118,14 +118,14 @@ final class TokenSlotView extends View {
             paint.setShader(reelShade);paint.setAlpha(255);canvas.drawRect(well,paint);paint.setShader(null);
             canvas.restoreToCount(save);
             paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(stopped[reel]?1.4f:.8f));
-            paint.setColor(stopped[reel]?tokenColor(token):ink);paint.setAlpha(stopped[reel]?120:25);
+            paint.setColor(stopped[reel]?tokenColor(ThemeProgression.tokenKind(token)):ink);paint.setAlpha(stopped[reel]?120:25);
             canvas.drawRoundRect(well,dp(12),dp(12),paint);paint.setStyle(Paint.Style.FILL);
         }
         box.set(dp(5),center-dp(42),w-dp(5),center+dp(42));
         paint.setColor(accent);paint.setAlpha(60);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(1));
         canvas.drawRoundRect(box,dp(12),dp(12),paint);paint.setStyle(Paint.Style.FILL);
         if(reveal>0) {
-            paint.setColor(tokenColor(token));paint.setAlpha((int)(70*reveal));
+            paint.setColor(tokenColor(ThemeProgression.tokenKind(token)));paint.setAlpha((int)(70*reveal));
             for(int side=0;side<2;side++) {
                 float x=side==0?dp(5):w-dp(5);
                 for(int i=0;i<3;i++)canvas.drawCircle(x,center+dp((i-1)*8),dp(i==1?2:1),paint);
@@ -134,7 +134,8 @@ final class TokenSlotView extends View {
         paint.setAlpha(255);
     }
     private int tokenColor(int value){return value==0?0xFFD9E4F0:value==1?0xFFFFDA8B:0xFF9DEFFF;}
-    private void drawToken(Canvas canvas,float x,float y,float r,int kind) {
+    private void drawToken(Canvas canvas,float x,float y,float r,int reward) {
+        int kind=ThemeProgression.tokenKind(reward),count=ThemeProgression.tokenCount(reward);
         paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);
         if(kind==2) {
             shape.reset();shape.moveTo(x-r*.58f,y-r*.7f);shape.lineTo(x+r*.58f,y-r*.7f);
@@ -158,8 +159,16 @@ final class TokenSlotView extends View {
             paint.setColor(kind==0?0xFF748CA6:0xFFAC742F);canvas.drawPath(shape,paint);
             paint.setColor(Color.WHITE);paint.setAlpha(165);canvas.drawCircle(x-r*.36f,y-r*.44f,dp(1.8f),paint);
         }
+        if(count>1) {
+            float bx=x+r*.68f,by=y+r*.6f;
+            paint.setAlpha(255);paint.setColor(mix(background,Color.BLACK,.25f));canvas.drawCircle(bx,by,dp(10),paint);
+            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(1));paint.setColor(tokenColor(kind));canvas.drawCircle(bx,by,dp(10),paint);paint.setStyle(Paint.Style.FILL);
+            paint.setTypeface(Typeface.DEFAULT_BOLD);paint.setTextAlign(Paint.Align.CENTER);paint.setTextSize(sp(10));
+            canvas.drawText(count==3?"×3":"×2",bx,by+dp(3.5f),paint);
+        }
         paint.setAlpha(255);paint.setColor(ink);paint.setTextAlign(Paint.Align.CENTER);paint.setTextSize(sp(10));
         paint.setTypeface(Typeface.DEFAULT_BOLD);
-        canvas.drawText(kind==0?"SILVER":kind==1?"GOLD":"DIAMOND",x,y+r+dp(18),paint);
+        canvas.drawText(ThemeProgression.reelLabel(reward),x,y+r+dp(18),paint);
     }
 }
+
