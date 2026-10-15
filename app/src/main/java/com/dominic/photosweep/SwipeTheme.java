@@ -45,58 +45,6 @@ final class SwipeTheme {
         }
     }
     static String description(Kind kind) {
-        switch (kind) {
-            case CHRISTMAS: return "Hold gathering snow · release a winter flurry";
-            case HALLOWEEN: return "Hold bobbing pumpkin lights · release a pumpkin swirl";
-            case THANKSGIVING: return "Hold swirling harvest leaves · release an autumn gust";
-            case INDEPENDENCE: return "Hold gathering stars · release red, white and blue fireworks";
-            case NEW_YEAR: return "Hold golden confetti · release a midnight sparkle";
-            case MLK: return "Hold floating doves · release a peaceful breeze";
-            case PRESIDENTS: return "Hold sapphire and gold glints · release a laurel flourish";
-            case MEMORIAL: return "Hold remembrance poppies · release a gentle petal drift";
-            case JUNETEENTH: return "Hold rising stars · release a celebration bloom";
-            case LABOR: return "Hold summer blossoms · release a warm breeze";
-            case COLUMBUS: return "Hold softly sailing emblems · release an ocean sweep";
-            case VETERANS: return "Hold laurel lights · release a gentle gratitude trail";
-            default: break;
-        }
-        switch(kind) {
-            case FIRE:return "Hold to burn · release a flame burst";
-            case WATER:return "Hold flowing waves · release a splash";
-            case ICE:return "Hold growing frost · release crystal shards";
-            case EARTH:return "Hold tumbling leaves · release an earthy gust";
-            case LIGHTNING:return "Hold crackling bolts · release a lightning strike";
-            case CANDY:return "Hold bouncing sweets · release a candy shower";
-            case TOXIC:return "Hold dripping ooze · release a slime splash";
-            case SPACE:return "Hold orbiting stars · release shooting comets";
-            case WEB:return "Hold weaving silk · release a web snap";
-            case GOLD:return "Hold radiant glints · release an armor flare";
-            case THUNDER:return "Hold storm arcs · release rolling thunder";
-            case GAMMA:return "Hold charged energy · release a gamma shockwave";
-            case SHIELD:return "Hold rotating shields · release a shield wave";
-            case COSMIC:return "Hold orbiting wisps · release a cosmic spiral";
-            case SCARLET:return "Hold magic rings · release a scarlet spell";
-            case STEALTH:return "Hold linked nodes · release a precision pulse";
-            case NEBULA:return "Hold swirling stardust · release a nebula bloom";
-            case SOLAR:return "Hold sun rays · release a solar flare";
-            case SAKURA:return "Hold drifting petals · release a blossom gust";
-            case SKY:return "Hold floating runes · release a sky ripple";
-            case WISPS:return "Hold wandering lights · release a spirit bloom";
-            case JAPAN:return "Hold swaying lanterns · release a lantern breeze";
-            case MEXICO:return "Hold swirling marigolds · release a flower celebration";
-            case USA:return "Hold orbiting stars · release a stars-and-flags burst";
-            case SPAIN:return "Hold dancing fans · release a fan flourish";
-            case BRAZIL:return "Hold swaying palms · release a tropical gust";
-            case FRANCE:return "Hold lavender sprigs · release a lavender breeze";
-            case ITALY:return "Hold olive branches · release an olive swirl";
-            case KOREA:return "Hold floating lanterns · release a lantern spiral";
-            case MY_HERO:return "Hold charged green sparks · release a hero impact";
-            case BLEACH:return "Hold spirit energy · release a spirit slash";
-            case ONE_PIECE:return "Hold rolling seas · release a pirate wave";
-            case NARUTO:return "Hold spinning chakra · release a ninja vortex";
-            case DRAGONBALL:return "Hold charging ki · release an energy blast";
-            case YIN_YANG:return "Hold balanced wisps · release an ink swirl";
-            default:return "Hold shimmering sparks · release a sparkle burst";
-        }
+        return "Keep: gentle shine, check mark and lift · Trash: shrinking, fading sweep to the left";
     }
 }

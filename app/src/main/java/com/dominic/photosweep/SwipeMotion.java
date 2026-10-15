@@ -5,7 +5,22 @@ final class SwipeMotion {
     static float clamp(float value) { return Math.max(0f, Math.min(1f, value)); }
     static float ease(float value) { float t = clamp(value); return t * t * (3f - 2f * t); }
     static int duration(int speed) { return Math.max(220, Math.min(620, 36000 / Math.max(50, speed))); }
+    // Shared semantic cues do not change with the selected theme or custom VFX.
+    static final int KEEP_COLOR = 0xFF80E3BF, TRASH_COLOR = 0xFFFF959D;
+    static int intent(float progress) { return Math.abs(progress) < .055f ? 0 : progress > 0 ? 1 : -1; }
+    static float dragProgress(float dx, float dy, float width) {
+        if (Math.abs(dx) <= Math.abs(dy) * 1.2f) return 0;
+        return Math.max(-1f, Math.min(1f, dx / Math.max(1f, width * .62f)));
+    }
+    static int actionColor(boolean keep) { return keep ? KEEP_COLOR : TRASH_COLOR; }
+    static String actionLabel(boolean keep) { return keep ? "Keep" : "Move to Trash"; }
+    static int releaseDuration(int speed, boolean keep) { return duration(speed) + (keep ? 0 : 90); }
+    static float cardScale(float phase, boolean keep) { return 1f + (keep ? .025f : -.32f) * ease(phase); }
+    static float cardAlpha(float phase, boolean keep) { return keep ? 1f : 1f - .94f * ease(phase); }
+    static float cardVertical(float phase, boolean keep) { return (keep ? -18f : 64f) * ease(phase); }
+    static float cardRotation(boolean keep) { return keep ? 6f : -23f; }
     static float travel(float phase, boolean keep) { return (keep ? 1f : -1f) * ease(phase); }
     static boolean shouldCommit(float dx, float dy, float threshold) { return Math.abs(dx)>threshold && Math.abs(dx)>Math.abs(dy)*1.2f; }
     static float falling(float seconds) { return 32f * seconds * seconds; }
 }
+

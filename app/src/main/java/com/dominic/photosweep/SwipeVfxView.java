@@ -14,16 +14,16 @@ class SwipeVfxView extends View {
     private final Path path = new Path();
     private final Sprites sprites;
     private final String flag;
-    private final boolean enabled;
+    private final boolean enabled, reducedMotion;
     private final SwipeTheme.Kind kind;
     private final int intensity, speed;
     private long started, released;
     private boolean held;
     private float fingerX=-1, fingerY=-1;
     SwipeVfxView(Context context, Sprites sprites, String flag, SwipeTheme.Kind kind, boolean enabled,
-                 int intensity, int speed) {
+                 int intensity, int speed, boolean reducedMotion) {
         super(context); this.sprites=sprites; this.flag=flag; this.kind=kind; this.enabled=enabled;
-        this.intensity=intensity; this.speed=speed;
+        this.intensity=intensity; this.speed=speed; this.reducedMotion=reducedMotion;
         setClickable(false); setFocusable(false); setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
     void hold(float x,float y) { held=true; released=0; started=SystemClock.uptimeMillis(); progress=0; follow(x,y); }
@@ -34,11 +34,11 @@ class SwipeVfxView extends View {
     private static float loop(float value) { return value-(float)Math.floor(value); }
     @Override protected void onDraw(Canvas canvas) {
         float amount=SwipeMotion.clamp(Math.abs(progress)), w=getWidth(), h=getHeight();
-        if ((!held && amount<.015f) || w<=0 || h<=0) return;
-        boolean keep=progress>=0; int sign=keep?1:-1, color=SwipeTheme.color(kind);
+        if (SwipeMotion.intent(progress)==0 || w<=0 || h<=0) return;
+        boolean keep=progress>0; int sign=keep?1:-1, color=SwipeTheme.color(kind);
         long now=SystemClock.uptimeMillis(); if(started==0) started=now;
         float time=(now-started)/1000f*speed/100f;
-        float impact=released==0?0:SwipeMotion.clamp((now-released)/(float)SwipeMotion.duration(speed));
+        float impact=released==0?0:SwipeMotion.clamp((now-released)/(float)(reducedMotion ? 80 : SwipeMotion.releaseDuration(speed, keep)));
         float fade=released==0?1:1-SwipeMotion.ease(impact);
         float strength=(held?.32f+.68f*SwipeMotion.ease(amount):SwipeMotion.ease(amount))*fade;
         float cx=fingerX<0?w*(keep?.7f:.3f):Math.max(w*.12f,Math.min(w*.88f,fingerX));
@@ -53,14 +53,24 @@ class SwipeVfxView extends View {
                 float lane=((i*37)%101)/100f, x=cx, y=cy, rotation=sign*(phase*65+i*19);
                 float radius=dp(13+i%4*5)*(.7f+.4f*amount);
                 if(released!=0) {
-                    float spread=SwipeMotion.ease(impact)*(Math.min(w,h)*(quiet ? .18f : .48f)+dp(30));
-                    x=cx+(float)Math.cos(theta)*spread+sign*impact*w*.18f;
-                    y=cy+(float)Math.sin(theta)*spread;
-                    radius*=1+impact*.7f;
-                    if(kind==SwipeTheme.Kind.FIRE || kind==SwipeTheme.Kind.SOLAR || kind==SwipeTheme.Kind.DRAGONBALL) radius*=1.65f;
-                    if(kind==SwipeTheme.Kind.CANDY || kind==SwipeTheme.Kind.EARTH || kind==SwipeTheme.Kind.TOXIC) y+=dp(90*impact*impact);
-                    if(kind==SwipeTheme.Kind.BLEACH) { x=cx+sign*impact*w*.8f; y=cy+dp((i-count/2)*8); rotation=sign*60; }
-                    if(kind==SwipeTheme.Kind.ONE_PIECE || kind==SwipeTheme.Kind.WATER) { x=cx+sign*impact*w*.6f; y=cy+dp((i-count/2)*10)+(float)Math.sin(theta)*dp(25); }
+                    float motion=SwipeMotion.ease(impact);
+                    if(keep) {
+                        // A calm ascending shine. Never burn, shatter or explode a kept photo.
+                        x=cx+dp((lane-.5f)*100)+motion*w*.30f;
+                        y=cy-dp(25+lane*85)*motion+(float)Math.sin(theta)*dp(12);
+                        radius*=.7f*(1-.45f*motion); rotation=i*19;
+                    } else {
+                        // Debris collapses into the leftward sweep and falls, rather than celebrating.
+                        x=cx-motion*w*(.30f+lane*.48f);
+                        y=cy+(float)Math.sin(theta)*dp(30)*(1-motion)+dp(120)*motion*motion;
+                        radius*=1-.82f*motion; rotation=-i*19-impact*130;
+                        if(kind==SwipeTheme.Kind.WATER || kind==SwipeTheme.Kind.ONE_PIECE || kind==SwipeTheme.Kind.TOXIC)
+                            y+=dp(45)*motion*motion;
+                    }
+                } else if(keep) {
+                    x=cx+dp((lane-.5f)*100)+phase*dp(34);
+                    y=cy-dp(12+phase*44)+(float)Math.sin(time+i)*dp(5);
+                    radius*=.65f; rotation=i*19;
                 } else {
                     switch(kind) {
                         case CHRISTMAS:case HALLOWEEN:case THANKSGIVING:case MLK:case MEMORIAL:case LABOR:case COLUMBUS:case VETERANS:
@@ -122,16 +132,66 @@ class SwipeVfxView extends View {
                 if(flag!=null && i%3==0) {
                     paint.setTextAlign(Paint.Align.CENTER);paint.setTextSize(radius*2);canvas.drawText(flag,0,radius*.65f,paint);
                 } else if(sprite!=null && !sprite.isRecycled()) {
-                    canvas.rotate(rotation);if(sign<0 && kind!=SwipeTheme.Kind.FIRE)canvas.scale(-1,1);
+                    canvas.rotate(rotation);// Preserve the orientation of country emblems and theme artwork.
                     float rh=radius*sprite.getHeight()/sprite.getWidth();bounds.set(-radius,-rh,radius,rh);canvas.drawBitmap(sprite,null,bounds,paint);
                 }
                 canvas.restore();
             }
         }
-        if(isAttachedToWindow() && (released==0 || impact<1))postInvalidateOnAnimation();
+        // Meaning stays visible with VFX Off and Reduced motion, in every theme.
+        drawActionBadge(canvas,w,h,keep,released==0 ? Math.min(1f,amount*4f) : fade);
+        if(isAttachedToWindow() && ((enabled && released==0) || (released!=0 && impact<1)))postInvalidateOnAnimation();
     }
+    private void drawActionBadge(Canvas canvas,float w,float h,boolean keep,float opacity) {
+        float alpha=reducedMotion?1f:Math.max(.5f,opacity);
+        String text=SwipeMotion.actionLabel(keep);
+        paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD));
+        paint.setTextSize(dp(17));paint.setTextAlign(Paint.Align.LEFT);
+        float icon=dp(22), pad=dp(14), width=Math.min(w-dp(16),paint.measureText(text)+icon+pad*3);
+        float left=(w-width)/2, top=Math.max(dp(8),h*.055f), height=dp(46);
+        bounds.set(left,top,left+width,top+height);
+        paint.setColor(withAlpha(0xFF121B25,(int)(240*alpha)));canvas.drawRoundRect(bounds,dp(18),dp(18),paint);
+        paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));
+        paint.setColor(withAlpha(SwipeMotion.actionColor(keep),(int)(255*alpha)));
+        canvas.drawRoundRect(bounds,dp(18),dp(18),paint);
+        float x=left+pad,y=top+height/2;
+        paint.setStrokeWidth(dp(2.7f));paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
+        path.reset();
+        if(keep) { path.moveTo(x,y);path.lineTo(x+dp(6),y+dp(6));path.lineTo(x+dp(18),y-dp(7)); }
+        else {
+            path.moveTo(x,y-dp(7));path.lineTo(x+dp(18),y-dp(7));
+            path.moveTo(x+dp(6),y-dp(11));path.lineTo(x+dp(12),y-dp(11));
+            path.moveTo(x+dp(2),y-dp(3));path.lineTo(x+dp(4),y+dp(10));path.lineTo(x+dp(14),y+dp(10));path.lineTo(x+dp(16),y-dp(3));
+        }
+        canvas.drawPath(path,paint);
+        paint.setStyle(Paint.Style.FILL);paint.setColor(withAlpha(Color.WHITE,(int)(255*alpha)));
+        Paint.FontMetrics metrics=paint.getFontMetrics();
+        canvas.drawText(text,x+icon+pad,y-(metrics.ascent+metrics.descent)/2,paint);
+        paint.setTypeface(Typeface.DEFAULT);paint.setAlpha(255);
+    }
+
     private void drawStructure(Canvas c,float w,float h,float x,float y,float time,float impact,float strength,int sign,int color) {
         paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));paint.setStrokeCap(Paint.Cap.ROUND);
+        if(sign>0) {
+            // A single passing highlight, with open arcs instead of destructive theme structures.
+            paint.setColor(withAlpha(SwipeMotion.KEEP_COLOR,(int)(170*strength)));
+            float radius=dp(36+impact*55);
+            c.drawArc(x-radius,y-radius,x+radius,y+radius,210,110,false,paint);
+            float xx=x+dp((released==0 ? loop(time*.6f) : impact)*85-42);
+            paint.setColor(withAlpha(Color.WHITE,(int)(185*strength)));
+            c.drawLine(xx-dp(6),y-dp(18),xx+dp(6),y+dp(18),paint);
+            paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);return;
+        }
+        if(released!=0) {
+            // Short leftward fragments, never an expanding success ring or firework burst.
+            paint.setColor(withAlpha(SwipeMotion.TRASH_COLOR,(int)(125*strength)));
+            for(int i=0;i<5;i++) {
+                float yy=y+dp((i-2)*15)+dp(60)*impact*impact;
+                float xx=x-impact*w*(.25f+i*.07f);
+                c.drawLine(xx,yy,xx+dp(10)*(1-impact),yy,paint);
+            }
+            paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);return;
+        }
         paint.setColor(withAlpha(color,(int)(145*strength)));
         float r=dp(38+impact*125),pulse=dp(4*(float)Math.sin(time*3));
         switch(kind) {
@@ -172,3 +232,4 @@ class SwipeVfxView extends View {
     }
     private static int withAlpha(int color,int alpha) { return Color.argb(Math.max(0,Math.min(255,alpha)),Color.red(color),Color.green(color),Color.blue(color)); }
 }
+

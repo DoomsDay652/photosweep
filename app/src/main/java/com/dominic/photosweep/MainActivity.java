@@ -1194,7 +1194,8 @@ public class MainActivity extends ComponentActivity {
         if (page.photoId != current.id) {
             stopPhotoIdle();
             page.card.animate().cancel();
-            page.card.setTranslationX(0); page.card.setRotation(0); page.card.setAlpha(1f);
+            page.card.setTranslationX(0); page.card.setTranslationY(0); page.card.setRotation(0); page.card.setAlpha(1f);
+            page.card.setScaleX(1f); page.card.setScaleY(1f);
             page.effect.cancel();
             if (page.border != null) page.border.stop();
             if (page.image instanceof ReviewZoomImage) ((ReviewZoomImage) page.image).resetZoom();
@@ -2318,7 +2319,7 @@ public class MainActivity extends ComponentActivity {
                 if (swipePreviewAnimator == value) swipePreviewAnimator = null;
                 if (cancelled) { target.removeView(effect); return; }
                 effect.release(keep);
-                uiHandler.postDelayed(() -> { target.removeView(effect); if (swipePreviewEffect == effect) swipePreviewEffect = null; }, SwipeMotion.duration(swipeSpeed) + 40);
+                uiHandler.postDelayed(() -> { target.removeView(effect); if (swipePreviewEffect == effect) swipePreviewEffect = null; }, SwipeMotion.releaseDuration(swipeSpeed, keep) + 40);
             }
         });
         swipePreviewAnimator = animation; animation.start();
@@ -2822,7 +2823,7 @@ public class MainActivity extends ComponentActivity {
             if (action == MotionEvent.ACTION_DOWN) {
                 multitouch[0] = false;
                 start[0] = event.getRawX(); start[1] = event.getRawY(); stage.getLocationOnScreen(position);
-                if (fireBorder != null) fireBorder.ignite();
+                if (fireBorder != null) fireBorder.stop();
                 effect.hold(start[0] - position[0], start[1] - position[1]); return true;
             }
             float dx = event.getRawX() - start[0], dy = event.getRawY() - start[1];
@@ -2839,7 +2840,8 @@ public class MainActivity extends ComponentActivity {
             }
             if (action == MotionEvent.ACTION_MOVE) {
                 card.setTranslationX(dx); card.setRotation(Math.max(-13, Math.min(13, dx / dp(28))));
-                effect.progress = Math.max(-1, Math.min(1, dx / Math.max(1, card.getWidth() * .62f)));
+                effect.progress = SwipeMotion.dragProgress(dx, dy, card.getWidth());
+                if (fireBorder != null) fireBorder.followIntent(SwipeMotion.intent(effect.progress));
                 effect.follow(event.getRawX() - position[0], event.getRawY() - position[1]); return true;
             }
             if (action == MotionEvent.ACTION_UP) {
@@ -2851,8 +2853,15 @@ public class MainActivity extends ComponentActivity {
                         committed[0] = true; reviewActionRunning = true;
                         if (fireBorder != null) fireBorder.flare(dx > 0);
                         effect.release(dx > 0);
-                        card.animate().translationX((dx > 0 ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
-                                .rotation(reducedMotion ? 0 : dx > 0 ? 16 : -16).setDuration(reducedMotion ? 80 : SwipeMotion.duration(swipeSpeed))
+                        boolean keeping = dx > 0;
+                        card.announceForAccessibility(SwipeMotion.actionLabel(keeping));
+                        card.animate().translationX((keeping ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
+                                .translationY(reducedMotion ? 0 : dp(SwipeMotion.cardVertical(1, keeping)))
+                                .scaleX(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
+                                .scaleY(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
+                                .alpha(reducedMotion ? 1 : SwipeMotion.cardAlpha(1, keeping))
+                                .rotation(reducedMotion ? 0 : SwipeMotion.cardRotation(keeping))
+                                .setDuration(reducedMotion ? 80 : SwipeMotion.releaseDuration(swipeSpeed, keeping))
                                 .withEndAction(() -> {
                                     effect.cancel();
                                     if (fireBorder != null) fireBorder.stop();
@@ -3155,6 +3164,10 @@ public class MainActivity extends ComponentActivity {
     }
     private Bitmap selectedSwipeSprite(boolean keep) {
         int style = canCustomizeSwipe() ? swipeStyle : 1;
+        // Fire and energy artwork is destructive. Kept photos get a glint instead of flames.
+        SwipeTheme.Kind profile = selectedSwipeProfile();
+        if (keep && (profile == SwipeTheme.Kind.FIRE || profile == SwipeTheme.Kind.SOLAR
+                || profile == SwipeTheme.Kind.DRAGONBALL)) return swipeAsset(R.drawable.fx_sparkle);
         if (style == 0) {
             if (themeChoice == 61) return swipeAsset(keep ? R.drawable.fx_yin : R.drawable.fx_yang);
             int country = countryCollection(themeChoice);
@@ -3237,6 +3250,7 @@ public class MainActivity extends ComponentActivity {
         private long phaseStarted;
         private long releaseAt;
         private boolean releaseKeep;
+        private int dragIntent;
         private float coolFrom = 1f;
 
         PhotoElementBorderView(ImageView photo, int element) {
@@ -3264,12 +3278,19 @@ public class MainActivity extends ComponentActivity {
             setVisibility(View.VISIBLE);
             invalidate();
         }
+        void followIntent(int intent) {
+            if (intent == dragIntent) return;
+            dragIntent = intent;
+            if (intent == 0) { stop(); return; }
+            ignite();
+        }
         void flare(boolean keep) {
             long now = android.os.SystemClock.uptimeMillis();
             coolFrom = progress(now);
             phase = COOLING;
             phaseStarted = releaseAt = now;
             releaseKeep = keep;
+            dragIntent = keep ? 1 : -1;
             invalidate();
         }
         void cool() {
@@ -3280,7 +3301,7 @@ public class MainActivity extends ComponentActivity {
             phaseStarted = now;
             invalidate();
         }
-        void stop() { releaseAt = 0; phase = IDLE; setVisibility(View.GONE); }
+        void stop() { releaseAt = 0; phase = IDLE; dragIntent = 0; setVisibility(View.GONE); }
 
         private void drawCountryBorder(Canvas canvas, int country, long now, float growth) {
             if (!visiblePhotoBounds(photo, outline)) return;
@@ -3432,6 +3453,17 @@ public class MainActivity extends ComponentActivity {
                 else if (isAttachedToWindow()) postInvalidateOnAnimation();
                 return;
             }
+            if (dragIntent > 0) {
+                if (visiblePhotoBounds(photo, outline)) {
+                    flamePaint.setShader(null); flamePaint.setStyle(Paint.Style.STROKE);
+                    flamePaint.setStrokeWidth(dp(2.5f)); flamePaint.setColor(SwipeMotion.KEEP_COLOR);
+                    flamePaint.setAlpha((int)(220 * growth));
+                    canvas.drawRoundRect(outline, dp(7), dp(7), flamePaint);
+                    flamePaint.setStyle(Paint.Style.FILL); flamePaint.setAlpha(255);
+                }
+                if (isAttachedToWindow()) postInvalidateOnAnimation();
+                return;
+            }
             int holiday = HolidayThemes.collection(element);
             if (holiday >= 0) {
                 if (phase == IGNITING && now - phaseStarted >= 850) { phase = BURNING; phaseStarted = now; }
@@ -3536,8 +3568,8 @@ public class MainActivity extends ComponentActivity {
                     countryCollection(themeChoice) >= 0 && (swipeStyle == 0 || swipeStyle == 8)
                             ? COUNTRY_FLAGS[countryCollection(themeChoice)] : null,
                     selectedSwipeProfile(),
-                    !reducedMotion && (!canCustomizeSwipe() || swipeStyle != 9) && !(themeChoice == 21 && swipeStyle == 0),
-                    swipeIntensity, swipeSpeed);
+                    !reducedMotion && (!canCustomizeSwipe() || swipeStyle != 9),
+                    swipeIntensity, swipeSpeed, reducedMotion);
         }
     }
 
@@ -4836,4 +4868,5 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
