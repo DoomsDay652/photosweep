@@ -2434,7 +2434,9 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void trashScreen() {
-        back("Photo Sweep", () -> { showingTrash = false; trashSelecting = false; selectedTrash.clear(); render(); });
+        back(reviewing ? "Back to photos" : "Photo Sweep", () -> {
+            showingTrash = false; trashSelecting = false; selectedTrash.clear(); render();
+        });
         selectedTrash.removeIf(id -> trashEntries.stream().noneMatch(entry -> entry.id == id));
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = new TextView(this); title.setText("Trash"); title.setTextColor(INK);
@@ -2650,6 +2652,13 @@ public class MainActivity extends ComponentActivity {
         });
         topAction(reviewToolbar, ICON_FEEDBACK, "Report a bug", GREEN,
                 "Feedback: suggest a theme, suggest a feature, or report a problem", this::showFeedbackMenu);
+        topAction(reviewToolbar, ICON_TRASH, "Trash", GOLD,
+                "Open recently trashed photos and return here", () -> {
+                    if (reviewActionRunning || pendingTrash != -1 || pendingRestore != -1) return;
+                    stopPhotoIdle();
+                    if (reviewPage != null) reviewPage.effect.cancel();
+                    trashSelecting = false; selectedTrash.clear(); showingTrash = true; render();
+                });
         String monthName = ReviewNavigation.title(selectedMonth, true);
         TextView dateHeading = heading(current == null ? monthName : photoDate(current), remaining + " of " + month.size() + " left to review");
         TextView remainingHeading = headingSubtitle;
@@ -3572,6 +3581,10 @@ public class MainActivity extends ComponentActivity {
     private class SwipeEffect extends SwipeVfxView {
         private final RectF trackedBounds = new RectF();
         private final Rect clip = new Rect();
+        @Override protected void onGrinderShake(float offset) {
+            if (reviewPage != null && reviewPage.effect == this)
+                reviewPage.card.setTranslationY(offset);
+        }
         void track(FrameLayout card) {
             if (reviewPage == null || reviewPage.card != card) return;
             ImageView image = reviewPage.image;
@@ -4891,6 +4904,7 @@ public class MainActivity extends ComponentActivity {
         row.setOnClickListener(v -> { playSound(R.raw.bubble_tap, .16f); action.run(); });
     }
 }
+
 
 
 

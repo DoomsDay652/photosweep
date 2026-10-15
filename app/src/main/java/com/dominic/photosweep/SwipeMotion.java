@@ -22,9 +22,23 @@ final class SwipeMotion {
     static int grinderClipLeft(float translationX, int width, float edge) {
         return Math.max(0, Math.min(width, (int)Math.ceil(edge-translationX)));
     }
+    static float grinderProximity(float photoLeft, float edge, float range) {
+        return clamp(1f-Math.max(0,photoLeft-edge)/Math.max(1,range));
+    }
+    static float grinderShake(float seconds, float proximity) {
+        return ease(proximity)*(float)(Math.sin(seconds*89)*.68+Math.sin(seconds*137)*.32);
+    }
+    static float spellHalfWidth(float photoWidth, float stageWidth, float padding) {
+        return Math.max(1,Math.min(stageWidth*.46f,photoWidth*.5f+padding));
+    }
+    static float spellHalfHeight(float photoHeight, float stageHeight, float centerY, float padding) {
+        float room=Math.max(1,Math.min(centerY,stageHeight-centerY)-padding);
+        return Math.max(1,Math.min(room,photoHeight*.58f+padding));
+    }
     static float travel(float phase, boolean keep) { return (keep ? 1f : -1f) * ease(phase); }
     static boolean shouldCommit(float dx, float dy, float threshold) { return Math.abs(dx)>threshold && Math.abs(dx)>Math.abs(dy)*1.2f; }
     static float falling(float seconds) { return 32f * seconds * seconds; }
 }
+
 
 

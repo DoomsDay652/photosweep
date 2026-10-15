@@ -16,15 +16,17 @@ class SwipeVfxView extends View {
     private final boolean enabled, reducedMotion;
     private final Sprites sprites;
     private final RectF glyph = new RectF();
-    private final RectF halo = new RectF();
-    private static Bitmap heavenlyArt;
-    private final Bitmap heavenlyOval;
+    private final RectF unit = new RectF(-1,-1,1,1);
+    private final RectF bladeRect = new RectF();
+    private final Paint whiteLight = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private static Bitmap spellArt, bladeArt;
+    private final Bitmap spellRing, sawBlade;
     private float haloX, haloY, haloRadius, haloHeight;
     private final int intensity, speed;
     private final Random random = new Random();
-    private final Chip[] chips = new Chip[96];
+    private final Chip[] chips = new Chip[224];
     private Bitmap bitmap;
-    private long released, started;
+    private long released, started, lastPreviewChip;
     private float lastLeft, feed;
     private boolean tracked;
     private int nextChip;
@@ -38,45 +40,46 @@ class SwipeVfxView extends View {
                  int intensity, int speed, boolean reducedMotion) {
         super(context); this.sprites=sprites; this.enabled=enabled; this.intensity=intensity; this.speed=speed;
         this.reducedMotion=reducedMotion;
-        // Share the immutable generated artwork across review and settings previews.
-        if(heavenlyArt==null || heavenlyArt.isRecycled())
-            heavenlyArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.keep_heavenly_oval);
-        heavenlyOval=heavenlyArt;
+        // Share immutable textures; decode once at bounded sizes, never in a draw frame.
+        BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;options.inSampleSize=2;
+        if(spellArt==null || spellArt.isRecycled())
+            spellArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.keep_spell_ring,options);
+        options.inSampleSize=4;
+        if(bladeArt==null || bladeArt.isRecycled())
+            bladeArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.grinder_saw_blade,options);
+        spellRing=spellArt;sawBlade=bladeArt;
+        whiteLight.setColorFilter(new PorterDuffColorFilter(0xFFFFFBEE,PorterDuff.Mode.SRC_IN));
         for(int i=0;i<chips.length;i++)chips[i]=new Chip();
         setClickable(false);setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
     private float dp(float value) { return value*getResources().getDisplayMetrics().density; }
-    @Override protected void onSizeChanged(int w,int h,int oldw,int oldh) {
-        super.onSizeChanged(w,h,oldw,oldh);
-        // The generated oval stays fixed to the Keep edge, independent of photo motion.
-        haloX=w;haloY=h*.5f;
-        float ratio=heavenlyOval==null?1.5f:heavenlyOval.getHeight()/(float)heavenlyOval.getWidth();
-        haloRadius=Math.max(1,Math.min(dp(170),Math.min(w*.43f,h*.44f/ratio)));
-        haloHeight=haloRadius*ratio;
-        halo.set(haloX-haloRadius,haloY-haloHeight,haloX+haloRadius,haloY+haloHeight);
-    }
+    protected void onGrinderShake(float offset) { }
     void setPhoto(Bitmap image, RectF bounds, float dx, float dy) {
         bitmap=image;photo.set(bounds);photo.offset(dx,dy);
-        float travel=tracked?Math.max(0,lastLeft-photo.left):0;
+        float edge=dp(9),width=Math.max(1,photo.width());
+        float oldCut=Math.max(0,Math.min(width,edge-lastLeft));
+        float newCut=Math.max(0,Math.min(width,edge-photo.left));
+        float travel=tracked?Math.max(0,newCut-oldCut):0;
         lastLeft=photo.left;tracked=true;
-        if(enabled && progress<0 && photo.left<dp(10) && photo.right>0) {
-            feed+=travel/dp(7)*(.4f+intensity/75f);
-            int count=Math.min(10,(int)feed);feed-=count;
+        if(enabled && !reducedMotion && progress<0 && travel>0) {
+            feed+=travel/dp(2.3f)*(1.1f+intensity/100f);
+            int count=Math.min(36,(int)feed);feed=Math.min(36,feed-count);
             for(int i=0;i<count;i++)spawnChip();
         } else feed=0;
         invalidate();
     }
-    void hold(float x,float y) { clearChips(); released=0;started=SystemClock.uptimeMillis();progress=0;tracked=false; }
-    void follow(float x,float y) { if(progress>=0)clearChips();invalidate(); }
-    void release(boolean keep) { progress=keep?1:-1;released=SystemClock.uptimeMillis();invalidate(); }
-    void cancel() { progress=0;released=0;tracked=false;bitmap=null;photo.setEmpty();clearChips();invalidate(); }
+    void hold(float x,float y) { clearChips();onGrinderShake(0);released=0;started=SystemClock.uptimeMillis();progress=0;tracked=false; }
+    void follow(float x,float y) { if(progress>=0){clearChips();onGrinderShake(0);}invalidate(); }
+    void release(boolean keep) { onGrinderShake(0);progress=keep?1:-1;released=SystemClock.uptimeMillis();invalidate(); }
+    void cancel() { onGrinderShake(0);progress=0;released=0;tracked=false;bitmap=null;photo.setEmpty();clearChips();invalidate(); }
+    @Override protected void onDetachedFromWindow() { cancel();super.onDetachedFromWindow(); }
     private void clearChips() { for(Chip chip:chips){chip.born=0;chip.bitmap=null;}feed=0; }
     private void spawnChip() {
         Chip chip=chips[nextChip++%chips.length];chip.born=SystemClock.uptimeMillis();
         chip.x=dp(9);chip.y=photo.top+photo.height()*(.03f+random.nextFloat()*.94f);
-        chip.size=dp(3+random.nextFloat()*6);chip.vx=dp(22+random.nextFloat()*100);
-        chip.vy=dp(-50+random.nextFloat()*75);chip.angle=random.nextFloat()*180;
-        chip.spin=-210+random.nextFloat()*420;chip.bitmap=bitmap;
+        chip.size=dp(2+random.nextFloat()*6);chip.vx=dp(60+random.nextFloat()*185);
+        chip.vy=dp(-115+random.nextFloat()*175);chip.angle=random.nextFloat()*180;
+        chip.spin=-540+random.nextFloat()*1080;chip.bitmap=bitmap;
         if(bitmap!=null && !bitmap.isRecycled()) {
             int bw=bitmap.getWidth(),bh=bitmap.getHeight();
             int sx=Math.max(0,Math.min(bw-1,(int)((dp(9)-photo.left)/Math.max(1,photo.width())*bw)));
@@ -86,14 +89,20 @@ class SwipeVfxView extends View {
         }
     }
     @Override protected void onDraw(Canvas canvas) {
-        if(SwipeMotion.intent(progress)==0 || getWidth()==0 || getHeight()==0)return;
+        if(SwipeMotion.intent(progress)==0 || getWidth()==0 || getHeight()==0){onGrinderShake(0);return;}
         long now=SystemClock.uptimeMillis();if(started==0)started=now;
         float time=(now-started)/1000f*speed/100f;
         float phase=released==0?0:SwipeMotion.clamp((now-released)/(float)(reducedMotion?80:SwipeMotion.releaseDuration(speed,progress>0)));
         float amount=SwipeMotion.clamp(Math.abs(progress));
         float fade=released==0?1:1-SwipeMotion.ease(phase);
+        if(released==0) {
+            float proximity=progress<0&&!photo.isEmpty()?SwipeMotion.grinderProximity(photo.left,dp(9),dp(110)):0;
+            onGrinderShake(enabled&&!reducedMotion?dp(2.6f)*SwipeMotion.grinderShake((now-started)/1000f,proximity):0);
+        }
+        int frame=canvas.save();canvas.clipRect(0,0,getWidth(),getHeight());
         if(progress>0)drawHeavenly(canvas,time,amount,fade);
         else drawGrinder(canvas,time,amount,fade,now);
+        canvas.restoreToCount(frame);
         paint.setShader(null);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);
         if(isAttachedToWindow() && enabled && (!reducedMotion || released!=0))postInvalidateOnAnimation();
     }
@@ -101,18 +110,17 @@ class SwipeVfxView extends View {
         boolean animate=enabled&&!reducedMotion;
         float strength=SwipeMotion.ease(amount)*fade;
         float breathe=animate?.92f+.08f*(float)Math.sin(time*1.5f):1;
+        // The image matrix supplies actual portrait/landscape bounds, including letterboxing.
+        haloX=getWidth();haloY=photo.isEmpty()?getHeight()*.5f:photo.centerY();
+        haloY=Math.max(dp(20),Math.min(getHeight()-dp(20),haloY));
+        haloRadius=SwipeMotion.spellHalfWidth(photo.isEmpty()?getWidth()*.6f:photo.width(),getWidth(),dp(10));
+        haloHeight=SwipeMotion.spellHalfHeight(photo.isEmpty()?getHeight()*.6f:photo.height(),getHeight(),haloY,dp(10));
         paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);
-        if(heavenlyOval!=null && !heavenlyOval.isRecycled()) {
-            int save=canvas.save();
-            if(animate) {
-                canvas.scale(.985f+.015f*(float)Math.sin(time*1.1f),
-                        .99f+.01f*(float)Math.cos(time*.9f),haloX,haloY);
-                canvas.rotate(.7f*(float)Math.sin(time*.65f),haloX,haloY);
-            }
-            paint.setAlpha((int)(255*strength*breathe));
-            canvas.drawBitmap(heavenlyOval,null,halo,paint);
-            canvas.restoreToCount(save);
-        }
+        float breathScale=animate?.99f+.01f*(float)Math.sin(time*1.2f):1;
+        paint.setAlpha((int)(205*strength*breathe));
+        drawSpellRing(canvas,breathScale,animate?time*11:0,paint);
+        whiteLight.setAlpha((int)(150*strength*breathe));
+        drawSpellRing(canvas,.74f*breathScale,animate?-time*17:23,whiteLight);
         if(!animate)return;
         Bitmap motif=sprites.get(true);
         int count=10+intensity/7;
@@ -136,30 +144,43 @@ class SwipeVfxView extends View {
             }
         }
     }
+    private void drawSpellRing(Canvas canvas,float scale,float angle,Paint ink) {
+        if(spellRing==null || spellRing.isRecycled())return;
+        int save=canvas.save();canvas.translate(haloX,haloY);
+        // Rotate in texture space BEFORE oval scaling so the oval never wobbles out of shape.
+        canvas.scale(haloRadius*scale,haloHeight*scale);canvas.rotate(angle%360);
+        canvas.drawBitmap(spellRing,null,unit,ink);canvas.restoreToCount(save);
+    }
     private void drawGrinder(Canvas canvas,float time,float amount,float fade,long now) {
         float top=photo.isEmpty()?getHeight()*.20f:Math.max(dp(5),photo.top);
         float bottom=photo.isEmpty()?getHeight()*.80f:Math.min(getHeight()-dp(5),photo.bottom);
         paint.setStyle(Paint.Style.FILL);paint.setColor(0xFFFFC995);paint.setAlpha((int)(70*amount*fade));
         canvas.drawRoundRect(0,top,dp(15),bottom,dp(7),dp(7),paint);
-        paint.setColor(0xFFFFE7C5);paint.setAlpha((int)(210*amount*fade));
-        float shift=enabled&&!reducedMotion?(time*dp(35))%dp(13):0;
+        paint.setColor(Color.WHITE);paint.setAlpha((int)(235*SwipeMotion.ease(amount)*fade));
         int save=canvas.save();canvas.clipRect(0,top,dp(15),bottom);
-        for(float y=top-dp(13)+shift;y<bottom;y+=dp(13)) {
-            path.reset();path.moveTo(dp(2),y);path.lineTo(dp(12),y+dp(5));path.lineTo(dp(2),y+dp(10));path.close();canvas.drawPath(path,paint);
+        int index=0;
+        for(float y=top;y<bottom+dp(27);y+=dp(40)) {
+            float radius=dp(27),cx=-dp(14);
+            int blade=canvas.save();
+            canvas.rotate(enabled&&!reducedMotion?(time*115*(index%2==0?1:-1)+index*29)%360:0,cx,y);
+            bladeRect.set(cx-radius,y-radius,cx+radius,y+radius);
+            if(sawBlade!=null && !sawBlade.isRecycled())canvas.drawBitmap(sawBlade,null,bladeRect,paint);
+            canvas.restoreToCount(blade);index++;
         }
         canvas.restoreToCount(save);
         if(!enabled || reducedMotion)return;
         // Preview has no real photo. Show paper-colored chips instead of fabricating a photo.
-        if(bitmap==null && random.nextFloat()<.45f) {
-            photo.set(0,getHeight()*.20f,getWidth()*.6f,getHeight()*.80f);spawnChip();
+        if(bitmap==null && now-lastPreviewChip>=35) {
+            lastPreviewChip=now;photo.set(0,getHeight()*.20f,getWidth()*.6f,getHeight()*.80f);
+            for(int i=0;i<3;i++)spawnChip();
         }
         for(Chip chip:chips) {
             if(chip.born==0)continue;
             float age=(now-chip.born)/1000f;
-            if(age>.85f){chip.born=0;chip.bitmap=null;continue;}
-            float x=chip.x+chip.vx*age,y=chip.y+chip.vy*age+dp(130)*age*age;
-            float size=chip.size*(1-age*.65f);
-            paint.setColor(0xFFFFE8CB);paint.setAlpha((int)(235*(1-age/.85f)*fade));
+            if(age>1.05f){chip.born=0;chip.bitmap=null;continue;}
+            float x=chip.x+chip.vx*age,y=chip.y+chip.vy*age+dp(180)*age*age;
+            float size=chip.size*(1-age*.55f);
+            paint.setColor(0xFFFFE8CB);paint.setAlpha((int)(245*(1-age/1.05f)*fade));
             int piece=canvas.save();canvas.rotate(chip.angle+chip.spin*age,x,y);
             target.set(x-size,y-size*.65f,x+size,y+size*.65f);
             if(chip.bitmap!=null && !chip.bitmap.isRecycled() && !chip.source.isEmpty())canvas.drawBitmap(chip.bitmap,chip.source,target,paint);
@@ -168,4 +189,5 @@ class SwipeVfxView extends View {
         }
     }
 }
+
 
