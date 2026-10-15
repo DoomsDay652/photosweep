@@ -17,8 +17,9 @@ class SwipeVfxView extends View {
     private final Sprites sprites;
     private final RectF glyph = new RectF();
     private final RectF halo = new RectF();
-    private Shader haloLight;
-    private float haloX, haloY, haloRadius, haloReach;
+    private static Bitmap heavenlyArt;
+    private final Bitmap heavenlyOval;
+    private float haloX, haloY, haloRadius, haloHeight;
     private final int intensity, speed;
     private final Random random = new Random();
     private final Chip[] chips = new Chip[96];
@@ -37,20 +38,22 @@ class SwipeVfxView extends View {
                  int intensity, int speed, boolean reducedMotion) {
         super(context); this.sprites=sprites; this.enabled=enabled; this.intensity=intensity; this.speed=speed;
         this.reducedMotion=reducedMotion;
+        // Share the immutable generated artwork across review and settings previews.
+        if(heavenlyArt==null || heavenlyArt.isRecycled())
+            heavenlyArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.keep_heavenly_oval);
+        heavenlyOval=heavenlyArt;
         for(int i=0;i<chips.length;i++)chips[i]=new Chip();
         setClickable(false);setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
     private float dp(float value) { return value*getResources().getDisplayMetrics().density; }
     @Override protected void onSizeChanged(int w,int h,int oldw,int oldh) {
         super.onSizeChanged(w,h,oldw,oldh);
-        // A half-sun fixed to the middle of the Keep edge, independent of photo motion.
+        // The generated oval stays fixed to the Keep edge, independent of photo motion.
         haloX=w;haloY=h*.5f;
-        haloRadius=Math.max(1,Math.min(dp(116),Math.min(w*.27f,h*.25f)));
-        haloReach=haloRadius+Math.min(dp(74),haloRadius*.7f);
-        halo.set(haloX-haloRadius,haloY-haloRadius,haloX+haloRadius,haloY+haloRadius);
-        haloLight=new RadialGradient(haloX,haloY,haloReach,
-                new int[]{0x55FFFBE8,0x33FFE7A3,0x44FFF3C9,0x00FFE7A3},
-                new float[]{0,.42f,haloRadius/haloReach,1},Shader.TileMode.CLAMP);
+        float ratio=heavenlyOval==null?1.5f:heavenlyOval.getHeight()/(float)heavenlyOval.getWidth();
+        haloRadius=Math.max(1,Math.min(dp(170),Math.min(w*.43f,h*.44f/ratio)));
+        haloHeight=haloRadius*ratio;
+        halo.set(haloX-haloRadius,haloY-haloHeight,haloX+haloRadius,haloY+haloHeight);
     }
     void setPhoto(Bitmap image, RectF bounds, float dx, float dy) {
         bitmap=image;photo.set(bounds);photo.offset(dx,dy);
@@ -97,43 +100,28 @@ class SwipeVfxView extends View {
     private void drawHeavenly(Canvas canvas,float time,float amount,float fade) {
         boolean animate=enabled&&!reducedMotion;
         float strength=SwipeMotion.ease(amount)*fade;
-        float breathe=animate?.94f+.06f*(float)Math.sin(time*1.7f):1;
-        paint.setStyle(Paint.Style.FILL);paint.setShader(haloLight);
-        paint.setAlpha((int)(255*strength*breathe));
-        canvas.drawCircle(haloX,haloY,haloReach,paint);
-        paint.setShader(null);
-        // Layered wide-to-fine strokes keep the half-circle soft, with a bright core.
-        paint.setStyle(Paint.Style.STROKE);
-        for(int layer=4;layer>0;layer--) {
-            paint.setStrokeWidth(dp(layer==1?2:layer==2?8:layer==3?20:38));
-            paint.setColor(layer==1?0xFFFFFBE8:0xFFFFDFA2);
-            paint.setAlpha((int)((layer==1?225:layer==2?85:layer==3?32:12)*strength*breathe));
-            canvas.drawArc(halo,90,180,false,paint);
+        float breathe=animate?.92f+.08f*(float)Math.sin(time*1.5f):1;
+        paint.setShader(null);paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);
+        if(heavenlyOval!=null && !heavenlyOval.isRecycled()) {
+            int save=canvas.save();
+            if(animate) {
+                canvas.scale(.985f+.015f*(float)Math.sin(time*1.1f),
+                        .99f+.01f*(float)Math.cos(time*.9f),haloX,haloY);
+                canvas.rotate(.7f*(float)Math.sin(time*.65f),haloX,haloY);
+            }
+            paint.setAlpha((int)(255*strength*breathe));
+            canvas.drawBitmap(heavenlyOval,null,halo,paint);
+            canvas.restoreToCount(save);
         }
         if(!animate)return;
-        // Uneven, slowly breathing rays radiate inward from the right edge.
-        paint.setStyle(Paint.Style.FILL);paint.setShader(haloLight);
-        int rays=15+intensity/25;
-        for(int i=0;i<rays;i++) {
-            double angle=Math.PI*(.53+.94*i/(rays-1f));
-            float length=dp(25+(i*23)%47)*( .90f+.10f*(float)Math.sin(time*1.3f+i*1.7f));
-            float near=haloRadius+dp(8),far=Math.min(haloReach,near+length);
-            double spread=.009+(i%3)*.004;
-            path.reset();
-            path.moveTo(haloX+(float)Math.cos(angle-spread)*near,haloY+(float)Math.sin(angle-spread)*near);
-            path.lineTo(haloX+(float)Math.cos(angle)*far,haloY+(float)Math.sin(angle)*far);
-            path.lineTo(haloX+(float)Math.cos(angle+spread)*near,haloY+(float)Math.sin(angle+spread)*near);
-            path.close();paint.setAlpha((int)(210*strength*breathe));canvas.drawPath(path,paint);
-        }
-        paint.setShader(null);
         Bitmap motif=sprites.get(true);
         int count=10+intensity/7;
         for(int i=0;i<count;i++) {
             float phase=(time*.25f+i*.137f)%1f;
             double angle=Math.PI*(.56+.88*((i*43)%101)/100f);
-            float distance=haloRadius+dp(12)+phase*(haloReach-haloRadius);
+            float distance=haloRadius*(.64f+phase*.30f);
             float x=haloX+(float)Math.cos(angle)*distance;
-            float y=haloY+(float)Math.sin(angle)*distance-phase*dp(14);
+            float y=haloY+(float)Math.sin(angle)*distance*(haloHeight/haloRadius)-phase*dp(14);
             float size=dp(2.5f+i%4)*(.35f+.65f*(float)Math.sin(Math.PI*phase));
             paint.setColor(i%3==0?0xFFFFE8A4:Color.WHITE);paint.setAlpha((int)(220*strength*Math.sin(Math.PI*phase)));
             path.reset();path.moveTo(x,y-size*1.6f);path.lineTo(x+size*.35f,y-size*.25f);
@@ -180,3 +168,4 @@ class SwipeVfxView extends View {
         }
     }
 }
+
