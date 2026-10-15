@@ -43,27 +43,23 @@ def finish(name, sound):
     wav.unlink()
     return stats
 
-# Warm ascending glass/pluck: C5 then E5, little high-frequency energy, no coin rattle.
-keep = np.zeros(n)
-for start, frequency, gain in [(0, 523.251, 1), (.075, 659.255, .78)]:
-    u = t - start
-    tone = np.sin(2*np.pi*frequency*u) + .15*np.sin(2*np.pi*frequency*2*u) + .035*np.sin(2*np.pi*frequency*3*u)
-    keep += gain * tone * envelope(u, .005, .095)
-for delay, gain in [(.038, .14), (.067, .07)]:
-    offset = int(delay * RATE)
-    keep[offset:] += keep[:-offset].copy() * gain
+# Rounded retro triangle/pulse arpeggios, with softened edges instead of harsh square waves.
+def retro_note(frequency, start, decay, gain):
+    u=t-start
+    phase=2*np.pi*frequency*u
+    triangle=signal.sawtooth(phase, width=.5)
+    pulse=np.tanh(2.0*np.sin(phase))
+    tone=.78*triangle+.22*pulse
+    tone=signal.sosfilt(signal.butter(3, 2600, fs=RATE, output='sos'), tone)
+    return gain*tone*envelope(u,.004,decay)
 
-# Soft paper sweep: falling air noise with three quiet crinkle textures, no buzzer/explosion.
-noise = rng.normal(0, 1, n)
-soft = signal.sosfilt(signal.butter(3, [180, 2500], btype='bandpass', fs=RATE, output='sos'), noise)
-low = signal.sosfilt(signal.butter(3, [100, 750], btype='bandpass', fs=RATE, output='sos'), noise)
-progress = t / DURATION
-sweep = soft * (1-progress) + low * progress
-shape = np.sin(np.pi * np.minimum(1, t/.36)) ** 1.6
-crinkles = sum(.28*np.exp(-((t-center)/width)**2) for center,width in [(.08,.013),(.145,.018),(.225,.024)])
-trash = sweep * (shape*.75 + crinkles)
-phase = 2*np.pi*(160*t-75*t*t)
-trash += .045*np.sin(phase)*envelope(t, .015, .085)
-
-report = [finish('bubble_keep', keep), finish('bubble_trash', trash)]
+# Soft ascending 8-bit save sparkle: C5, E5, G5.
+keep=sum(retro_note(freq,start,.073,gain) for freq,start,gain in
+         [(523.251,0,1.0),(659.255,.058,.8),(783.991,.116,.58)])
+# Playful descending chip tumble: three rounded boops, with a tiny airy texture.
+trash=sum(retro_note(freq,start,.055,gain) for freq,start,gain in
+          [(329.628,0,1.0),(246.942,.055,.75),(195.998,.11,.52)])
+air=signal.sosfilt(signal.butter(2,[450,2100],btype='bandpass',fs=RATE,output='sos'),rng.normal(0,1,n))
+trash+=.08*air*envelope(t,.012,.075)
+report=[finish('bubble_keep',keep),finish('bubble_trash',trash)]
 print(json.dumps(report))
