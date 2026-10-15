@@ -33,3 +33,15 @@ Status: agreed XP/token rules for after the testing phase. Not enabled in 0.1.21
 - Tutorial uses the collection menu to choose Tier 2.
 
 Until the agreed system is enabled, current test builds retain 500 XP per level and tier-wide level unlocks at Levels 1, 3, and 6.
+
+
+## 2026-10-15 revision under discussion
+
+The owner now wants easier, more enjoyable theme rewards and suggested a playful roll for Silver, Gold, and Diamond tier tokens, with Diamond rarest. The proposed direction is an earned level-up token reveal, followed by choosing which theme to unlock. The roll chooses token quality, not a random unwanted theme.
+
+Design goals: preserve existing earned themes and XP; reward Keep and Trash equally; keep ten-photo milestones; allow lower tokens to contribute toward higher tokens; include a guaranteed path to rare tokens; show a short optional reveal without blocking photo review. Tier 1 colors currently available for free must remain available.
+
+Still to decide with the owner: tier-to-token mapping, XP/roll pace, normal roll odds, guaranteed rare-token interval, conversion ratios, and migration grants. A faster 200-XP level (about 34 photos at the planned 5 XP plus ten-photo bonuses) was suggested, but the owner responded with the colored-token idea rather than selecting an XP pace. These numbers are not approved or active.
+
+0.1.32 updates the particle Keep sleeve. It does not enable the proposed random token economy; the current testing XP and unlock rules remain active while these choices are discussed.
+
