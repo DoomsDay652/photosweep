@@ -26,6 +26,16 @@ public class ReviewLogicCheck {
         check(SwipeMotion.grinderClipLeft(-100,400,9)==109,"grinder clipping stays fixed at screen edge");
         check(SwipeMotion.grinderClipLeft(-900,400,9)==400,"fully consumed photo is fully clipped");
         check(SwipeMotion.grinderClipLeft(20,400,9)==0,"reversed drag restores the whole card");
+        check(SwipeMotion.grinderProximity(150,9,100)==0,"distant photos do not shake");
+        check(SwipeMotion.grinderProximity(9,9,100)==1,"contact reaches full grinder strength");
+        check(SwipeMotion.grinderProximity(60,9,100)<SwipeMotion.grinderProximity(30,9,100),"shake increases near teeth");
+        check(SwipeMotion.spellHalfHeight(300,800,400,10)>SwipeMotion.spellHalfHeight(150,800,400,10),"spell height follows portrait and landscape photos");
+        check(SwipeMotion.spellHalfWidth(200,500,10)<SwipeMotion.spellHalfWidth(400,500,10),"spell width follows photo width");
+        check(SwipeMotion.spellHalfHeight(900,300,60,10)<=50,"spell stays inside short layouts");
+        for(int frame=0;frame<180;frame++) {
+            check(SwipeMotion.grinderShake(frame/60f,0)==0,"no vibration away from grinder");
+            check(Math.abs(SwipeMotion.grinderShake(frame/60f,1))<=1.001,"vibration remains bounded");
+        }
         for (int speed : new int[]{0,50,100,200,500}) {
             check(SwipeMotion.releaseDuration(speed,false)>SwipeMotion.releaseDuration(speed,true),"grinder feeding has its own timing");
             check(SwipeMotion.releaseDuration(speed,true)>=220 && SwipeMotion.releaseDuration(speed,false)<=710,"release timing stays bounded");
@@ -92,5 +102,6 @@ public class ReviewLogicCheck {
         System.out.println("PASS: release theme exclusions, account configuration gates, 34 distinct theme profiles, swipe intent, aspect/memory bounds, reset safety, month boundaries, empty months, undo state/XP, expiry grammar, offline accounts and ad consent/ownership gates.");
     }
 }
+
 
 
