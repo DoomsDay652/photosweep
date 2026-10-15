@@ -45,6 +45,15 @@ final class SwipeTheme {
         }
     }
     static String description(Kind kind) {
+        switch(kind) {
+            case FIRE:return "Trash: burns the photo into embers · Keep: flame wings fold around the photo.";
+            case WATER:return "Trash: twists photo fragments into a whirlpool · Keep: bends through a water curtain.";
+            case ICE:return "Trash: breaks the photo into icy shards · Keep: slides behind crystal gates.";
+            case TOXIC:return "Trash: dissolves the photo into heavy drips · Keep: enters a green containment chamber.";
+            case SPACE:return "Trash: stretches photo fragments into a black hole · Keep: curves into a blue wormhole.";
+            case CANDY:return "Trash: candy rollers crush the photo into falling crumbs · Keep: candy ribbons curl around the photo.";
+            default:break;
+        }
         return "Keep: warm glow and sparkles · Trash: photo chips at the left edge. Style changes the sparkle accents.";
     }
 }
