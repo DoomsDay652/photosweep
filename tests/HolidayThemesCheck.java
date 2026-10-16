@@ -24,7 +24,7 @@ public final class HolidayThemesCheck {
             check(profile != SwipeTheme.Kind.SPARKLE && profiles.add(profile), "distinct holiday swipe profile");
             check(!SwipeTheme.description(profile).contains("sparkle burst"), "holiday-specific interaction copy");
         }
-        check(!PlayPolicy.themeAllowed(HolidayThemes.end()), "no unavailable resource may be selected");
+        check(!PlayPolicy.themeAllowed(ThemeCatalog.COUNT), "no unavailable resource may be selected");
         check(HolidayThemes.reflective(7) && HolidayThemes.reflective(11), "remembrance holidays stay gentle");
         check(!HolidayThemes.reflective(3), "July 4 celebration profile");
         System.out.println("PASS: 12 collections, 24 saved IDs, original selections, selectable variants, distinct profiles, still-motion and bounds checks.");
