@@ -450,7 +450,7 @@ class SwipeVfxView extends View {
         float fade=released==0?1:1-SwipeMotion.ease(phase);
         if(released==0) {
             float proximity=trashActive()&&!photo.isEmpty()?SwipeMotion.grinderProximity(visibleLeft,dp(14),dp(110)):0;
-            onGrinderShake(enabled&&!reducedMotion?dp(2.6f)*SwipeMotion.grinderShake((now-started)/1000f,proximity):0);
+            onGrinderShake(enabled&&!reducedMotion?dp(SwipeMotion.trashShake((now-started)/1000f,proximity,!elemental)):0);
         }
         boolean steady=heldEffectsActive();
         boolean lightVisible=steady || holding || returning!=0 || (released!=0 && progress>0) || progress>0;
