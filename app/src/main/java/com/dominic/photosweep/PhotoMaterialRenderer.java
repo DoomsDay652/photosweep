@@ -5,7 +5,15 @@ import android.graphics.*;
 /** Six photo-material render paths. Every surface, shard and droplet samples the current photo. */
 final class PhotoMaterialRenderer {
     final PhotoMaterialMotion motion=new PhotoMaterialMotion();
+    private final boolean[] toxicDetached=new boolean[PhotoMaterialMotion.N];
+    private final int[] toxicEmitters=new int[PhotoMaterialMotion.Y+1];
+    private final float[] toxicEmittedAt=new float[PhotoMaterialMotion.Y+1];
+    PhotoMaterialRenderer(){resetToxicEmitters();}
+    private void resetToxicEmitters(){java.util.Arrays.fill(toxicDetached,false);java.util.Arrays.fill(toxicEmitters,-1);java.util.Arrays.fill(toxicEmittedAt,-1);}
     private Bitmap receiverArt,flameArt;
+    private float toxicNX=0,toxicNY=1,toxicLevel=Float.NaN;
+    private final float[] meltX=new float[17],meltY=new float[17],meltWidth=new float[17];
+    void setToxicPool(float nx,float ny,float level){toxicNX=nx;toxicNY=ny;toxicLevel=level;}
     private PhotoMaterialArt art;
     private final int[] lightColors=new int[PhotoMaterialMotion.N];
     void setMaterialArt(PhotoMaterialArt value){art=value;if(value!=null)flameArt=value.debris[0];}
@@ -25,7 +33,7 @@ final class PhotoMaterialRenderer {
         System.arraycopy(motion.base,0,copy.motion.base,0,motion.base.length);
         motion.copyDamageTo(copy.motion);copy.motion.candyVariant=motion.candyVariant;return copy;
     }
-    void reset(){motion.reset();motion.candyVariant=random.nextInt(4);java.util.Arrays.fill(detached,false);}
+    void reset(){motion.reset();resetToxicEmitters();motion.candyVariant=random.nextInt(4);java.util.Arrays.fill(detached,false);}
     void draw(Canvas canvas,Bitmap photo,SwipeTheme.Kind kind,float seconds,float density,float width,float height,
               boolean keeping,float keepPhase,float close,float recovery) {
         if(photo==null || photo.isRecycled())return;
@@ -43,7 +51,8 @@ final class PhotoMaterialRenderer {
                 drawBrittle(canvas,photo,kind,seconds,density,height,recovery);
             else {
                 canvas.drawBitmapMesh(photo,PhotoMaterialMotion.X,PhotoMaterialMotion.Y,motion.vertices,0,motion.colors,0,paint);
-                if(kind!=SwipeTheme.Kind.FIRE)drawShedMaterial(canvas,photo,kind,seconds,density,height,recovery);
+                if(kind==SwipeTheme.Kind.TOXIC)drawToxicMelt(canvas,photo,seconds,density,height,recovery);
+                else if(kind!=SwipeTheme.Kind.FIRE)drawShedMaterial(canvas,photo,kind,seconds,density,height,recovery);
                 if(kind==SwipeTheme.Kind.FIRE)drawBurnFront(canvas,seconds,density,recovery);
             }
         }
@@ -179,6 +188,67 @@ final class PhotoMaterialRenderer {
         sprite(canvas,art.finishes[4],(l+r)*.5f,(t+b)*.5f,Math.max(9,(r-l)*.60f),Math.max(9,(r-l)*.60f),0,alpha*pulse*.85f);
         canvas.restoreToCount(save);
     }
+    /** Viscous strips sample the contacted photograph; intact stock is never an emitter. */
+    private void drawToxicMelt(Canvas canvas,Bitmap photo,float seconds,float density,float height,float recovery) {
+        float level=Float.isNaN(toxicLevel)?height*.86f:toxicLevel;
+        float cell=(float)Math.hypot(motion.base[2]-motion.base[0],motion.base[3]-motion.base[1]);
+        float releaseGap=Math.max(density*3,cell*.5f);
+        // Separation is permanent for this UV event. Returning close to the wall cannot reattach it.
+        for(int n=0;n<PhotoMaterialMotion.N;n++)if(motion.touched[n]>=0 &&
+                (motion.base[n*2]>motion.contactX[n]+releaseGap || motion.remaining[n]<=.03f || motion.age(n,seconds)>=1.35f))toxicDetached[n]=true;
+        for(int row=2;row<PhotoMaterialMotion.Y;row+=4) {
+            int selected=toxicEmitters[row];
+            if(selected>=0 && motion.age(selected,seconds)>2.3f)selected=-1;
+            if(selected<0) {
+                float best=Float.MAX_VALUE;
+                for(int col=0;col<=PhotoMaterialMotion.X;col++) {
+                    int n=row*(PhotoMaterialMotion.X+1)+col;float age=motion.age(n,seconds);
+                    // Only new direct contact can start a stream; old corrosion and missing stock cannot.
+                    if(age<.035f || age>.45f || motion.spread[n]!=0 || toxicDetached[n] ||
+                            motion.remaining[n]<=.03f || motion.touched[n]<=toxicEmittedAt[row])continue;
+                    float distance=Math.abs(motion.base[n*2]-motion.contactX[n]);
+                    if(distance<best){selected=n;best=distance;}
+                }
+                toxicEmitters[row]=selected;
+                if(selected>=0)toxicEmittedAt[row]=motion.touched[selected];
+            }
+            if(selected<0)continue;
+            int n=selected;float age=motion.age(n,seconds),seed=PhotoMaterialMotion.noise(row+71);
+            boolean attached=!toxicDetached[n];
+            float startX=attached?motion.vertices[n*2]:motion.contactX[n];
+            float startY=attached?motion.vertices[n*2+1]:motion.contactY[n]+density*55*Math.max(0,age-.65f)*Math.max(0,age-.65f);
+            float endX=Math.max(density*5,Math.min(density*60,motion.contactX[n]+density*(6+20*seed)));
+            float poolY=toxicNY>.15f?(level-toxicNX*endX)/toxicNY:height;
+            poolY=Math.min(height+density*8,poolY);
+            if(startY>=poolY-density*3)continue;
+            float grow=PhotoMaterialMotion.smooth((age-.035f)/(1.12f+.25f*seed));
+            float endY=startY+(poolY-startY)*grow;
+            float fade=(1-PhotoMaterialMotion.smooth((age-1.65f)/.65f))*recovery;
+            if(fade<=0 || endY-startY<density*2)continue;
+            float width=density*(2.8f+seed*3.2f)*(attached?1:.72f);
+            for(int step=0;step<=16;step++) {
+                float t=step/16f,flow=PhotoMaterialMotion.smooth(t/.32f);
+                meltX[step]=startX+(endX-startX)*flow+density*2*(float)Math.sin(t*5+seed*7+seconds*.65f)*(float)Math.sin(t*Math.PI);
+                meltY[step]=startY+(endY-startY)*t;
+                meltWidth[step]=width*(1-.64f*(float)Math.sin(t*Math.PI))*(1-.18f*grow);
+            }
+            shape.reset();for(int step=0;step<=16;step++){if(step==0)shape.moveTo(meltX[step]-meltWidth[step],meltY[step]);else shape.lineTo(meltX[step]-meltWidth[step],meltY[step]);}
+            for(int step=16;step>=0;step--)shape.lineTo(meltX[step]+meltWidth[step],meltY[step]);shape.close();
+            int col=n%(PhotoMaterialMotion.X+1),sy=row*photo.getHeight()/PhotoMaterialMotion.Y,sx=col*photo.getWidth()/PhotoMaterialMotion.X;
+            int sw=Math.max(3,photo.getWidth()/18),sh=Math.max(3,photo.getHeight()/12);
+            sample.set(Math.max(0,sx-sw),Math.max(0,sy-sh),Math.min(photo.getWidth(),sx+sw),Math.min(photo.getHeight(),sy+sh));
+            float left=Math.min(startX,endX)-width-density*3,right=Math.max(startX,endX)+width+density*3;
+            destination.set(left,startY,right,endY+density*2);
+            int save=canvas.save();canvas.clipPath(shape);paint.setAlpha((int)(245*fade));canvas.drawBitmap(photo,sample,destination,paint);
+            overlay.setColor(0xFF82B727);overlay.setAlpha((int)(55*fade));canvas.drawPath(shape,overlay);canvas.restoreToCount(save);
+            // A heavy photo-textured bead hangs from the thread, then spreads into the pool.
+            float rx=width*(grow>.97f?2.2f:1.25f),ry=width*(grow>.97f?.65f:1.75f);
+            destination.set(endX-rx,endY-ry,endX+rx,endY+ry);shape.reset();shape.addOval(destination,Path.Direction.CW);
+            save=canvas.save();canvas.clipPath(shape);paint.setAlpha((int)(230*fade));canvas.drawBitmap(photo,sample,destination,paint);overlay.setAlpha((int)(65*fade));canvas.drawOval(destination.left,destination.top,destination.right,destination.bottom,overlay);canvas.restoreToCount(save);
+        }
+        paint.setAlpha(255);
+    }
+
     private void drawShedMaterial(Canvas canvas,Bitmap photo,SwipeTheme.Kind kind,float seconds,float density,float height,float recovery) {
         if(kind==SwipeTheme.Kind.ICE || kind==SwipeTheme.Kind.CANDY)return;
         for(int row=1;row<PhotoMaterialMotion.Y;row+=3)for(int col=1;col<PhotoMaterialMotion.X;col+=3) {

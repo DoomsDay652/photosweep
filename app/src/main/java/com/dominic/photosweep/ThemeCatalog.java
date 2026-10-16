@@ -2,9 +2,10 @@ package com.dominic.photosweep;
 
 /** Stable theme IDs keep existing ownership intact while the library groups by subject. */
 final class ThemeCatalog {
-    static final String[] COLLECTIONS = {"All themes", "Colors & basics", "Nature & places", "Elements", "Countries", "Holidays", "Fantasy & space"};
+    static final int SLASHER=86, COUNT=87;
+    static final String[] COLLECTIONS = {"All themes", "Colors & basics", "Nature & places", "Elements", "Countries", "Holidays & seasons", "Fantasy & space"};
     static int collection(int theme) {
-        if (theme < 0 || theme > 85) throw new IllegalArgumentException("theme");
+        if (theme < 0 || theme >= COUNT) throw new IllegalArgumentException("theme");
         if (theme < 3 || (theme >= 13 && theme <= 17)) return 1;
         if (theme >= 62) return 5;
         if (theme == 28 || theme == 29 || theme == 32 || theme == 33 || (theme >= 44 && theme <= 55)) return 4;

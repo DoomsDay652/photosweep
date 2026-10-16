@@ -33,7 +33,7 @@ final class PhotoMaterialMotion {
     void contact(float[] sweep,int steps,float[] edges,float height,float seconds,float footprint) {
         float maximum=0;for(float edge:edges)maximum=Math.max(maximum,edge);
         for(int row=0;row<=Y;row++)for(int col=0;col<=X;col++) {
-            int n=row*(X+1)+col;if(touched[n]>=0)continue;
+            int n=row*(X+1)+col;if(touched[n]>=0 || remaining[n]<=.03f)continue;
             float u=col/(float)X,v=row/(float)Y;
             float px=sweep[0]*u+sweep[1]*v+sweep[2],py=sweep[3]*u+sweep[4]*v+sweep[5];
             for(int step=1;step<=steps;step++) {
@@ -103,13 +103,13 @@ final class PhotoMaterialMotion {
                     }
                     case TOXIC: {
                         float melt=smooth(t/.8f),lane=(n%(X+1))/2;
-                        float drop=density*(18*t+65*t*t)*( .35f+.65f*noise((int)lane+37));
+                        float drop=density*(12*t+92*t*t)*( .35f+.65f*noise((int)lane+37));
                         // A viscous neck stretches locally, then breaks instead of spanning the screen.
                         float pull=Math.max(-density*24,Math.min(density*24,contactX[n]-x));
-                        x+=pull*melt*.82f;y+=drop;
+                        x+=pull*melt*.82f;y+=Math.min(drop,density*55);
                         if(Math.abs(contactX[n]-base[n*2])>density*64)a=1-smooth((t-.40f)/.22f);
                         x+=density*3*melt*(float)Math.sin(lane*2.1+seconds*.8);
-                        a=Math.min(a,1-smooth((t-(.65f+seed*.4f))/.6f));r=145;g=220;b=80;break;
+                        a=Math.min(a,1-smooth((t-(.65f+seed*.4f))/.6f));r=195;g=235;b=135;break;
                     }
                     default:break;
                 }

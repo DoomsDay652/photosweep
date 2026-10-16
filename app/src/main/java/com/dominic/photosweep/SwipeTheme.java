@@ -5,7 +5,7 @@ final class SwipeTheme {
     enum Kind { SPARKLE, FIRE, WATER, ICE, EARTH, LIGHTNING, CANDY, TOXIC, SPACE,
         WEB, GOLD, THUNDER, GAMMA, SHIELD, COSMIC, SCARLET, STEALTH, NEBULA, SOLAR,
         SAKURA, SKY, WISPS, JAPAN, MEXICO, USA, SPAIN, BRAZIL, FRANCE, ITALY, KOREA,
-        MY_HERO, BLEACH, ONE_PIECE, NARUTO, DRAGONBALL, YIN_YANG, CHRISTMAS, HALLOWEEN, THANKSGIVING, INDEPENDENCE, NEW_YEAR, MLK, PRESIDENTS, MEMORIAL, JUNETEENTH, LABOR, COLUMBUS, VETERANS }
+        MY_HERO, BLEACH, ONE_PIECE, NARUTO, DRAGONBALL, YIN_YANG, CHRISTMAS, HALLOWEEN, THANKSGIVING, INDEPENDENCE, NEW_YEAR, MLK, PRESIDENTS, MEMORIAL, JUNETEENTH, LABOR, COLUMBUS, VETERANS, SLASHER }
     static Kind forTheme(int theme) {
         int holiday = HolidayThemes.collection(theme);
         if (holiday >= 0) return Kind.values()[Kind.CHRISTMAS.ordinal() + holiday];
@@ -22,11 +22,13 @@ final class SwipeTheme {
             case 46:case 52:return Kind.BRAZIL; case 47:case 53:return Kind.FRANCE;
             case 48:case 54:return Kind.ITALY; case 49:case 55:return Kind.KOREA;
             case 56:return Kind.MY_HERO; case 57:return Kind.BLEACH; case 58:return Kind.ONE_PIECE;
+            case 86:return Kind.SLASHER;
             case 59:return Kind.NARUTO; case 60:return Kind.DRAGONBALL; case 61:return Kind.YIN_YANG;
             default:return Kind.SPARKLE;
         }
     }
     static int color(Kind kind) {
+        if(kind==Kind.SLASHER)return 0xFFD87377;
         if (kind.ordinal() >= Kind.CHRISTMAS.ordinal()) {
             int holiday = kind.ordinal() - Kind.CHRISTMAS.ordinal();
             int[] accents = {0xFFFFE0A1, 0xFFD1B8FF, 0xFFFFE0A0, 0xFFF8E1AA, 0xFFFFF1C9, 0xFFF2DEA6, 0xFFEAD49A, 0xFFE8D7B5, 0xFFFFE0A9, 0xFFFFE0A4, 0xFFE6C99A, 0xFFF2DEB0};
@@ -46,10 +48,12 @@ final class SwipeTheme {
     }
     static String description(Kind kind) {
         switch(kind) {
+            case SLASHER:return "Keep: release the photo to be stabbed at its captured angle and carried away · Trash: walks through an opening door.";
+            case HALLOWEEN:return "Trash: a jack-o-lantern devours the photograph · Keep: a ghost carries the photograph into the moonlight.";
             case FIRE:return "Trash: contact burns with angled flames from the side · Keep: photo ignites from bottom to top.";
             case WATER:return "Trash: photo liquefies into streams and droplets · Keep: photo becomes a bubble and floats away.";
             case ICE:return "Trash: touched photo freezes, cracks, then sheds rigid shards · Keep: crystallizes and slides away.";
-            case TOXIC:return "Trash: photo sags and melts into viscous drips · Keep: photo rolls into a vial and tilts into depth.";
+            case TOXIC:return "Trash: the contacted edge droops into photo-textured strands that drain into the sludge pool · Keep: photo rolls into a vial and tilts into depth.";
             case SPACE:return "Trash: photo slices swirl into the black hole · Keep: a brilliant starburst.";
             case CANDY:return "Trash: compresses, crunches and bounces photo crumbs · Keep: randomly folds the photo into candy shapes.";
             default:break;
