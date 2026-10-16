@@ -173,6 +173,8 @@ class SwipeVfxView extends View {
                     elementTiles[atlasTile].setPixels(pixels,0,tw,0,0,tw,th);
                 }
                 textureArt=elementTiles[atlasTile];materials.setArtwork(textureArt,kind==SwipeTheme.Kind.FIRE?detailArt:null);
+                materials.setMaterialArt(PhotoMaterialArt.load(context));
+                detailArt=PhotoMaterialArt.load(context).debris[atlasTile];
                 for(int row=0;row<elementEdge.length;row++) {
                     int y=Math.min(th-1,row*th/(elementEdge.length-1));float edge=0;
                     for(int x=tw-1;x>=0;x--)if((pixels[y*tw+x]>>>24)>100){edge=(x+.5f)/tw;break;}
@@ -860,11 +862,16 @@ class SwipeVfxView extends View {
     private void drawMaterialMotes(Canvas canvas,float time,float alpha,boolean keep) {
         // Broad, filled sprites provide the moving material; there are no white outline paths.
         Bitmap detail=materialDetail();if(detail==null || detail.isRecycled())return;
+        if(kind==SwipeTheme.Kind.SPACE) {
+            float radius=Math.min(getHeight()*.24f,dp(130));
+            target.set(-radius,getHeight()*.5f-radius,radius,getHeight()*.5f+radius);
+            materialPaint.setAlpha((int)(255*alpha));canvas.drawBitmap(detail,null,target,materialPaint);return;
+        }
         int count=kind==SwipeTheme.Kind.TOXIC?7:kind==SwipeTheme.Kind.ICE?9:14;
         for(int i=0;i<count;i++) {
             float u=(time*(kind==SwipeTheme.Kind.TOXIC?.09f:.30f)+i*.618034f)%1;
             float y=getHeight()*((i*.381966f)%1),x=keep?frontAt(y):toothEdge(y,time);
-            float life=(float)Math.sin(Math.PI*u),size=dp(kind==SwipeTheme.Kind.FIRE?15:kind==SwipeTheme.Kind.WATER?12:8)*(.65f+.35f*life);
+            float life=(float)Math.sin(Math.PI*u),size=dp(kind==SwipeTheme.Kind.FIRE?25:kind==SwipeTheme.Kind.WATER?22:kind==SwipeTheme.Kind.ICE?20:18)*(.65f+.35f*life);
             float move=dp(kind==SwipeTheme.Kind.TOXIC?25:38)*u;
             y+=kind==SwipeTheme.Kind.FIRE?-move:move;
             x+=(keep?-1:1)*dp(8)*life;

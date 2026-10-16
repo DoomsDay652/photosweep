@@ -6,7 +6,9 @@ import android.graphics.*;
 final class PhotoMaterialRenderer {
     final PhotoMaterialMotion motion=new PhotoMaterialMotion();
     private Bitmap receiverArt,flameArt;
-    private RadialGradient stellarGlow;private float stellarX,stellarY,stellarRadius;
+    private PhotoMaterialArt art;
+    private final int[] lightColors=new int[PhotoMaterialMotion.N];
+    void setMaterialArt(PhotoMaterialArt value){art=value;if(value!=null)flameArt=value.debris[0];}
     void setArtwork(Bitmap receiver,Bitmap flame){receiverArt=receiver;flameArt=flame;}
     private final Paint paint=new Paint(Paint.FILTER_BITMAP_FLAG),overlay=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path shape=new Path();
@@ -17,10 +19,9 @@ final class PhotoMaterialRenderer {
     private final boolean[] detached=new boolean[320];
     private final float[] anchoredChunks=new float[320*8],chunkPose=new float[8];
     private final int[] chunkIndices=new int[4];
-    private static final int[] CANDY_CORN_COLORS={0xFFFFF8DF,0xFFFFA542,0xFFFFDF6C};
     private final java.util.Random random=new java.util.Random();
     PhotoMaterialRenderer snapshot() {
-        PhotoMaterialRenderer copy=new PhotoMaterialRenderer();copy.setArtwork(receiverArt,flameArt);
+        PhotoMaterialRenderer copy=new PhotoMaterialRenderer();copy.setArtwork(receiverArt,flameArt);copy.setMaterialArt(art);
         System.arraycopy(motion.base,0,copy.motion.base,0,motion.base.length);
         motion.copyDamageTo(copy.motion);copy.motion.candyVariant=motion.candyVariant;return copy;
     }
@@ -70,13 +71,9 @@ final class PhotoMaterialRenderer {
         paint.setAlpha(255);
     }
     private void crystal(Canvas canvas,float cx,float cy,float r,float alpha,float density) {
-        // Small faceted ice growth, with translucent faces rather than image-edge outlines.
-        for(int i=0;i<6;i++) {
-            float angle=i*(float)Math.PI/3;
-            shape.reset();shape.moveTo(cx,cy);shape.lineTo(cx+r*(float)Math.cos(angle-.19f),cy+r*(float)Math.sin(angle-.19f));shape.lineTo(cx+r*1.65f*(float)Math.cos(angle),cy+r*1.65f*(float)Math.sin(angle));shape.lineTo(cx+r*(float)Math.cos(angle+.19f),cy+r*(float)Math.sin(angle+.19f));shape.close();
-            overlay.setColor(i%2==0?0xFFE5FAFF:0xFF72BDE5);overlay.setAlpha((int)(180*alpha));canvas.drawPath(shape,overlay);
-        }
+        if(art!=null)sprite(canvas,art.debris[2],cx,cy,r*3,r*3,0,alpha);
     }
+
     private void drawBrittle(Canvas canvas,Bitmap photo,SwipeTheme.Kind kind,float seconds,float density,float height,float recovery) {
         boolean ice=kind==SwipeTheme.Kind.ICE;
         int cols=ice?8:16,rows=ice?10:20;
@@ -138,10 +135,10 @@ final class PhotoMaterialRenderer {
             paint.setAlpha((int)(255*alpha));
             if(ice) {
                 drawTriangle(canvas,photo,i0,i1,i2,cx,cy,offsetX,offsetY,angle,scaleX,scaleY);
-                frost(canvas,age,alpha);
+                frost(canvas,age,alpha,seconds,index);
                 if(age>=0 && detach<.6f)crystal(canvas,cx+offsetX,cy+offsetY,density*(5+8*seed)*PhotoMaterialMotion.smooth(age/.22f),alpha*.8f,density);
                 drawTriangle(canvas,photo,i1,i3,i2,cx,cy,offsetX+density*detach*8,offsetY,angle+.25f*detach,scaleX,scaleY);
-                frost(canvas,age,alpha);
+                frost(canvas,age,alpha,seconds,index);
             } else {
                 drawTriangle(canvas,photo,i0,i1,i3,cx,cy,offsetX,offsetY,angle,scaleX,scaleY);
                 drawTriangle(canvas,photo,i0,i3,i2,cx,cy,offsetX,offsetY,angle,scaleX,scaleY);
@@ -168,13 +165,19 @@ final class PhotoMaterialRenderer {
         dst[at]=cx+x*(float)Math.cos(angle)-y*(float)Math.sin(angle)+dx;
         dst[at+1]=cy+x*(float)Math.sin(angle)+y*(float)Math.cos(angle)+dy;
     }
-    private void frost(Canvas canvas,float age,float alpha) {
+    private void frost(Canvas canvas,float age,float alpha,float seconds,int index) {
         if(age<0)return;
-        overlay.setColor(0xFFD5F3FF);overlay.setAlpha((int)(185*PhotoMaterialMotion.smooth(age/.14f)*alpha));canvas.drawPath(shape,overlay);
-        if(age>.10f && age<.25f) {
-            overlay.setStyle(Paint.Style.STROKE);overlay.setStrokeWidth(1.3f);overlay.setColor(0xFF72BFDB);
-            overlay.setAlpha((int)(210*alpha));canvas.drawPath(shape,overlay);overlay.setStyle(Paint.Style.FILL);
-        }
+        float freeze=PhotoMaterialMotion.smooth(age/.14f);
+        overlay.setColor(0xFFB0E7FF);overlay.setAlpha((int)(75*freeze*alpha));canvas.drawPath(shape,overlay);
+        if(art==null)return;
+        // Apply optical fractures to the SAME transformed photo triangle; no seam outlines.
+        int save=canvas.save();canvas.clipPath(shape);
+        float l=Math.min(dst[0],Math.min(dst[2],dst[4])),r=Math.max(dst[0],Math.max(dst[2],dst[4]));
+        float t=Math.min(dst[1],Math.min(dst[3],dst[5])),b=Math.max(dst[1],Math.max(dst[3],dst[5]));
+        sprite(canvas,art.finishes[2],(l+r)*.5f,(t+b)*.5f,(r-l)*1.65f,(b-t)*1.65f,0,alpha*freeze*.85f);
+        float pulse=(float)Math.pow(Math.max(0,Math.sin(seconds*4.6f+index*2.4f)),12);
+        sprite(canvas,art.finishes[4],(l+r)*.5f,(t+b)*.5f,Math.max(9,(r-l)*.60f),Math.max(9,(r-l)*.60f),0,alpha*pulse*.85f);
+        canvas.restoreToCount(save);
     }
     private void drawShedMaterial(Canvas canvas,Bitmap photo,SwipeTheme.Kind kind,float seconds,float density,float height,float recovery) {
         if(kind==SwipeTheme.Kind.ICE || kind==SwipeTheme.Kind.CANDY)return;
@@ -217,13 +220,15 @@ final class PhotoMaterialRenderer {
             overlay.setColor(kind==SwipeTheme.Kind.FIRE?0xFF21140C:kind==SwipeTheme.Kind.TOXIC?0xFF82B727:0xFF75CAED);
             overlay.setAlpha((int)((kind==SwipeTheme.Kind.FIRE?225:kind==SwipeTheme.Kind.TOXIC?110:35)*alpha));canvas.drawOval(destination.left,destination.top,destination.right,destination.bottom,overlay);
             canvas.restoreToCount(save);
+            if(art!=null && (kind==SwipeTheme.Kind.WATER || kind==SwipeTheme.Kind.TOXIC))
+                sprite(canvas,art.debris[PhotoMaterialArt.index(kind)],x,y,rx*4,ry*3,(float)Math.toDegrees(angle),alpha*.85f);
         }
         paint.setAlpha(255);
     }
     private void drawBurnFront(Canvas canvas,float seconds,float density,float recovery) {
         if(flameArt==null || flameArt.isRecycled())return;
         // Only touched UV material ignites; flames originate at the fixed left collision surface.
-        for(int row=0;row<=PhotoMaterialMotion.Y;row+=2) {
+        for(int row=0;row<=PhotoMaterialMotion.Y;row+=3) {
             int selected=-1;float best=Float.MAX_VALUE;
             for(int col=0;col<=PhotoMaterialMotion.X;col++) {
                 int n=row*(PhotoMaterialMotion.X+1)+col;float age=motion.age(n,seconds);
@@ -239,14 +244,14 @@ final class PhotoMaterialRenderer {
     }
     private void drawFlame(Canvas canvas,float x,float y,float size,float angle,float seconds,float alpha) {
         float flicker=.88f+.12f*(float)Math.sin(seconds*19);
-        destination.set(x-size*.65f,y-size*2.2f*flicker,x+size*.65f,y+size*.08f);
+        destination.set(x-size*.82f,y-size*2.6f*flicker,x+size*.82f,y+size*.08f);
         int save=canvas.save();canvas.rotate(angle,x,y);
         paint.setAlpha((int)(245*PhotoMaterialMotion.clamp(alpha)));canvas.drawBitmap(flameArt,null,destination,paint);canvas.restoreToCount(save);
     }
     private void drawKeepFire(Canvas canvas,float phase,float flight,float seconds,float density) {
         if(flameArt==null || flameArt.isRecycled())return;
         float meshWidth=(float)Math.hypot(motion.vertices[PhotoMaterialMotion.X*2]-motion.vertices[0],motion.vertices[PhotoMaterialMotion.X*2+1]-motion.vertices[1]);
-        for(int col=0;col<=PhotoMaterialMotion.X;col+=2) {
+        for(int col=0;col<=PhotoMaterialMotion.X;col+=4) {
             int selected=-1;float best=Float.MAX_VALUE;
             for(int row=0;row<=PhotoMaterialMotion.Y;row++) {
                 float age=PhotoMaterialMotion.fireKeepAge(row/(float)PhotoMaterialMotion.Y,phase,flight);
@@ -256,95 +261,79 @@ final class PhotoMaterialRenderer {
             if(selected<0)continue;
             float age=PhotoMaterialMotion.fireKeepAge((selected/(PhotoMaterialMotion.X+1))/(float)PhotoMaterialMotion.Y,phase,flight);
             float alpha=1-PhotoMaterialMotion.smooth((age-.18f)/.12f);
-            drawFlame(canvas,motion.vertices[selected*2],motion.vertices[selected*2+1],Math.max(density*18,meshWidth/PhotoMaterialMotion.X*2.4f),0,seconds+col,alpha);
+            drawFlame(canvas,motion.vertices[selected*2],motion.vertices[selected*2+1],Math.max(density*18,meshWidth/PhotoMaterialMotion.X*3.8f),(PhotoMaterialMotion.noise(col)-.5f)*14,seconds+col*.37f,alpha);
         }
         paint.setAlpha(255);
     }
+    private void sprite(Canvas canvas,Bitmap bitmap,float cx,float cy,float w,float h,float angle,float alpha) {
+        if(bitmap==null || alpha<=.001f || w<=0 || h<=0)return;
+        destination.set(cx-w*.5f,cy-h*.5f,cx+w*.5f,cy+h*.5f);
+        int save=canvas.save();canvas.rotate(angle,cx,cy);
+        paint.setAlpha(Math.round(255*PhotoMaterialMotion.clamp(alpha)));
+        canvas.drawBitmap(bitmap,null,destination,paint);canvas.restoreToCount(save);paint.setAlpha(255);
+    }
+    /** Clip finishing optics to surviving material, so a shell can never conceal a torn-out patch. */
+    private int clipSurvivors(Canvas canvas) {
+        int save=canvas.save();shape.reset();
+        for(int row=0;row<PhotoMaterialMotion.Y;row++)for(int col=0;col<PhotoMaterialMotion.X;col++) {
+            int a=row*(PhotoMaterialMotion.X+1)+col,b=a+1,c=a+PhotoMaterialMotion.X+1,d=c+1;
+            survivorTriangle(a,b,d);survivorTriangle(a,d,c);
+        }
+        canvas.clipPath(shape);return save;
+    }
+    private void survivorTriangle(int a,int b,int c) {
+        if(motion.remaining[a]<.98f || motion.remaining[b]<.98f || motion.remaining[c]<.98f)return;
+        shape.moveTo(motion.vertices[a*2],motion.vertices[a*2+1]);shape.lineTo(motion.vertices[b*2],motion.vertices[b*2+1]);shape.lineTo(motion.vertices[c*2],motion.vertices[c*2+1]);shape.close();
+    }
+    private void iceLight(Canvas canvas,float seconds,float alpha) {
+        if(art==null)return;
+        // Travelling specular band follows UV material rather than the finger or screen.
+        for(int n=0;n<PhotoMaterialMotion.N;n++) {
+            float u=(n%(PhotoMaterialMotion.X+1))/(float)PhotoMaterialMotion.X;
+            float v=(n/(PhotoMaterialMotion.X+1))/(float)PhotoMaterialMotion.Y;
+            float wave=(seconds*.48f)%1.8f-.4f,delta=u+v*.34f-wave;
+            float shine=(float)Math.exp(-delta*delta/ .007f);
+            int a=Math.round(190*shine*alpha*motion.remaining[n]);lightColors[n]=(a<<24)|0xFFFFFF;
+        }
+        canvas.drawBitmapMesh(art.finishes[2],PhotoMaterialMotion.X,PhotoMaterialMotion.Y,motion.vertices,0,lightColors,0,paint);
+    }
     private void drawKeepFinish(Canvas canvas,SwipeTheme.Kind kind,float phase,float seconds,float density,float width,float height,float close) {
+        if(art==null)return;
         float p=PhotoMaterialMotion.smooth(phase),alpha=p*(1-PhotoMaterialMotion.smooth((close-.78f)/.22f));
         if(alpha<.001f)return;
         float cx=PhotoMaterialMotion.keepX(kind,width,density,close),cy=PhotoMaterialMotion.keepY(kind,height,density,close);
         float r=PhotoMaterialMotion.keepRadius(kind,height,density,close);
-        overlay.setStyle(Paint.Style.FILL);
+        int save=motion.hasDamage()?clipSurvivors(canvas):canvas.save();
         switch(kind) {
             case WATER:
-                overlay.setColor(0xFF88DFFF);overlay.setAlpha((int)(36*alpha));canvas.drawCircle(cx,cy,r,overlay);
-                overlay.setStyle(Paint.Style.STROKE);overlay.setStrokeWidth(density*2);overlay.setAlpha((int)(160*alpha));canvas.drawCircle(cx,cy,r,overlay);
-                overlay.setStyle(Paint.Style.FILL);overlay.setAlpha((int)(100*alpha));canvas.drawOval(cx-r*.60f,cy-r*.78f,cx-r*.05f,cy-r*.59f,overlay);
-                overlay.setColor(0xFFFFFFFF);overlay.setAlpha((int)(85*alpha));canvas.drawOval(cx+r*.43f,cy+r*.16f,cx+r*.55f,cy+r*.47f,overlay);break;
+                sprite(canvas,art.finishes[1],cx,cy,r*2.42f,r*2.42f,3*(float)Math.sin(seconds*1.6),alpha);break;
             case ICE:
-                // Facets grow over the photograph; the whole crystal slides out with the photo inside.
-                for(int i=0;i<8;i++) {
-                    float angle=i*(float)Math.PI/4-.24f-close*.45f;
-                    float next=angle+(float)Math.PI/4;
-                    shape.reset();shape.moveTo(cx,cy);
-                    shape.lineTo(cx+r*(float)Math.cos(angle)*.91f,cy+r*(float)Math.sin(angle)*1.12f);
-                    shape.lineTo(cx+r*(float)Math.cos(next)*.91f,cy+r*(float)Math.sin(next)*1.12f);shape.close();
-                    overlay.setColor(i%2==0?0xFFCFF5FF:0xFF70BCE5);overlay.setAlpha((int)((i%2==0?110:65)*alpha));canvas.drawPath(shape,overlay);
-                }
-                crystal(canvas,cx-r*.35f,cy-r*.3f,r*.22f,alpha,density);break;
-            case TOXIC: {
-                int save=canvas.save();canvas.rotate(-31.5f*PhotoMaterialMotion.smooth(close),cx,cy);
-                float seal=PhotoMaterialMotion.smooth((p-.55f)/.45f);
-                destination.set(cx-r*.53f,cy-r*1.05f,cx+r*.53f,cy+r*.94f);
-                overlay.setColor(0xFF77CF69);overlay.setAlpha((int)(55*alpha*seal));canvas.drawRoundRect(destination.left,destination.top,destination.right,destination.bottom,r*.22f,r*.22f,overlay);
-                overlay.setStyle(Paint.Style.STROKE);overlay.setStrokeWidth(Math.max(1,density*1.5f));overlay.setColor(0xFFB8FFD3);overlay.setAlpha((int)(180*alpha*seal));canvas.drawRoundRect(destination.left,destination.top,destination.right,destination.bottom,r*.22f,r*.22f,overlay);overlay.setStyle(Paint.Style.FILL);
-                overlay.setColor(0xFF314F38);overlay.setAlpha((int)(255*alpha*seal));
-                canvas.drawRoundRect(destination.left-r*.04f,destination.top-r*.08f,destination.right+r*.04f,destination.top+r*.15f,r*.06f,r*.06f,overlay);
-                overlay.setColor(0xFFE1FFED);overlay.setAlpha((int)(140*alpha*seal));canvas.drawRoundRect(cx-r*.40f,cy-r*.63f,cx-r*.32f,cy+r*.64f,r*.04f,r*.04f,overlay);
-                canvas.restoreToCount(save);break;
-            }
-            case CANDY: {
-                float seal=PhotoMaterialMotion.smooth((p-.55f)/.45f),a=alpha*seal;
-                int variant=motion.candyVariant;
-                overlay.setColor(variant==0?0xFFFF89B7:variant==1?0xFFFFD471:variant==2?0xFFA9F2C6:0xFFC5A1FF);overlay.setAlpha((int)(145*a));
-                if(variant==0) {
-                    canvas.drawRoundRect(cx-r*.48f,cy-r*.30f,cx+r*.48f,cy+r*.30f,r*.15f,r*.15f,overlay);
-                    for(int side=-1;side<=1;side+=2) {
-                        shape.reset();shape.moveTo(cx+side*r*.42f,cy);shape.lineTo(cx+side*r*.78f,cy-r*.35f);shape.lineTo(cx+side*r*.78f,cy+r*.35f);shape.close();canvas.drawPath(shape,overlay);
-                    }
-                } else if(variant==1) {
-                    canvas.drawCircle(cx,cy,r*.53f,overlay);
-                    overlay.setColor(0xFFFFF1C7);overlay.setAlpha((int)(130*a));canvas.drawOval(cx-r*.32f,cy-r*.40f,cx+r*.10f,cy-r*.23f,overlay);
-                } else if(variant==2) {
-                    shape.reset();shape.moveTo(cx,cy-r*.58f);shape.lineTo(cx+r*.42f,cy+r*.58f);shape.lineTo(cx-r*.42f,cy+r*.58f);shape.close();
-                    int save=canvas.save();canvas.clipPath(shape);
-                    for(int band=0;band<3;band++) {
-                        overlay.setColor(CANDY_CORN_COLORS[band]);overlay.setAlpha((int)(170*a));
-                        canvas.drawRoundRect(cx-r*.43f,cy-r*.58f+band*r*.39f,cx+r*.43f,cy-r*.58f+(band+1)*r*.39f,0,0,overlay);
-                    }
-                    canvas.restoreToCount(save);
-                } else {
-                    overlay.setColor(0xFFFFE8FF);overlay.setAlpha((int)(155*a));
-                    canvas.drawRoundRect(cx-r*.04f,cy+r*.42f,cx+r*.04f,cy+r*.95f,r*.03f,r*.03f,overlay);
-                    overlay.setColor(0xFFC5A1FF);overlay.setAlpha((int)(120*a));canvas.drawCircle(cx,cy,r*.58f,overlay);
-                    overlay.setStyle(Paint.Style.STROKE);overlay.setStrokeWidth(r*.06f);
-                    shape.reset();for(int i=0;i<=50;i++){float angle=i*.22f,rad=r*.04f+i*r*.009f;float x=cx+rad*(float)Math.cos(angle),y=cy+rad*(float)Math.sin(angle);if(i==0)shape.moveTo(x,y);else shape.lineTo(x,y);}canvas.drawPath(shape,overlay);overlay.setStyle(Paint.Style.FILL);
-                }
-                if(variant==0 || variant==1) {
-                    overlay.setColor(0xFFFFF7F1);overlay.setAlpha((int)(100*a));
-                    canvas.drawOval(cx-r*.32f,cy-r*.23f,cx+r*.18f,cy-r*.10f,overlay);
+                sprite(canvas,art.finishes[2],cx,cy,r*1.84f,r*2.20f,-13.75f*p-close*25.78f,alpha*.95f);
+                iceLight(canvas,seconds,alpha);
+                // Distinct pinpoint flashes sweep the refractive edges rather than outlining the card.
+                for(int i=0;i<5;i++) {
+                    float pulse=(float)Math.pow(Math.max(0,Math.sin(seconds*5.4f+i*1.9f)),18);
+                    float angle=i*1.2566f-.24f-close*.45f;
+                    sprite(canvas,art.finishes[4],cx+r*.63f*(float)Math.cos(angle),cy+r*.79f*(float)Math.sin(angle),r*.48f,r*.48f,seconds*9,alpha*pulse);
                 }
                 break;
+            case TOXIC:
+                sprite(canvas,art.finishes[3],cx,cy-r*.05f,r*1.22f,r*2.44f,-31.5f*PhotoMaterialMotion.smooth(close),alpha*PhotoMaterialMotion.smooth((p-.45f)/.55f));break;
+            case CANDY: {
+                float seal=PhotoMaterialMotion.smooth((p-.40f)/.60f);
+                int variant=motion.candyVariant;
+                float scale=variant==0?2.0f:variant==1?1.30f:variant==2?1.15f:1.25f;
+                sprite(canvas,art.candy[variant],cx,cy,r*scale,r*scale*art.candy[variant].getHeight()/art.candy[variant].getWidth(),variant==0?6*(float)Math.sin(seconds*2):0,alpha*seal);break;
             }
             case SPACE: {
-                float burst=PhotoMaterialMotion.smooth((p-.60f)/.4f);
-                float spread=r*(.18f+close*3.2f+burst*.85f),fade=alpha*burst*(1-close);
-                // Bright stellar bloom and radial rays replace the receiving black hole.
-                if(stellarGlow==null || stellarX!=cx || stellarY!=cy || stellarRadius!=r) {
-                    stellarX=cx;stellarY=cy;stellarRadius=r;
-                    stellarGlow=new RadialGradient(cx,cy,r*4,new int[]{0xFFFFFFFF,0xFFEAF6FF,0xB075BDFF,0x405B39B8,0x00000000},new float[]{0,.05f,.24f,.58f,1},Shader.TileMode.CLAMP);
-                }
-                overlay.setShader(stellarGlow);overlay.setAlpha((int)(255*fade));canvas.drawCircle(cx,cy,spread*2,overlay);overlay.setShader(null);
-                overlay.setColor(0xFFFFFFFF);overlay.setAlpha((int)(255*fade));canvas.drawCircle(cx,cy,r*(.06f+.15f*(1-close)),overlay);
-                for(int i=0;i<12;i++) {
-                    float angle=i*(float)Math.PI/6+.12f*seconds,inner=spread*.32f,outer=spread*(i%4==0?1.6f:1);
-                    shape.reset();shape.moveTo(cx+inner*(float)Math.cos(angle-.07),cy+inner*(float)Math.sin(angle-.07));shape.lineTo(cx+outer*(float)Math.cos(angle),cy+outer*(float)Math.sin(angle));shape.lineTo(cx+inner*(float)Math.cos(angle+.07),cy+inner*(float)Math.sin(angle+.07));shape.close();canvas.drawPath(shape,overlay);
-                }
-                break;
+                // Emissive stellar photography replaces polygonal rays and flat circles.
+                float burst=PhotoMaterialMotion.smooth((p-.55f)/.45f);
+                float spread=r*(1.1f+close*4.8f);
+                sprite(canvas,art.finishes[4],cx,cy,spread*2,spread*2,seconds*4,alpha*burst);
+                sprite(canvas,art.finishes[4],cx,cy,spread,spread,45-seconds*7,alpha*burst*.65f);break;
             }
             default:break;
         }
-        overlay.setStyle(Paint.Style.FILL);
+        canvas.restoreToCount(save);
     }
 }

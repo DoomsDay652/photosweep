@@ -165,7 +165,7 @@ final class PhotoMaterialMotion {
                 case TOXIC: {
                     // Roll the photograph into a sealed glass specimen, without melting the kept image.
                     float theta=du*2.7f;
-                    float tilt=-.55f*smooth(close),px=radius*.40f*(float)Math.sin(theta),py=dv*radius*1.6f;
+                    float tilt=-.55f*smooth(close),px=radius*.25f*(float)Math.sin(theta),py=dv*radius*1.6f;
                     tx=cx+px*(float)Math.cos(tilt)-py*(float)Math.sin(tilt);
                     ty=cy+px*(float)Math.sin(tilt)+py*(float)Math.cos(tilt)-radius*.18f*smooth((p-.65f)/.35f);
                     float shade=1-.24f*p*(1-(float)Math.cos(theta));
@@ -186,7 +186,8 @@ final class PhotoMaterialMotion {
                     else {float angle=v*5.6f;float rad=radius*(.14f+.44f*u);px=rad*(float)Math.cos(angle);py=rad*(float)Math.sin(angle);}
                     tx=cx+px;ty=cy+py;
                     float crease=1-.24f*(float)Math.sin(p*Math.PI)*Math.max(0,fold);
-                    r=(int)(255*crease);g=(int)((255-15*p)*crease);b=(int)((255-8*p)*crease);break;
+                    r=(int)(255*crease);g=(int)((255-15*p)*crease);b=(int)((255-8*p)*crease);
+                    alpha=1-smooth((p-.70f)/.30f);break;
                 }
                 default:break;
             }
