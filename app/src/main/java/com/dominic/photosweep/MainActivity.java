@@ -160,7 +160,8 @@ public class MainActivity extends ComponentActivity {
             "Columbus Day · twilight sailing horizon",
             "Columbus Day · twilight sailing horizon · animated",
             "Veterans Day · lanterns of gratitude",
-            "Veterans Day · lanterns of gratitude · animated"
+            "Veterans Day · lanterns of gratitude · animated",
+            "Slasher · midnight motel"
     };
     private static final int[][] THEME_COLORS = {
             {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
@@ -248,7 +249,8 @@ public class MainActivity extends ComponentActivity {
             {0xFF172F43, 0xFF344D60, 0xFFAADCE8, 0xFFFFAE9C, 0xFFE6C99A},
             {0xFF172F43, 0xFF344D60, 0xFFAADCE8, 0xFFFFAE9C, 0xFFE6C99A},
             {0xFF1C2C3D, 0xFF344B58, 0xFFBCDCD5, 0xFFF3A2A9, 0xFFF2DEB0},
-            {0xFF1C2C3D, 0xFF344B58, 0xFFBCDCD5, 0xFFF3A2A9, 0xFFF2DEB0}
+            {0xFF1C2C3D, 0xFF344B58, 0xFFBCDCD5, 0xFFF3A2A9, 0xFFF2DEB0},
+            {0xFF101A24, 0xFF25303B, 0xFF91C9DC, 0xFFD87377, 0xFFC8B58D}
     };
     private static final int[] COLOR_THEMES = {0, 1, 2, 13, 14, 15, 16, 17};
     private static final int[] HERO_THEMES = {3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
@@ -347,7 +349,8 @@ public class MainActivity extends ComponentActivity {
             R.drawable.holiday_columbus,
             R.drawable.holiday_columbus,
             R.drawable.holiday_veterans,
-            R.drawable.holiday_veterans
+            R.drawable.holiday_veterans,
+            R.drawable.theme_slasher_v1
     };
     private static final int[] THEME_FX_IDS = {
             R.drawable.fx_nebula,
@@ -435,7 +438,8 @@ public class MainActivity extends ComponentActivity {
             R.drawable.fx_holiday_columbus,
             R.drawable.fx_holiday_columbus,
             R.drawable.fx_holiday_veterans,
-            R.drawable.fx_holiday_veterans
+            R.drawable.fx_holiday_veterans,
+            R.drawable.slasher_hand_overhand_v4
     };
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
@@ -589,6 +593,8 @@ public class MainActivity extends ComponentActivity {
     private boolean cometFlying;
     private float cometFromX, cometFromY, cometToX, cometToY, cometAngle;
     private float gravityX = 0, gravityY = 1;
+    private float toxicPoolNX,toxicPoolNY=1,toxicPoolScreenLevel;
+    private boolean toxicPoolReady;
     private final SensorEventListener tiltListener = new SensorEventListener() {
         @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
         @Override public void onSensorChanged(SensorEvent event) {
@@ -1833,6 +1839,7 @@ public class MainActivity extends ComponentActivity {
         int country=countryCollection(index),holiday=HolidayThemes.collection(index);
         String searchable=THEME_NAMES[index]+" "+(hasThemeMotion(index)?"animated":"still")+" "+themeAccessLabel(index);
         if(country>=0)searchable+=" "+COUNTRY_NAMES[country]+" "+COUNTRY_SCENES[country]+" "+COUNTRY_MOTIONS[country];
+        if(index==ThemeCatalog.SLASHER)searchable+=" Halloween horror knife door suspense tier 3";
         if(holiday>=0)searchable+=" "+HolidayThemes.SEARCH[holiday]+" "+HolidayThemes.SCENES[holiday];
         return searchable.toLowerCase(Locale.ROOT).contains(query);
     }
@@ -1843,14 +1850,13 @@ public class MainActivity extends ComponentActivity {
         LinearLayout row=null;int count=0;Set<String> groups=new HashSet<>();
         for(int index=0;index<THEME_NAMES.length;index++) {
             if(!matchesTheme(index,query))continue;
-            int country=countryCollection(index),holiday=HolidayThemes.collection(index);
+            int country=countryCollection(index),holiday=SeasonalThemes.group(index);
             String group=country>=0?"country:"+country:holiday>=0?"holiday:"+holiday:"theme:"+index;
             if(tutorialStep!=TUTORIAL_THEME_PICK&&!groups.add(group))continue;
             if(count++%2==0){row=new LinearLayout(this);row.setBaselineAligned(false);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(12);list.addView(row,lp);}
             if(tutorialStep!=TUTORIAL_THEME_PICK&&(country>=0||holiday>=0)) {
-                int still=country>=0?COUNTRY_STILL_THEMES[country]:HolidayThemes.still(holiday);
-                int animated=country>=0?COUNTRY_ANIMATED_THEMES[country]:still+1;
-                addVariantCard(row,country>=0?COUNTRY_NAMES[country]:HolidayThemes.NAMES[holiday],still,animated,query);
+                if(country>=0)addVariantCard(row,COUNTRY_NAMES[country],COUNTRY_STILL_THEMES[country],COUNTRY_ANIMATED_THEMES[country],query);
+                else addSeasonalCard(row,holiday,index,query);
             } else addThemePreview(row,index,themeUnlocked(index));
         }
         if(count==0){TextView empty=studioText("No matching themes",16,MUTED,false);empty.setPadding(0,dp(20),0,0);list.addView(empty);}
@@ -1876,6 +1882,18 @@ public class MainActivity extends ComponentActivity {
             TextView status=studioText(collection==1?"Free  ›":"Browse  ›",12,collection==1?GREEN:MUTED,false);status.setPadding(dp(12),0,dp(12),dp(13));card.addView(status);
             card.setFocusable(true);card.setContentDescription(THEME_CATEGORIES[collection]);card.setOnClickListener(v->{themeCategory=chosen;render();});
         }
+    }
+
+    private void addSeasonalCard(LinearLayout row,int group,int firstMatch,String query) {
+        int preview=SeasonalThemes.group(themeChoice)==group && matchesTheme(themeChoice,query)?themeChoice:firstMatch;
+        LinearLayout card=themeCard(row,preview,SeasonalThemes.name(group));
+        for(int index:SeasonalThemes.variants(group)) {
+            if(!matchesTheme(index,query))continue;
+            Button variant=button(card,SeasonalThemes.label(index)+"\n"+themeAccessLabel(index),PANEL,themeUnlocked(index)?GREEN:GOLD,()->showThemeDetails(index));
+            variant.setTextSize(12);variant.setGravity(Gravity.CENTER_VERTICAL|Gravity.START);variant.setPadding(dp(12),0,dp(8),0);variant.setMinHeight(dp(48));variant.setMinimumHeight(dp(48));
+            variant.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(60)));variant.setContentDescription(SeasonalThemes.name(group)+", "+SeasonalThemes.label(index)+", "+themeAccessLabel(index));
+        }
+        card.setPadding(0,0,0,dp(6));
     }
 
     private void addVariantCard(LinearLayout row,String title,int still,int animated,String query) {
@@ -2515,11 +2533,11 @@ public class MainActivity extends ComponentActivity {
         animation.addUpdateListener(value -> {
             effect.progress = (float)value.getAnimatedValue();
             if(sample!=null){
-                float dx=effect.progress*target.getWidth()*.8f;sample.setTranslationX(dx);
+                float dx=effect.progress*target.getWidth()*(effect.hasStagedRelease()?.30f:.8f);sample.setTranslationX(dx);
                 RectF bounds=new RectF();
                 if(visiblePhotoBounds(sample,bounds))effect.setPhoto(tutorialPicture(-101),bounds,dx,0);
                 if(keep){sample.setClipBounds(null);sample.invalidate();}
-                else sample.setClipBounds(new Rect(Math.max(0,Math.min(sample.getWidth(),(int)(effect.grinderEdge()-sample.getLeft()-dx))),0,sample.getWidth(),sample.getHeight()));
+                else if(!effect.hasStagedRelease())sample.setClipBounds(new Rect(Math.max(0,Math.min(sample.getWidth(),(int)(effect.grinderEdge()-sample.getLeft()-dx))),0,sample.getWidth(),sample.getHeight()));
             }
             effect.invalidate();
         });
@@ -2887,7 +2905,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean hasPhotoElementBorder() {
-        return !reducedMotion && (themeTier(themeChoice) == 3 || countryCollection(themeChoice) >= 0) && swipeStyle != 9;
+        return themeChoice!=ThemeCatalog.SLASHER && SeasonalThemes.group(themeChoice)!=SeasonalThemes.HALLOWEEN && !reducedMotion && (themeTier(themeChoice) == 3 || countryCollection(themeChoice) >= 0) && swipeStyle != 9;
     }
 
     private void reviewScreen() {
@@ -3165,20 +3183,23 @@ public class MainActivity extends ComponentActivity {
                     if (fireBorder != null) fireBorder.cool();
                     settlePhoto(card,effect);return true;
                 }
-                if (SwipeMotion.shouldCommit(dx, dy, dp(85))) {
+                float actionDx=effect.hasStagedRelease()?card.getTranslationX():dx;
+                float actionDy=effect.hasStagedRelease()?card.getTranslationY():dy;
+                if (SwipeMotion.shouldCommit(actionDx, actionDy, dp(85))) {
                     {
                         committed[0] = true; reviewActionRunning = true;
                         if (fireBorder != null) fireBorder.stop();
-                        effect.release(dx > 0);
-                        playEffect(dx > 0);
-                        boolean keeping = dx > 0;
+                        if(effect.hasStagedRelease())effect.track(card);
+                        effect.release(actionDx > 0);
+                        playEffect(actionDx > 0);
+                        boolean keeping = actionDx > 0;
                         card.announceForAccessibility(SwipeMotion.actionLabel(keeping));
-                        card.animate().translationX((keeping ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
+                        card.animate().translationX(effect.hasStagedRelease()?card.getTranslationX():(keeping ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
                                 .translationY(reducedMotion ? 0 : card.getTranslationY())
                                 .scaleX(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
                                 .scaleY(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
                                 .alpha(reducedMotion ? 1 : SwipeMotion.cardAlpha(1, keeping))
-                                .rotation(reducedMotion ? 0 : card.getRotation()+releaseSpin)
+                                .rotation(reducedMotion ? 0 : card.getRotation()+(effect.hasStagedRelease()?0:releaseSpin))
                                 .setDuration(reducedMotion ? 80 : effect.releaseDuration(keeping))
                                 .setUpdateListener(frame -> effect.track(card))
                                 .withEndAction(() -> {
@@ -3188,7 +3209,7 @@ public class MainActivity extends ComponentActivity {
                                         if (fireBorder != null) fireBorder.stop();
                                         reviewActionRunning = false;
                                         if (isDestroyed()) return;
-                                        if (dx > 0) keep(shown); else trash(shown);
+                                        if (actionDx > 0) keep(shown); else trash(shown);
                                     };
                                     if (keeping && !reducedMotion && !effect.hasIndependentKeep()) {
                                         effect.beginKeepClose(); uiHandler.postDelayed(finish, 280);
@@ -3896,6 +3917,14 @@ public class MainActivity extends ComponentActivity {
         }
     }
     private class SwipeEffect extends SwipeVfxView {
+        private final int[] poolScreenPosition=new int[2];
+        @Override protected void onDraw(Canvas canvas) {
+            if(themeChoice==19 && toxicPoolReady){
+                getLocationOnScreen(poolScreenPosition);
+                setToxicPool(toxicPoolNX,toxicPoolNY,toxicPoolScreenLevel-toxicPoolNX*poolScreenPosition[0]-toxicPoolNY*poolScreenPosition[1]);
+            }
+            super.onDraw(canvas);
+        }
         private final RectF trackedBounds = new RectF();
         float shakeOffset;
         @Override protected void onGrinderShake(float offset) {
@@ -4291,6 +4320,11 @@ public class MainActivity extends ComponentActivity {
             }
             canvas.drawColor(isColorTheme(themeChoice) ? 0x18000000 : 0x6007111f);
             if (reducedMotion) return;
+            if(themeChoice==ThemeCatalog.SLASHER) {
+                // Slow practical-light breathing complements the painted corridor.
+                canvas.drawColor(Color.argb(7+(int)(3*Math.sin(android.os.SystemClock.uptimeMillis()/2600.0)),35,0,0));
+                if(isAttachedToWindow())postInvalidateDelayed(80);return;
+            }
             if (HolidayThemes.animatedTheme(themeChoice)) {
                 drawHolidayMotion(canvas, w, h, android.os.SystemClock.uptimeMillis() / 1000f);
                 if (isAttachedToWindow()) postInvalidateDelayed(50);
@@ -4835,6 +4869,7 @@ public class MainActivity extends ComponentActivity {
             paint.setStyle(Paint.Style.FILL); paint.setAlpha(255);
         }
         private final LiquidPlane liquidPlane = new LiquidPlane();
+        private final int[] liquidScreenPosition=new int[2];
         private final Path liquidFill = new Path(), liquidLine = new Path(), ooze = new Path();
         private final float[] dropPrevious = new float[6], rippleStarted = new float[6];
         private long liquidLastFrame, liquidStarted;
@@ -4876,6 +4911,8 @@ public class MainActivity extends ComponentActivity {
             } else if (toxic) slimeVelocity *= (float)Math.exp(-dt*2.4f);
             liquidPlane.update(w, h, (float)Math.cos(liquidAngle), (float)Math.sin(liquidAngle), .25f);
             float nx = liquidPlane.nx, ny = liquidPlane.ny, tx = -ny, ty = nx;
+            if(toxic){getLocationOnScreen(liquidScreenPosition);toxicPoolNX=nx;toxicPoolNY=ny;
+                toxicPoolScreenLevel=liquidPlane.level+nx*liquidScreenPosition[0]+ny*liquidScreenPosition[1];toxicPoolReady=true;}
             float ax = liquidPlane.ax, ay = liquidPlane.ay, bx = liquidPlane.bx, by = liquidPlane.by;
             // Wave displacement stays tiny; the underlying plane preserves one quarter of the area.
             liquidFill.reset();

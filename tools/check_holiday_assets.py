@@ -7,7 +7,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT/'app/src/main/java/com/dominic/photosweep/MainActivity.java').read_text()
 manifest = json.loads((ROOT/'holiday-theme-manifest.json').read_text())
-expected = 62 + len(manifest['holidays']) * 2
+catalog = (ROOT/'app/src/main/java/com/dominic/photosweep/ThemeCatalog.java').read_text()
+expected = int(re.search(r'COUNT=(\d+)',catalog).group(1))
 arrays = {}
 for name in ['THEME_NAMES','THEME_COLORS','THEME_BACKDROP_IDS','THEME_FX_IDS']:
     body = re.search(r'\b'+name+r' = \{(.*?)\n    };', source, re.S).group(1)
@@ -28,4 +29,4 @@ for holiday in manifest['holidays']:
         img.load()
 for resource in set(re.findall(r'R.drawable.(\w+)',source)):
     assert list((ROOT/'app/src/main/res').glob('drawable*/'+resource+'.*')), resource
-print('PASS: all 86 catalogue entries align; 12 portrait paintings, 12 transparent motifs, and every drawable reference exist.')
+print(f'PASS: all {expected} catalogue entries align; 12 holiday paintings, 12 motifs, and every drawable reference exist.')

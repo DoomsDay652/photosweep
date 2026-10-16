@@ -1,0 +1,10 @@
+{
+  "mode": "built-in imagegen",
+  "assets": [
+    {
+      "path": "app/src/main/res/drawable-nodpi/toxic_sludge_curtain_v1.png",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile game VFX texture, isolated toxic SLUDGE CURTAIN on genuinely transparent background. Portrait1024x1536. A continuous vertical sheet of thick flowing chartreuse and olive green toxic slime falling straight DOWN, extending through both TOP and BOTTOM edges so it can run continuously along a screen edge. Slime fills the LEFT 75 percent of the canvas from top to bottom; RIGHTMOST 25 percent is fully transparent. The right silhouette is organic and gently scalloped with thick hanging viscous lobes and narrow downward rivulets, never a straight vertical rectangle. Tangible glossy wet gelatinous surface with layered flowing folds, deep translucent emerald creases, restrained yellow-green reflections, tiny trapped bubbles, gravity-stretched streaks. Premium realistic liquid-simulation / macro material photography. No vessel, NO PIPE, NO METAL, no machinery, no frame, no blades, no solid wall, no container, no floor or pool, no scenery, no text. No outer glow, no haze or background shadow. Clean alpha edges outside the physical slime. The main heavy green body remains connected from top edge to bottom edge and its LEFT edge fills the canvas with no clear margin.",
+      "transparent_background": true
+    }
+  ]
+}

@@ -16,6 +16,8 @@ class SwipeVfxView extends View {
     private final java.util.ArrayList<KeptPhoto> keptPhotos=new java.util.ArrayList<>();
     private boolean keepDetached;
     private long materialStarted;
+    private float toxicPoolNX=0,toxicPoolNY=1,toxicPoolLevel=Float.NaN;
+    void setToxicPool(float nx,float ny,float level){toxicPoolNX=nx;toxicPoolNY=ny;toxicPoolLevel=level;materials.setToxicPool(nx,ny,level); }
     boolean hasRetainedDamage(){return elemental && bitmap!=null && materials.motion.hasDamage();}
     private float materialSeconds(long now){if(materialStarted==0)materialStarted=now;return (now-materialStarted)/1000f;}
     private static final class KeptPhoto {
@@ -24,7 +26,7 @@ class SwipeVfxView extends View {
             this.renderer=renderer;this.photo=photo;this.born=born;this.phase=phase;
         }
     }
-    boolean hasIndependentKeep(){return elemental;}
+    boolean hasIndependentKeep(){return elemental || hasStagedRelease();}
     private float keepPhase(){return SwipeMotion.clamp((photo.right-restRight)/Math.max(dp(120),getWidth()*.72f));}
     private void drawKeptPhotos(Canvas canvas,long now) {
         for(int i=keptPhotos.size()-1;i>=0;i--) {
@@ -43,6 +45,11 @@ class SwipeVfxView extends View {
     private final boolean enabled, reducedMotion;
     private final SwipeTheme.Kind kind;
     private final boolean elemental;
+    private final boolean slasher;
+    private final SlasherRenderer slasherRenderer;
+    private final boolean seasonal;
+    private final SeasonalRenderer seasonalRenderer;
+    boolean hasStagedRelease(){return slasher || seasonal;}
     private final Paint elementPaint=new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final RectF bladeRect = new RectF();
     private static Bitmap bladeArt;
@@ -54,7 +61,7 @@ class SwipeVfxView extends View {
     private final float[] position = new float[2];
     private final Path visiblePath = new Path(), localClip = new Path();
     private final Matrix inverse = new Matrix();
-    private static Bitmap glowArt, rayArt,elementAtlas;
+    private static Bitmap glowArt, rayArt,elementAtlas,toxicCurtainArt;
     private static final int ATLAS_COLUMNS=3,ATLAS_ROWS=2;
     private final Rect atlasSource=new Rect();
     private final RectF receiverBounds=new RectF(),trashBounds=new RectF();
@@ -63,6 +70,7 @@ class SwipeVfxView extends View {
     private final float[] elementEdge=new float[1025],innerEdge=new float[1025];
     private static final Bitmap[] detailCache=new Bitmap[6],elementTiles=new Bitmap[6];
     private Bitmap textureArt;
+    private final Path toxicCurtainClip=new Path(),toxicPoolClip=new Path();
     private int atlasTile=-1;
     private Bitmap detailArt;
     private float maximumContact;
@@ -135,6 +143,10 @@ class SwipeVfxView extends View {
                  int intensity, int speed, boolean reducedMotion) {
         super(context); this.enabled=enabled; this.intensity=intensity; this.speed=speed;
         this.reducedMotion=reducedMotion;this.kind=kind;this.elemental=PhotoInteraction.supports(kind)&&enabled&&!reducedMotion;
+        this.slasher=kind==SwipeTheme.Kind.SLASHER&&enabled&&!reducedMotion;
+        this.slasherRenderer=slasher?new SlasherRenderer(context):null;
+        this.seasonal=(kind==SwipeTheme.Kind.HALLOWEEN)&&enabled&&!reducedMotion;
+        this.seasonalRenderer=seasonal?new SeasonalRenderer(context,kind):null;
         // Share immutable textures; decode once at bounded sizes, never in a draw frame.
         BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;options.inSampleSize=4;
         if(bladeArt==null || bladeArt.isRecycled())
@@ -172,7 +184,16 @@ class SwipeVfxView extends View {
                     elementTiles[atlasTile]=Bitmap.createBitmap(tw,th,Bitmap.Config.ARGB_8888);
                     elementTiles[atlasTile].setPixels(pixels,0,tw,0,0,tw,th);
                 }
-                textureArt=elementTiles[atlasTile];materials.setArtwork(textureArt,kind==SwipeTheme.Kind.FIRE?detailArt:null);
+                textureArt=elementTiles[atlasTile];
+                if(kind==SwipeTheme.Kind.TOXIC) {
+                    if(toxicCurtainArt==null || toxicCurtainArt.isRecycled()) {
+                        BitmapFactory.Options slimeOptions=new BitmapFactory.Options();slimeOptions.inScaled=false;slimeOptions.inSampleSize=2;
+                        toxicCurtainArt=BitmapFactory.decodeResource(context.getResources(),R.drawable.toxic_sludge_curtain_v1,slimeOptions);
+                    }
+                    textureArt=toxicCurtainArt;tw=textureArt.getWidth();th=textureArt.getHeight();
+                    pixels=new int[tw*th];textureArt.getPixels(pixels,0,tw,0,0,tw,th);
+                }
+                materials.setArtwork(textureArt,kind==SwipeTheme.Kind.FIRE?detailArt:null);
                 materials.setMaterialArt(PhotoMaterialArt.load(context));
                 detailArt=PhotoMaterialArt.load(context).debris[atlasTile];
                 for(int row=0;row<elementEdge.length;row++) {
@@ -305,7 +326,8 @@ class SwipeVfxView extends View {
     }
     private boolean trashActive() { return enabled&&!reducedMotion&&(holding || (released!=0 && progress<0)); }
     private void prepareTrashBoundary(float time) {
-        trashBounds.set(-dp(132),0,dp(42),getHeight());
+        if(kind==SwipeTheme.Kind.TOXIC)trashBounds.set(-dp(18),0,dp(58),getHeight());
+        else trashBounds.set(-dp(132),0,dp(42),getHeight());
         maximumContact=0;
         for(int i=0;i<toothRows.length;i++) {
             toothRows[i]=toothEdge(getHeight()*i/1024f,time);
@@ -314,7 +336,7 @@ class SwipeVfxView extends View {
     }
     private void updateDamage() {
         visibleLeft=photo.left;
-        if(!trashActive() || !tracked || bitmap==null || bitmap.isRecycled() || getHeight()<=0)return;
+        if(hasStagedRelease() || !trashActive() || !tracked || bitmap==null || bitmap.isRecycled() || getHeight()<=0)return;
         float time=(SystemClock.uptimeMillis()-started)/1000f*speed/100f;
         prepareTrashBoundary(time);
         float a=transform[Matrix.MSCALE_X],b=transform[Matrix.MSKEW_X],c=transform[Matrix.MTRANS_X];
@@ -393,12 +415,14 @@ class SwipeVfxView extends View {
     }
     void follow(float x,float y) { if(progress>=0)onGrinderShake(0);invalidate(); }
     int releaseDuration(boolean keep) {
+        if(seasonal)return Math.max(700,(keep?SeasonalRenderer.KEEP_MS:SeasonalRenderer.TRASH_MS)*100/Math.max(50,speed));
+        if(slasher)return Math.max(700,(keep?SlasherMotion.STAB_MS:SlasherMotion.DOOR_MS)*100/Math.max(50,speed));
         if(!elemental)return reducedMotion?80:SwipeMotion.releaseDuration(speed,keep);
         if(keep)return 240;
         int base=kind==SwipeTheme.Kind.TOXIC?1300:kind==SwipeTheme.Kind.ICE?750:kind==SwipeTheme.Kind.CANDY?800:1000;
         return Math.max(400,base*100/Math.max(50,speed));
     }
-    void release(boolean keep) { onGrinderShake(0);holding=false;returning=0;progress=keep?1:-1;released=SystemClock.uptimeMillis();if(keep) {
+    void release(boolean keep) { onGrinderShake(0);holding=false;returning=0;progress=keep?1:-1;released=SystemClock.uptimeMillis();if(slasher)slasherRenderer.begin(bitmap,photoToStage,getWidth(),getHeight());if(seasonal)seasonalRenderer.begin(bitmap,photoToStage);if(keep) {
             if(!elemental)mendStarted=released;
             if(elemental && bitmap!=null && !bitmap.isRecycled()) {
                 // Own renderer and retained bitmap let this flight outlive the next card binding.
@@ -415,6 +439,8 @@ class SwipeVfxView extends View {
     void beginKeepClose() { returnOpen=open;closing=SystemClock.uptimeMillis();invalidate(); }
     void cancel() {
         onGrinderShake(0);holding=false;returning=0;closing=0;open=0;
+        if(slasherRenderer!=null)slasherRenderer.clear();
+        if(seasonalRenderer!=null)seasonalRenderer.clear();
         keepDetached=false;progress=0;released=0;tracked=false;resetBites();bitmap=null;photo.setEmpty();sleeveRect.setEmpty();visiblePath.reset();geometryFrame=0;clearChips();
         if(clippedPhoto!=null){clippedPhoto.invalidate();clippedPhoto=null;}invalidate();
     }
@@ -450,21 +476,28 @@ class SwipeVfxView extends View {
         float fade=released==0?1:1-SwipeMotion.ease(phase);
         if(released==0) {
             float proximity=trashActive()&&!photo.isEmpty()?SwipeMotion.grinderProximity(visibleLeft,dp(14),dp(110)):0;
-            onGrinderShake(enabled&&!reducedMotion?dp(SwipeMotion.trashShake((now-started)/1000f,proximity,!elemental)):0);
+            onGrinderShake(enabled&&!reducedMotion&&!hasStagedRelease()&&!elemental?dp(SwipeMotion.trashShake((now-started)/1000f,proximity,!elemental)):0);
         }
         boolean steady=heldEffectsActive();
         boolean lightVisible=steady || holding || returning!=0 || (released!=0 && progress>0) || progress>0;
         int frame=canvas.save();canvas.clipRect(0,0,getWidth(),getHeight());
-        if(elemental) {
+        if(slasher) {
+            if(released!=0)slasherRenderer.draw(canvas,progress>0,phase,getWidth(),getHeight(),dp(1));
+            else if(holding && tracked)slasherRenderer.drawSwipeCue(canvas,photoToStage,getWidth(),getHeight());
+        } else if(seasonal) {
+            if(released!=0)seasonalRenderer.draw(canvas,progress>0,phase,getWidth(),getHeight(),dp(1));
+            else if(holding && tracked)seasonalRenderer.drawSwipeCue(canvas,photoToStage,getWidth(),getHeight());
+        } else if(elemental) {
             boolean active=bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0 || hasRetainedDamage());
             float contactAlpha=photo.isEmpty()?0:SwipeMotion.grinderProximity(photo.left,Math.max(dp(22),maximumContact),dp(100));
             boolean keeping=released!=0?progress>0:
                     photo.right>Math.max(restRight+dp(12),getWidth()-dp(150)) && photo.left>maximumContact+dp(24);
             float keepPhase=SwipeMotion.clamp((photo.right-restRight)/Math.max(dp(120),getWidth()*.72f));
             float close=closing==0?0:SwipeMotion.clamp((now-closing)/220f);
+            if(kind==SwipeTheme.Kind.TOXIC && (steady || contactAlpha>0))drawElementTrash(canvas,time,steady?heldEffectsAlpha(now):contactAlpha);
             if(active && !keepDetached)materials.draw(canvas,bitmap,kind,materialSeconds(now),dp(1),getWidth(),getHeight(),
                     keeping,keepPhase,close,1);
-            if(steady || contactAlpha>0)drawElementTrash(canvas,time,steady?heldEffectsAlpha(now):contactAlpha);
+            if(kind!=SwipeTheme.Kind.TOXIC && (steady || contactAlpha>0))drawElementTrash(canvas,time,steady?heldEffectsAlpha(now):contactAlpha);
             drawKeptPhotos(canvas,now);
         } else {
             if(lightVisible)drawHeavenly(canvas,time,dt,now);
@@ -491,6 +524,7 @@ class SwipeVfxView extends View {
     float keepClipEdge() { preparePocket(SystemClock.uptimeMillis());return sleeveRect.left; }
     private void clipPhoto(Canvas canvas,View view) {
         clippedPhoto=view;
+        if(hasStagedRelease()){if(released!=0)canvas.clipRect(0,0,0,0);return;}
         if(elemental && bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0 || hasRetainedDamage())) {
             canvas.clipRect(0,0,0,0);return;
         }
@@ -853,11 +887,47 @@ class SwipeVfxView extends View {
     private void drawElementTrash(Canvas canvas,float time,float alpha) {
         if(elementAtlas==null || elementAtlas.isRecycled())return;
         prepareTrashBoundary(time);
+        if(kind==SwipeTheme.Kind.TOXIC){drawToxicCurtain(canvas,time,alpha);return;}
         // Filled alpha artwork and collider use the identical screen-anchored rectangle.
         materialPaint.setAlpha((int)(255*SwipeMotion.clamp(alpha)));
         canvas.drawBitmap(textureArt,null,trashBounds,materialPaint);
         // Animate material details in place, without moving its collision surface.
         if(holding || released!=0)drawMaterialMotes(canvas,time,alpha,false);
+    }
+    private float toxicPoolY(float x) {
+        if(Float.isNaN(toxicPoolLevel))return getHeight()*.86f;
+        return toxicPoolNY>.15f?(toxicPoolLevel-toxicPoolNX*x)/toxicPoolNY:getHeight();
+    }
+    private void drawToxicCurtain(Canvas canvas,float time,float alpha) {
+        // One fixed silhouette drives contact. Only the liquid folds INSIDE it advect downward.
+        float bottomLeft=toxicPoolY(trashBounds.left)+dp(8),bottomRight=toxicPoolY(trashBounds.right)+dp(8);
+        toxicPoolClip.reset();toxicPoolClip.moveTo(trashBounds.left,0);toxicPoolClip.lineTo(trashBounds.right,0);
+        toxicPoolClip.lineTo(trashBounds.right,bottomRight);toxicPoolClip.lineTo(trashBounds.left,bottomLeft);toxicPoolClip.close();
+        int save=canvas.save();canvas.clipPath(toxicPoolClip);
+        materialPaint.setAlpha((int)(255*SwipeMotion.clamp(alpha)));canvas.drawBitmap(textureArt,null,trashBounds,materialPaint);
+        toxicCurtainClip.reset();toxicCurtainClip.moveTo(trashBounds.left,0);toxicCurtainClip.lineTo(toothRows[0],0);
+        for(int row=4;row<=1024;row+=4)toxicCurtainClip.lineTo(toothRows[row],getHeight()*row/1024f);
+        toxicCurtainClip.lineTo(trashBounds.left,getHeight());toxicCurtainClip.close();canvas.clipPath(toxicCurtainClip);
+        float travel=(time*dp(38))%getHeight();
+        materialPaint.setAlpha((int)(185*SwipeMotion.clamp(alpha)));
+        target.set(trashBounds.left,travel-getHeight(),trashBounds.right,travel);canvas.drawBitmap(textureArt,null,target,materialPaint);
+        target.set(trashBounds.left,travel,trashBounds.right,travel+getHeight());canvas.drawBitmap(textureArt,null,target,materialPaint);
+        // Heavy, image-based globs accelerate gently down the curtain and disappear into the same pool.
+        Bitmap drop=materialDetail();
+        if(drop!=null)for(int i=0;i<5;i++) {
+            float fall=(time*dp(44)+i*getHeight()*.237f)%(getHeight()+dp(80))-dp(40);
+            float x=dp(5+i%3*8),size=dp(10+i%2*4);
+            target.set(x-size*.6f,fall-size*1.9f,x+size*.6f,fall+size*1.9f);
+            materialPaint.setAlpha((int)(140*SwipeMotion.clamp(alpha)));canvas.drawBitmap(drop,null,target,materialPaint);
+        }
+        canvas.restoreToCount(save);
+        // A broad wet fold merges the falling curtain into the surface, rather than ending at a hard cut.
+        if(drop!=null) {
+            float x=dp(14),y=toxicPoolY(x)+dp(3);
+            target.set(x-dp(35),y-dp(7),x+dp(35),y+dp(7));
+            materialPaint.setAlpha((int)(185*SwipeMotion.clamp(alpha)));canvas.drawBitmap(drop,null,target,materialPaint);
+        }
+        materialPaint.setAlpha(255);
     }
     private void drawMaterialMotes(Canvas canvas,float time,float alpha,boolean keep) {
         // Broad, filled sprites provide the moving material; there are no white outline paths.

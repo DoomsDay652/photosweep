@@ -1,0 +1,9 @@
+Photo Sweep 0.1.54
+
+- Halloween themes grouped together, including Slasher.
+- Slasher Keep: release-only knife pickup with black ink and preserved photo angle.
+- Slasher Trash: photo walks through the opening door.
+- Halloween: pumpkin Trash and ghost Keep animations.
+- Toxic: flowing sludge curtain, contact melting, drooping photo strands draining into the pool, no saw shake or replay on reapproach.
+
+Build: signed APK and AAB through the existing repository workflow. No emulator sessions.

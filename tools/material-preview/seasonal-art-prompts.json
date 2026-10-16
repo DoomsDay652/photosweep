@@ -1,0 +1,11 @@
+{
+  "assets": [
+    {
+      "key": "halloween_props",
+      "prompt": "Use case: stylized-concept. Asset type: premium mobile game VFX sprite sheet on genuinely transparent background, 1536x1024 landscape. TWO isolated props side by side with a completely clear central gutter. LEFT HALF: a highly detailed realistic carved Halloween jack-o-lantern, roughly spherical orange ridged pumpkin, old twisting stem, wide open black carved mouth occupying middle lower face, triangular glowing amber eyes, warm light ONLY inside carved cavities. Front view. Fits entirely within left half with clear margins. RIGHT HALF: one elegant spectral ghost made of flowing translucent ivory muslin, convincing fine fabric folds, gently raised outstretched draped arms, long floating tapering cloth skirt, dark hollow eye openings, no human body visible; front view. Fits entirely within right half with clear margins. Cinematic midnight moonlight, richly textured photoreal materials, playful Halloween atmosphere but sophisticated game realism, not cute flat cartoon. Keep the surroundings completely transparent with sharp natural antialiased edges. NO exterior glow or haze, no ground shadow, no scenery, no text, no blood or gore.",
+      "path": "app/src/main/res/drawable-nodpi/halloween_props_v1.png",
+      "mode": "built-in imagegen",
+      "transparent_background": true
+    }
+  ]
+}
