@@ -11,7 +11,7 @@ Mesh colors are averaged per triangle by the adapter; Android interpolates them 
 Run from the repository root with Java 17:
 
 ```
-java com.sun.tools.javac.Main -d /tmp/photo-preview $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
+java com.sun.tools.javac.Main -d /tmp/photo-preview $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{PhotoMaterialArt,PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
 java -cp /tmp/photo-preview com.dominic.photosweep.MaterialPreview /tmp/photo-preview-frames
 ```
 
@@ -21,3 +21,6 @@ damaged photo, then a pristine next photo. The checked-in tutorial image is the 
 Run `java -cp /tmp/photo-preview com.dominic.photosweep.MaterialLifecycleCheck` for
 actual View lifecycle checks using the host UI adapters. The adapters implement only
 the material path used by these checks; legacy layer compositing is not modeled.
+
+`MaterialArtCheck` verifies transparent atlas decoding, all four candy tiles, shared
+art snapshots, time-varying ice lighting, and damage masking under the new optics.
