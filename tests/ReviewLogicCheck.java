@@ -101,6 +101,10 @@ public class ReviewLogicCheck {
         for(int frame=0;frame<180;frame++) {
             check(SwipeMotion.grinderShake(frame/60f,0)==0,"no vibration away from grinder");
             check(Math.abs(SwipeMotion.grinderShake(frame/60f,1))<=1.001,"vibration remains bounded");
+            check(SwipeMotion.trashShake(frame/60f,0,false)==0,"material pulse stops away from trash");
+            check(Math.abs(SwipeMotion.trashShake(frame/60f,1,false))<=.351f,"non-saw contact pulse stays subtle");
+            check(SwipeMotion.trashShake(frame/60f,1,true)==2.6f*SwipeMotion.grinderShake(frame/60f,1),"saw vibration unchanged");
+            if(frame>0)check(Math.abs(SwipeMotion.trashShake(frame/60f,1,false)-SwipeMotion.trashShake((frame-1)/60f,1,false))<.106f,"material contact pulse moves smoothly between frames");
         }
         for (int speed : new int[]{0,50,100,200,500}) {
             check(SwipeMotion.releaseDuration(speed,false)>SwipeMotion.releaseDuration(speed,true),"grinder feeding has its own timing");
