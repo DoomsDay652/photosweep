@@ -17,6 +17,7 @@ public class PhotoMaterialCheck {
   check((deed.colors[8]>>>24)==0,"Keep consumes the top without leaving a phoenix graphic");
   PhotoMaterialMotion water=sample(),toxic=sample();
   for(PhotoMaterialMotion m:new PhotoMaterialMotion[]{water,toxic}){m.touched[center]=0;m.contactX[center]=10;m.contactY[center]=350;}
+  toxic.contactX[center]=toxic.base[center*2]-16;
   water.trash(SwipeTheme.Kind.WATER,.7f,1,720,1100,1);toxic.trash(SwipeTheme.Kind.TOXIC,.7f,1,720,1100,1);
   check(water.vertices[center*2]<water.base[center*2],"liquefying image flows toward the contacted surface");
   check(toxic.vertices[center*2+1]>toxic.base[center*2+1],"toxic image sags downward before dissolving");

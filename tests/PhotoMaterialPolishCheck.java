@@ -34,12 +34,13 @@ public class PhotoMaterialPolishCheck {
  }
  static void recovery() {
   for(SwipeTheme.Kind k:KINDS) {
-   PhotoMaterialMotion m=sample(400,500);Arrays.fill(m.touched,0);m.trash(k,1,1,720,1100,0);
-   check(Arrays.equals(m.vertices,m.base),"cancelled Trash retained distortion: "+k);
-   for(int c:m.colors)check(c==0xFFFFFFFF,"cancelled Trash retained holes or tint: "+k);
-   m.reset();for(int c:m.colors)check(c==0xFFFFFFFF,"new gesture retained tint: "+k);
+   PhotoMaterialMotion m=sample(400,500);Arrays.fill(m.touched,0);m.trash(k,2,1,720,1100,1);
+   float[] damage=m.remaining.clone();m.pose(new float[]{400,0,280,0,500,100});m.trash(k,3,1,720,1100,0);
+   for(int n=0;n<PhotoMaterialMotion.N;n++)check(m.remaining[n]<=damage[n],"pull-away healed damage: "+k);
+   m.keep(k,.8f,3,1,720,1100,0);for(int n=0;n<PhotoMaterialMotion.N;n++)check((m.colors[n]>>>24)<=Math.round(255*damage[n]),"Keep healed damage: "+k);
+   m.reset();for(int c:m.colors)check(c==0xFFFFFFFF,"next photo retained damage: "+k);
   }
-  System.out.println("PASS round 3: retreat restores geometry/opacity and reset clears tint and damage.");
+  System.out.println("PASS round 3: pull-away and Keep retain damage; next photo resets cleanly.");
  }
  static void sizes() {
   int count=0;
