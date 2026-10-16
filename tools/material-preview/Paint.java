@@ -1,0 +1,3 @@
+package android.graphics;
+public class Paint {public static final int FILTER_BITMAP_FLAG=2,ANTI_ALIAS_FLAG=1;public enum Style{FILL,STROKE}int color=-1,alpha=255;float stroke=1;Style style=Style.FILL;Shader shader;public Paint(int flags){}public void setAlpha(int a){alpha=Math.max(0,Math.min(255,a));}public void setColor(int c){color=c;alpha=c>>>24;}public void setShader(Shader s){shader=s;}public void setStyle(Style s){style=s;}public void setStrokeWidth(float w){stroke=w;}public enum Cap{ROUND}public enum Join{ROUND}public void setStrokeCap(Cap cap){}public void setStrokeJoin(Join join){}public void setXfermode(PorterDuffXfermode mode){}}
+

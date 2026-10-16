@@ -1,0 +1,1 @@
+package android.graphics;public class PathMeasure{public void setPath(Path p,boolean close){}public float getLength(){return 0;}public boolean getPosTan(float distance,float[] pos,float[] tan){return false;}}

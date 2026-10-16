@@ -1,5 +1,8 @@
 # Photo material visual checks
 
+The Java files share this test folder; their package declarations place compiled
+classes under the appropriate Android and app packages. They are excluded from APK sources.
+
 These host Java2D adapters execute PhotoMaterialRenderer to inspect its photo geometry,
 color, alpha and trajectories. They are not an Android emulator and do not validate
 Android GPU rendering, device frame rate, input latency or the complete app UI.
