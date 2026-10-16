@@ -93,6 +93,11 @@ final class SwipeMotion {
     static float grinderShake(float seconds, float proximity) {
         return ease(proximity)*(float)(Math.sin(seconds*89)*.68+Math.sin(seconds*137)*.32);
     }
+    static float trashShake(float seconds, float proximity, boolean saw) {
+        // Material reactions need a subtle, slow contact pulse rather than motor vibration.
+        return saw ? 2.6f*grinderShake(seconds,proximity)
+                : .35f*ease(proximity)*(float)Math.sin(seconds*18);
+    }
     static float spellHalfWidth(float photoWidth, float stageWidth, float padding) {
         return Math.max(1,Math.min(stageWidth*.46f,photoWidth*.5f+padding));
     }
