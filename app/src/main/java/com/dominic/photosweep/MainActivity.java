@@ -3022,6 +3022,7 @@ public class MainActivity extends ComponentActivity {
                 card.setTranslationX(dp(4) * sway);
                 card.setTranslationY(-dp(2) * sway * sway);
                 card.setRotation(.55f * sway);
+                if(reviewPage!=null && reviewPage.card==card && reviewPage.effect.hasRetainedDamage())reviewPage.effect.track(card);
             });
             photoIdleAnimator.start();
         };

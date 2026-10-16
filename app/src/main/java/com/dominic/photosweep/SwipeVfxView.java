@@ -15,6 +15,9 @@ class SwipeVfxView extends View {
     private final PhotoMaterialRenderer materials=new PhotoMaterialRenderer();
     private final java.util.ArrayList<KeptPhoto> keptPhotos=new java.util.ArrayList<>();
     private boolean keepDetached;
+    private long materialStarted;
+    boolean hasRetainedDamage(){return elemental && bitmap!=null && materials.motion.hasDamage();}
+    private float materialSeconds(long now){if(materialStarted==0)materialStarted=now;return (now-materialStarted)/1000f;}
     private static final class KeptPhoto {
         final PhotoMaterialRenderer renderer;final Bitmap photo;final long born;final float phase;
         KeptPhoto(PhotoMaterialRenderer renderer,Bitmap photo,long born,float phase) {
@@ -264,7 +267,7 @@ class SwipeVfxView extends View {
         return edge;
     }
     private void resetBites() {
-        materials.reset();
+        materials.reset();materialStarted=0;
         damaged=false;mendStarted=0;
         java.util.Arrays.fill(damagePixels,0);
         if(edgeTint!=null){java.util.Arrays.fill(edgeTintPixels,0);edgeTint.setPixels(edgeTintPixels,0,MASK_W,0,0,MASK_W,MASK_H);}
@@ -321,7 +324,7 @@ class SwipeVfxView extends View {
         int sweepSteps=PhotoContact.buildSweep(fromPose,toPose,sweptPoses);
         float cellWidth=Math.max(1,Math.abs(a)/MASK_W+Math.abs(b)/MASK_H);
         if(elemental) {
-            materials.motion.contact(sweptPoses,sweepSteps,toothRows,getHeight(),(SystemClock.uptimeMillis()-started)/1000f,
+            materials.motion.contact(sweptPoses,sweepSteps,toothRows,getHeight(),materialSeconds(SystemClock.uptimeMillis()),
                     Math.max(1,(float)Math.hypot(a,d)/PhotoMaterialMotion.X*.3f));
             return;
         }
@@ -383,7 +386,7 @@ class SwipeVfxView extends View {
         edgeTint.setPixels(edgeTintPixels,0,MASK_W,0,0,MASK_W,MASK_H);
     }
     void hold(float x,float y) {
-        keepDetached=false;clearChips();resetBites();onGrinderShake(0);released=0;returning=0;closing=0;
+        keepDetached=false;clearChips();if(!hasRetainedDamage())resetBites();onGrinderShake(0);released=0;returning=0;closing=0;
         started=SystemClock.uptimeMillis();lastFrame=started;progress=0;open=0;entryEnergy=0;tracked=false;holding=true;geometryFrame=0;sleeveRect.setEmpty();invalidate();
     }
     void follow(float x,float y) { if(progress>=0)onGrinderShake(0);invalidate(); }
@@ -394,15 +397,16 @@ class SwipeVfxView extends View {
         return Math.max(400,base*100/Math.max(50,speed));
     }
     void release(boolean keep) { onGrinderShake(0);holding=false;returning=0;progress=keep?1:-1;released=SystemClock.uptimeMillis();if(keep) {
-            mendStarted=released;
+            if(!elemental)mendStarted=released;
             if(elemental && bitmap!=null && !bitmap.isRecycled()) {
                 // Own renderer and retained bitmap let this flight outlive the next card binding.
                 if(keptPhotos.size()>=8)keptPhotos.remove(0);
+                materials.prepareKeep(kind,materialSeconds(released),dp(1),getWidth(),getHeight());
                 keptPhotos.add(new KeptPhoto(materials.snapshot(),bitmap,released,keepPhase()));keepDetached=true;
             }
         }invalidate(); }
     void retreat() {
-        onGrinderShake(0);mendStarted=SystemClock.uptimeMillis();returnOpen=open;
+        onGrinderShake(0);mendStarted=elemental?0:SystemClock.uptimeMillis();returnOpen=open;
         returnAlpha=SwipeMotion.ease((SystemClock.uptimeMillis()-started)/140f)*(1-SwipeMotion.clamp(-progress*4));
         holding=false;released=0;closing=0;returning=SystemClock.uptimeMillis();progress=0;invalidate();
     }
@@ -450,14 +454,14 @@ class SwipeVfxView extends View {
         boolean lightVisible=steady || holding || returning!=0 || (released!=0 && progress>0) || progress>0;
         int frame=canvas.save();canvas.clipRect(0,0,getWidth(),getHeight());
         if(elemental) {
-            boolean active=bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0);
+            boolean active=bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0 || hasRetainedDamage());
             float contactAlpha=photo.isEmpty()?0:SwipeMotion.grinderProximity(photo.left,Math.max(dp(22),maximumContact),dp(100));
             boolean keeping=released!=0?progress>0:
                     photo.right>Math.max(restRight+dp(12),getWidth()-dp(150)) && photo.left>maximumContact+dp(24);
             float keepPhase=SwipeMotion.clamp((photo.right-restRight)/Math.max(dp(120),getWidth()*.72f));
             float close=closing==0?0:SwipeMotion.clamp((now-closing)/220f);
-            if(active && !keepDetached)materials.draw(canvas,bitmap,kind,(now-started)/1000f,dp(1),getWidth(),getHeight(),
-                    keeping,keepPhase,close,damageRecovery());
+            if(active && !keepDetached)materials.draw(canvas,bitmap,kind,materialSeconds(now),dp(1),getWidth(),getHeight(),
+                    keeping,keepPhase,close,1);
             if(steady || contactAlpha>0)drawElementTrash(canvas,time,steady?heldEffectsAlpha(now):contactAlpha);
             drawKeptPhotos(canvas,now);
         } else {
@@ -472,8 +476,11 @@ class SwipeVfxView extends View {
         canvas.restoreToCount(frame);
         paint.setShader(null);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);
         boolean tail=returning!=0 && now-returning<280;
-        if(returning!=0 && !tail){returning=0;open=0;resetBites();photo.setEmpty();bitmap=null;}
-        if(isAttachedToWindow() && (holding || tail || !keptPhotos.isEmpty() || hasChips(now) || (released!=0 && (progress>0 || phase<1)) || progress>0)) {
+        if(returning!=0 && !tail){
+            returning=0;open=0;
+            if(!hasRetainedDamage()){resetBites();photo.setEmpty();bitmap=null;}
+        }
+        if(isAttachedToWindow() && (holding || tail || (hasRetainedDamage() && materials.motion.animating(materialSeconds(now))) || !keptPhotos.isEmpty() || hasChips(now) || (released!=0 && (progress>0 || phase<1)) || progress>0)) {
             if(clippedPhoto!=null)clippedPhoto.postInvalidateOnAnimation();
             postInvalidateOnAnimation();
         }
@@ -482,7 +489,7 @@ class SwipeVfxView extends View {
     float keepClipEdge() { preparePocket(SystemClock.uptimeMillis());return sleeveRect.left; }
     private void clipPhoto(Canvas canvas,View view) {
         clippedPhoto=view;
-        if(elemental && bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0)) {
+        if(elemental && bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0 || hasRetainedDamage())) {
             canvas.clipRect(0,0,0,0);return;
         }
         if(holding || released!=0 || returning!=0 || progress!=0) {

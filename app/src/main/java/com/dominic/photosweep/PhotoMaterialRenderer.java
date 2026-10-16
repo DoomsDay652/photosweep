@@ -17,11 +17,12 @@ final class PhotoMaterialRenderer {
     private final boolean[] detached=new boolean[320];
     private final float[] anchoredChunks=new float[320*8],chunkPose=new float[8];
     private final int[] chunkIndices=new int[4];
+    private static final int[] CANDY_CORN_COLORS={0xFFFFF8DF,0xFFFFA542,0xFFFFDF6C};
     private final java.util.Random random=new java.util.Random();
     PhotoMaterialRenderer snapshot() {
         PhotoMaterialRenderer copy=new PhotoMaterialRenderer();copy.setArtwork(receiverArt,flameArt);
         System.arraycopy(motion.base,0,copy.motion.base,0,motion.base.length);
-        copy.motion.candyVariant=motion.candyVariant;return copy;
+        motion.copyDamageTo(copy.motion);copy.motion.candyVariant=motion.candyVariant;return copy;
     }
     void reset(){motion.reset();motion.candyVariant=random.nextInt(4);java.util.Arrays.fill(detached,false);}
     void draw(Canvas canvas,Bitmap photo,SwipeTheme.Kind kind,float seconds,float density,float width,float height,
@@ -29,6 +30,7 @@ final class PhotoMaterialRenderer {
         if(photo==null || photo.isRecycled())return;
         whole.set(0,0,photo.getWidth(),photo.getHeight());paint.setAlpha(255);paint.setShader(null);
         if(keeping) {
+            prepareKeep(kind,seconds,density,width,height);
             motion.keep(kind,keepPhase,seconds,density,width,height,close);
             canvas.drawBitmapMesh(photo,PhotoMaterialMotion.X,PhotoMaterialMotion.Y,motion.vertices,0,motion.colors,0,paint);
             if(kind==SwipeTheme.Kind.FIRE)drawKeepFire(canvas,keepPhase,close,seconds,density);
@@ -45,6 +47,9 @@ final class PhotoMaterialRenderer {
             }
         }
     }
+    void prepareKeep(SwipeTheme.Kind kind,float seconds,float density,float width,float height) {
+        if(motion.hasDamage())motion.trash(kind,seconds,density,width,height,1);
+    }
     private void drawSpaceSlices(Canvas canvas,Bitmap photo,float seconds,float density,float width,float height,float recovery) {
         // Render independent strips. No connecting triangles bridge the ripped seams.
         for(int row=0;row<PhotoMaterialMotion.Y;row+=5)for(int col=0;col<PhotoMaterialMotion.X;col++) {
@@ -53,7 +58,7 @@ final class PhotoMaterialRenderer {
             chunkIndices[0]=a;chunkIndices[1]=b;chunkIndices[2]=c;chunkIndices[3]=d;
             for(int i=0;i<4;i++) {
                 int n=chunkIndices[i];float x=motion.base[n*2],y=motion.base[n*2+1];
-                float reach=Math.min(width*.70f,350*density),force=PhotoMaterialMotion.clamp(1-x/reach)*recovery;
+                float reach=PhotoMaterialMotion.spaceReach(width,density),force=PhotoMaterialMotion.clamp(1-x/reach)*recovery;
                 float tidal=force*force,angle=tidal*(2.4f+.18f*(row/5));
                 float dx=x-density*8,dy=y-height*.5f;
                 chunkPose[i*2]=density*8+(dx*(float)Math.cos(angle)-dy*(float)Math.sin(angle))*(1-.94f*tidal)-reach*.30f*tidal;
@@ -75,19 +80,28 @@ final class PhotoMaterialRenderer {
     private void drawBrittle(Canvas canvas,Bitmap photo,SwipeTheme.Kind kind,float seconds,float density,float height,float recovery) {
         boolean ice=kind==SwipeTheme.Kind.ICE;
         int cols=ice?8:16,rows=ice?10:20;
+        // Draw the attached photograph as one mesh, avoiding a grid of clipped intact triangles.
+        for(int row=0;row<rows;row++)for(int col=0;col<cols;col++) {
+            int c0=col*PhotoMaterialMotion.X/cols,c1=(col+1)*PhotoMaterialMotion.X/cols;
+            int r0=row*PhotoMaterialMotion.Y/rows,r1=(row+1)*PhotoMaterialMotion.Y/rows;
+            float touch=motion.firstTouch(c0,r0,c1,r1);
+            if(touch>=0 && seconds-touch>(ice?.22f:.10f))motion.removePatch(c0,r0,c1,r1);
+        }
+        canvas.drawBitmapMesh(photo,PhotoMaterialMotion.X,PhotoMaterialMotion.Y,motion.base,0,motion.colors,0,paint);
         for(int row=0;row<rows;row++)for(int col=0;col<cols;col++) {
             int c0=col*PhotoMaterialMotion.X/cols,c1=(col+1)*PhotoMaterialMotion.X/cols;
             int r0=row*PhotoMaterialMotion.Y/rows,r1=(row+1)*PhotoMaterialMotion.Y/rows;
             int i0=r0*(PhotoMaterialMotion.X+1)+c0,i1=r0*(PhotoMaterialMotion.X+1)+c1;
             int i2=r1*(PhotoMaterialMotion.X+1)+c0,i3=r1*(PhotoMaterialMotion.X+1)+c1;
             float touch=motion.firstTouch(c0,r0,c1,r1),age=touch<0?-1:(seconds-touch)*recovery;
+            if(age<0)continue;
             int index=row*cols+col;float seed=PhotoMaterialMotion.noise(index+83);
             float cx=(motion.base[i0*2]+motion.base[i3*2])*.5f,cy=(motion.base[i0*2+1]+motion.base[i3*2+1])*.5f;
             float detach=age<0?0:Math.max(0,age-(ice?.22f:.10f));
             chunkIndices[0]=i0;chunkIndices[1]=i1;chunkIndices[2]=i2;chunkIndices[3]=i3;
             if(detach>0 && !detached[index]) {
                 for(int i=0;i<4;i++){anchoredChunks[index*8+i*2]=motion.base[chunkIndices[i]*2];anchoredChunks[index*8+i*2+1]=motion.base[chunkIndices[i]*2+1];}
-                detached[index]=true;
+                detached[index]=true;motion.removePatch(c0,r0,c1,r1);
             }
             for(int i=0;i<4;i++) {
                 chunkPose[i*2]=detached[index]?anchoredChunks[index*8+i*2]:motion.base[chunkIndices[i]*2];
@@ -236,7 +250,7 @@ final class PhotoMaterialRenderer {
             int selected=-1;float best=Float.MAX_VALUE;
             for(int row=0;row<=PhotoMaterialMotion.Y;row++) {
                 float age=PhotoMaterialMotion.fireKeepAge(row/(float)PhotoMaterialMotion.Y,phase,flight);
-                if(age<0 || age>.30f)continue;
+                if(age<0 || age>.30f || motion.remaining[row*(PhotoMaterialMotion.X+1)+col]<=0)continue;
                 float error=Math.abs(age-.10f);if(error<best){best=error;selected=row*(PhotoMaterialMotion.X+1)+col;}
             }
             if(selected<0)continue;
@@ -293,13 +307,23 @@ final class PhotoMaterialRenderer {
                     canvas.drawCircle(cx,cy,r*.53f,overlay);
                     overlay.setColor(0xFFFFF1C7);overlay.setAlpha((int)(130*a));canvas.drawOval(cx-r*.32f,cy-r*.40f,cx+r*.10f,cy-r*.23f,overlay);
                 } else if(variant==2) {
-                    shape.reset();shape.moveTo(cx-r*.38f,cy-r*.58f);shape.lineTo(cx+r*.38f,cy-r*.58f);shape.lineTo(cx+r*.11f,cy+r*.58f);shape.lineTo(cx-r*.11f,cy+r*.58f);shape.close();canvas.drawPath(shape,overlay);
+                    shape.reset();shape.moveTo(cx,cy-r*.58f);shape.lineTo(cx+r*.42f,cy+r*.58f);shape.lineTo(cx-r*.42f,cy+r*.58f);shape.close();
+                    int save=canvas.save();canvas.clipPath(shape);
+                    for(int band=0;band<3;band++) {
+                        overlay.setColor(CANDY_CORN_COLORS[band]);overlay.setAlpha((int)(170*a));
+                        canvas.drawRoundRect(cx-r*.43f,cy-r*.58f+band*r*.39f,cx+r*.43f,cy-r*.58f+(band+1)*r*.39f,0,0,overlay);
+                    }
+                    canvas.restoreToCount(save);
                 } else {
                     overlay.setColor(0xFFFFE8FF);overlay.setAlpha((int)(155*a));
                     canvas.drawRoundRect(cx-r*.04f,cy+r*.42f,cx+r*.04f,cy+r*.95f,r*.03f,r*.03f,overlay);
                     overlay.setColor(0xFFC5A1FF);overlay.setAlpha((int)(120*a));canvas.drawCircle(cx,cy,r*.58f,overlay);
                     overlay.setStyle(Paint.Style.STROKE);overlay.setStrokeWidth(r*.06f);
                     shape.reset();for(int i=0;i<=50;i++){float angle=i*.22f,rad=r*.04f+i*r*.009f;float x=cx+rad*(float)Math.cos(angle),y=cy+rad*(float)Math.sin(angle);if(i==0)shape.moveTo(x,y);else shape.lineTo(x,y);}canvas.drawPath(shape,overlay);overlay.setStyle(Paint.Style.FILL);
+                }
+                if(variant==0 || variant==1) {
+                    overlay.setColor(0xFFFFF7F1);overlay.setAlpha((int)(100*a));
+                    canvas.drawOval(cx-r*.32f,cy-r*.23f,cx+r*.18f,cy-r*.10f,overlay);
                 }
                 break;
             }
