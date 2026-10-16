@@ -2535,7 +2535,7 @@ public class MainActivity extends ComponentActivity {
                 uiHandler.postDelayed(() -> {
                     if (keep && !reducedMotion) { effect.beginKeepClose(); uiHandler.postDelayed(remove, 280); }
                     else remove.run();
-                }, SwipeMotion.releaseDuration(swipeSpeed, keep) + 40);
+                }, effect.releaseDuration(keep) + 40);
             }
         });
         swipePreviewAnimator = animation; animation.start();
@@ -3178,7 +3178,7 @@ public class MainActivity extends ComponentActivity {
                                 .scaleY(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
                                 .alpha(reducedMotion ? 1 : SwipeMotion.cardAlpha(1, keeping))
                                 .rotation(reducedMotion ? 0 : card.getRotation()+releaseSpin)
-                                .setDuration(reducedMotion ? 80 : SwipeMotion.releaseDuration(swipeSpeed, keeping))
+                                .setDuration(reducedMotion ? 80 : effect.releaseDuration(keeping))
                                 .setUpdateListener(frame -> effect.track(card))
                                 .withEndAction(() -> {
                                     Runnable finish = () -> {
@@ -3189,7 +3189,7 @@ public class MainActivity extends ComponentActivity {
                                         if (isDestroyed()) return;
                                         if (dx > 0) keep(shown); else trash(shown);
                                     };
-                                    if (keeping && !reducedMotion) {
+                                    if (keeping && !reducedMotion && !effect.hasIndependentKeep()) {
                                         effect.beginKeepClose(); uiHandler.postDelayed(finish, 280);
                                     } else finish.run();
                                 }).start();
