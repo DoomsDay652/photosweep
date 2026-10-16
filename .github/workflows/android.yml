@@ -78,12 +78,6 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Optimize artwork without changing pixels
-        run: |
-          python3 -m pip install Pillow==12.3.0
-          python3 -m unittest discover -s tools -p test_optimize_assets.py
-          python3 tools/optimize_assets.py
-
       - name: Verify review logic
         run: |
           javac -d /tmp/photosweep-check app/src/main/java/com/dominic/photosweep/ReviewNavigation.java app/src/main/java/com/dominic/photosweep/ReviewUndo.java app/src/main/java/com/dominic/photosweep/AppServices.java app/src/main/java/com/dominic/photosweep/SwipeMotion.java app/src/main/java/com/dominic/photosweep/SwipeTheme.java app/src/main/java/com/dominic/photosweep/PhotoFit.java app/src/main/java/com/dominic/photosweep/ResetPolicy.java app/src/main/java/com/dominic/photosweep/PlayPolicy.java app/src/main/java/com/dominic/photosweep/HolidayThemes.java app/src/main/java/com/dominic/photosweep/ThemeProgression.java app/src/main/java/com/dominic/photosweep/TokenReelMotion.java app/src/main/java/com/dominic/photosweep/ThemeCatalog.java app/src/main/java/com/dominic/photosweep/PhotoContact.java app/src/main/java/com/dominic/photosweep/PhotoInteraction.java app/src/main/java/com/dominic/photosweep/PhotoMaterialMotion.java tests/PhotoMaterialCheck.java tests/PhotoMaterialPolishCheck.java tests/PhotoDamageRetentionCheck.java tests/PhotoContactCheck.java tests/PhotoInteractionCheck.java tests/ThemeCatalogCheck.java tests/TokenReelCheck.java tests/ReviewLogicCheck.java tests/HolidayThemesCheck.java
@@ -99,11 +93,18 @@ jobs:
 
       - name: Verify material lifecycle without emulator
         run: |
-          javac -d /tmp/photosweep-render $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
+          javac -d /tmp/photosweep-render $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{PhotoMaterialArt,PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
           java -cp /tmp/photosweep-render com.dominic.photosweep.MaterialLifecycleCheck
+          java -cp /tmp/photosweep-render com.dominic.photosweep.MaterialArtCheck
 
       - name: Verify external account deletion logic
         run: node --test tests/AccountDeletionWebCheck.cjs
+
+      - name: Optimize artwork without changing pixels
+        run: |
+          python3 -m pip install Pillow==12.3.0
+          python3 -m unittest discover -s tools -p test_optimize_assets.py
+          python3 tools/optimize_assets.py
 
       - name: Restore optional owner account configuration
         env:
