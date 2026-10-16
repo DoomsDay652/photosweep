@@ -1,0 +1,37 @@
+{
+  "mode": "built-in imagegen",
+  "assets": [
+    {
+      "path": "app/src/main/res/drawable-nodpi/slasher_hand_v1.png",
+      "prompt": "Use case: stylized-concept. Asset type: production Android game transparent VFX sprite. Primary request: a highly realistic cinematic slasher movie gloved hand firmly gripping a large clean stainless steel kitchen knife, isolated on genuinely transparent background. Wrist and dark weathered coat sleeve enter from the LEFT, hand near center upper-left, blade extends diagonally DOWN and RIGHT from the fist with the sharp POINT clearly at about 78% across and 82% down the square. Entire object visible with generous transparent margins. Anatomically believable FIVE fingers, convincing wrapped grip, sharp mirror-steel blade catching cold blue moonlight and subtle red rim illumination, detailed black leather folds and worn fabric sleeve. The broad blade is seen three-quarter from the side, visually readable silhouette. Single hand, single knife only. No person, no body, no wounds, no blood, no text, no drawn outlines, no cartoon. Dark premium horror game realism. Square 1024x1024.",
+      "transparent_background": true
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/theme_slasher_v1.png",
+      "prompt": "Use case: stylized-concept. Asset type: portrait background for Photo Sweep Tier 3 Slasher mobile theme. Primary request: premium cinematic realistic slasher suspense atmosphere, an empty rain-soaked abandoned motel corridor on Halloween night, wet timber floor reflecting a dim red emergency light on the far LEFT and cold blue moonlight from a broken distant window. Fog hugging the floor, peeling wallpaper and scratched dark door frames along the sides, subtle autumn leaves near lower corners. No people. Portrait 1024x1536 composition, center 65% deliberately quiet dark negative space for a large draggable photo and UI, detailed architecture concentrated at edges and upper quarter. Moody tangible aged wood, mist, condensation and reflected practical lights. Keep overall readable midnight blue / charcoal rather than featureless black, subtle red accents. Original suspense film art. No text, no lettering, no logos, no blood, no gore, no cartoons, no cute pumpkins, no knives floating in the scene. Full bleed opaque background.",
+      "transparent_background": false
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/slasher_door_v1.png",
+      "prompt": "Use case: stylized-concept. Asset type: isolated game animation door leaf texture, transparent PNG. A SINGLE CLOSED rectangular old motel wooden door seen perfectly straight-on front view, very high quality photorealistic cinematic horror prop. Aged dark walnut rectangular wood panels with deep scratches, slightly peeling desaturated teal paint, a realistic dull brass lever handle on the RIGHT at 58% height, hinges on LEFT. Cold blue edge illumination and subtle red reflected rim on left, believable wood grain. Entire door leaf ONLY, its outer silhouette is a straight upright rectangle approximately 48% width and 86% height of the portrait canvas, centered with generous clear transparent margins. No doorframe, no surrounding wall, no floor, no doorway interior, no perspective angle. This rectangular texture will be hinged open by game code. No words, no numbers, no logos, no people, no blood. Portrait 1024x1536, genuinely transparent background.",
+      "transparent_background": true
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/slasher_hand_overhand_v3.png",
+      "prompt": "Use case: stylized-concept. Asset type: production transparent mobile-game VFX sprite, wide 1536x1024. Create a single realistic black leather gloved hand in a REVERSE ICE-PICK / OVERHAND grip holding a clean large stainless steel kitchen knife for a DOWNWARD stabbing motion. The hand is a clenched fist viewed from the side, knuckles across the top, thumb wrapped firmly over the fist. The handle projects UP from the thumb side of the fist; the blade exits the BOTTOM / PINKY side and points almost VERTICALLY DOWN, with the blade point at x=73%, y=88% of the image. A weathered dark charcoal sleeve and forearm extend HORIZONTALLY from the LEFT edge into the wrist at x=57%, y=30%; the fist is at x=71%, y=31%. Knife is upright vertical, NOT held in a forward fencing or ordinary slicing grip, NOT diagonal saber grip. Real anatomical grip, convincing fingers and wrist attachment, realistic steel reflections, cold blue cinematic light and very subtle neutral warm rim; NO red reflections on blade. Original classic slasher suspense prop, high detail leather creases, coat weave and crisp steel edge. Isolated on genuinely transparent background. Exactly one connected forearm, hand and knife, whole blade visible. No face, no person, no blood, no gore, no wound, no text, no logo, no cartoon.",
+      "edit_prompt": "Edit only the thumb of this black gloved hand: remove every visible fingernail, nail-shaped plate, cuticle, skin texture or nail-bed contour. The thumb must be fully covered by continuous OPAQUE BLACK LEATHER glove material, with natural leather creases and a subtle stitched glove seam, not an anatomical nail under thin fabric. Keep the exact existing wrist, fist, grip, sleeve, clean vertical downward-pointing knife, lighting, composition, silhouette and transparent canvas unchanged. Do not add blood or red marks. No exposed skin or fingernails anywhere. Preserve exact image size and object registration for the production sprite.",
+      "transparent_background": true
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/slasher_ink_v3.png",
+      "prompt": "Use case: stylized-concept. Asset type: transparent VFX ink-stain decal for a photograph. A single irregular puddle / blot of BLACK FOUNTAIN-PEN INK soaking into paper, viewed straight down. Pure black and cool charcoal only, tiny subtle graphite sheen, feathered capillary edges and a few small asymmetric ink specks nearby. The shape has a dense central blot with thin spreading paper fibers, a few short gravity runs. Generous clear margins on ALL sides. Genuinely transparent background, no white paper plane. Black and gray color channels, NO red, NO brown, NO blood, NO gore, no body, no weapon, no letters or symbols. Premium macro photographic ink texture, not a cartoon splash or star shape. Square 1024x1024.",
+      "transparent_background": true
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/slasher_hand_overhand_v4.png",
+      "mode": "built-in imagegen edit",
+      "prompt": "Use case: background-extraction. Input image 1 is the edit target, a game sprite. Remove ALL smoky gray blue halo, fog, ambient glow, blurry lighting spill, and dark background haze surrounding the arm, glove and knife. Produce a clean precisely isolated hard-surface cutout on genuinely transparent background. Preserve the exact 1536x1024 canvas, registration, arm silhouette, left-edge extended sleeve, fully opaque black leather glove including thumb with NO fingernail or exposed skin, downward-pointing steel knife, photoreal material detail, and existing pose. Sharp natural antialiased edges only, no outer shadows or feathered halo. All pixels outside the physical sleeve, glove, knife and handle must be fully transparent. Do not change composition, lighting ON the object, blade tip position, or size. No blood, no gore.",
+      "transparent_background": true
+    }
+  ]
+}
