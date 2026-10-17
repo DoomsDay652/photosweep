@@ -2,7 +2,7 @@ package com.dominic.photosweep;
 
 /** Stable theme IDs keep existing ownership intact while the library groups by subject. */
 final class ThemeCatalog {
-    static final int SLASHER=86, COUNT=87;
+    static final int SLASHER=86, SUMMER=87, COUNT=88;
     static final String[] COLLECTIONS = {"All themes", "Colors & basics", "Nature & places", "Elements", "Countries", "Holidays & seasons", "Fantasy & space"};
     static int collection(int theme) {
         if (theme < 0 || theme >= COUNT) throw new IllegalArgumentException("theme");

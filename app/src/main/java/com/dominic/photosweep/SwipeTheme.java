@@ -5,7 +5,7 @@ final class SwipeTheme {
     enum Kind { SPARKLE, FIRE, WATER, ICE, EARTH, LIGHTNING, CANDY, TOXIC, SPACE,
         WEB, GOLD, THUNDER, GAMMA, SHIELD, COSMIC, SCARLET, STEALTH, NEBULA, SOLAR,
         SAKURA, SKY, WISPS, JAPAN, MEXICO, USA, SPAIN, BRAZIL, FRANCE, ITALY, KOREA,
-        MY_HERO, BLEACH, ONE_PIECE, NARUTO, DRAGONBALL, YIN_YANG, CHRISTMAS, HALLOWEEN, THANKSGIVING, INDEPENDENCE, NEW_YEAR, MLK, PRESIDENTS, MEMORIAL, JUNETEENTH, LABOR, COLUMBUS, VETERANS, SLASHER }
+        MY_HERO, BLEACH, ONE_PIECE, NARUTO, DRAGONBALL, YIN_YANG, CHRISTMAS, HALLOWEEN, THANKSGIVING, INDEPENDENCE, NEW_YEAR, MLK, PRESIDENTS, MEMORIAL, JUNETEENTH, LABOR, COLUMBUS, VETERANS, SLASHER, SUMMER }
     static Kind forTheme(int theme) {
         int holiday = HolidayThemes.collection(theme);
         if (holiday >= 0) return Kind.values()[Kind.CHRISTMAS.ordinal() + holiday];
@@ -23,11 +23,13 @@ final class SwipeTheme {
             case 48:case 54:return Kind.ITALY; case 49:case 55:return Kind.KOREA;
             case 56:return Kind.MY_HERO; case 57:return Kind.BLEACH; case 58:return Kind.ONE_PIECE;
             case 86:return Kind.SLASHER;
+            case 87:return Kind.SUMMER;
             case 59:return Kind.NARUTO; case 60:return Kind.DRAGONBALL; case 61:return Kind.YIN_YANG;
             default:return Kind.SPARKLE;
         }
     }
     static int color(Kind kind) {
+        if(kind==Kind.SUMMER)return 0xFF83E5E3;
         if(kind==Kind.SLASHER)return 0xFFD87377;
         if (kind.ordinal() >= Kind.CHRISTMAS.ordinal()) {
             int holiday = kind.ordinal() - Kind.CHRISTMAS.ordinal();
@@ -50,6 +52,7 @@ final class SwipeTheme {
         switch(kind) {
             case SLASHER:return "Keep: release the photo to be stabbed at its captured angle and carried away · Trash: walks through an opening door.";
             case HALLOWEEN:return "Trash: a jack-o-lantern devours the photograph · Keep: a ghost carries the photograph into the moonlight.";
+            case SUMMER:return "Trash: a shark bites away pieces of the photograph · Keep: rolling surf carries the photograph away.";
             case FIRE:return "Trash: contact burns with angled flames from the side · Keep: photo ignites from bottom to top.";
             case WATER:return "Trash: photo liquefies into streams and droplets · Keep: photo becomes a bubble and floats away.";
             case ICE:return "Trash: touched photo freezes, cracks, then sheds rigid shards · Keep: crystallizes and slides away.";
