@@ -6,6 +6,28 @@
       "path": "app/src/main/res/drawable-nodpi/halloween_props_v1.png",
       "mode": "built-in imagegen",
       "transparent_background": true
+    },
+    {
+      "key": "summer_shark",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile game VFX sprite, genuinely transparent background, landscape1536x1024. A single highly realistic great white shark lunging from LEFT to RIGHT, full torso and tail clearly readable, viewed in profile with a slight three-quarter angle toward viewer, head at about seventy-five percent across canvas, broad mouth open toward RIGHT, upper jaw around sixty percent of height and lower jaw around eighty percent height. Anatomically convincing shark, white underside, textured slate blue back, natural triangular white teeth, glossy wet skin, blue daylight highlights. Entire shark isolated with clear margins, physical fin silhouettes, no water, no splashes, no glow, no atmosphere or haze, no rectangle background, no blurry edge, no ground shadow. Clean premium marine wildlife realism, not cartoon and not a logo. No people, no prey, no blood, no gore, no text.",
+      "path": "app/src/main/res/drawable-nodpi/summer_shark_v1.png",
+      "mode": "built-in imagegen",
+      "transparent_background": true
+    },
+    {
+      "key": "summer_wave",
+      "prompt": "Use case: photorealistic-natural. Asset type: transparent isolated ocean wave VFX sprite for premium mobile game. Landscape1536x1024. A single powerful turquoise ocean wave rolling from LEFT toward RIGHT, viewed slightly from the side at beach level. Elegant curved curling crest at the RIGHTmost leading side, extremely detailed clean white foamy lip and sparkling droplets, sunlit translucent aquamarine water. Wave occupies lower eighty percent of canvas, upper area and ALL surrounding background genuinely transparent, with clear margins. Entire wave and sparse physical droplets are isolated with precise natural edges. No beach, no sky, no horizon line, no distant water plane, no scenery, no logo, no letters, no surrounding glow, no fog. Photographic water texture, foam filaments and refraction, not an illustration or flat graphic. Strong horizontal flowing silhouette suitable for sweeping a photograph toward the right edge.",
+      "path": "app/src/main/res/drawable-nodpi/summer_wave_v1.png",
+      "mode": "built-in imagegen",
+      "transparent_background": true
+    },
+    {
+      "key": "summer_coast",
+      "opaque": true,
+      "prompt": "Use case: stylized-concept. Asset type: portrait mobile photo sorting app theme background, premium photoreal coastal summer atmosphere. Portrait1024x1536 full bleed. A tranquil sunlit turquoise tropical cove with a gently curving sandy beach along lower-right edge, subtle small white surf bands at edges, palm frond silhouettes at upper corners, distant warm rocky headland at upper left, clear summer sky in top twenty percent. Main central sixty-five percent is calm richly graduated deeper teal seawater with subtle refracted sunlight, intentionally quiet negative space behind a large draggable photo. Atmospheric depth and refined natural colors, bright airy premium photography look, not oversaturated, not flat cartoon. No people, no shark, no boats, no lettering, no UI, no border.",
+      "path": "app/src/main/res/drawable-nodpi/theme_summer_coast_v1.png",
+      "mode": "built-in imagegen",
+      "transparent_background": false
     }
   ]
 }

@@ -1,0 +1,11 @@
+# Beach Day: full-width Keep surf v3 (draft)
+
+The wave peeks from the right as the actual photo moves toward Keep. Release continues that crest position, opacity and flow phase. The incoming wash rolls left across the captured print, lifts it with a localized swell, then carries it right with the receding water. The outgoing distance is based on print and wave bounds; accelerating backwash keeps the exit visible until late in the animation. The accepted shark pursuit remains unchanged.
+
+The photographic overhead wave is deformed with a 14 × 32 mesh. The water draws behind the print; a feathered UV mask draws only the frothy leading lip above it. This avoids a straight clipping rectangle across the photo. The captured print retains its rotation, flexes over the swell, cools slightly where wetted, and retains shark bite holes. Cancel and reduced-motion ownership use the existing seasonal lifecycle. This animation does not change photo deletion or Keep storage behavior.
+
+`BeachKeepPreview` renders two portrait examples: a clean tilted print and a rotated print with retained shark damage. `BeachKeepCheck` validates captured transforms, finite non-inverted geometry across tilted/sideways/inverted poses, preserved holes, no new damage, full right exit and cancellation. `SeasonalCheck` validates View lifecycle and reduced motion. `BeachSharkCheck` guards the accepted shark behavior. These are host checks, with no emulator or Android GPU validation.
+
+V3 fills the right side of the photo stage: the water sheet is at least 1.6 stage widths and 1.45 stage heights, centered vertically on the stage. The revised texture continues through the right, top and bottom edges rather than tapering to transparency. A feathered left boundary stays beside the frothy crest, while water behind it reaches the right screen edge during pickup and departure. The host raster adapter now interpolates vertex colors and composites translucent mesh triangles in one layer, avoiding preview-only facets and doubled seams.
+
+The asset and exact built-in imagegen prompt are recorded in `beach-keep-surf-art-v3.json`. Summer remains a local draft and is excluded from released build 222. No push or Android build is part of this revision.

@@ -1,0 +1,7 @@
+{
+  "mode": "built-in imagegen edit",
+  "asset": "app/src/main/res/drawable-nodpi/beach_shark_closed_v3.png",
+  "reference": "app/src/main/res/drawable-nodpi/beach_shark_species_v2.png",
+  "transparent_background": true,
+  "prompt": "Use case: precise-object-edit. Input image 1 is the EDIT TARGET: a transparent sprite atlas containing three side-profile shark heads: great white at top, tiger shark in middle, hammerhead at bottom. Create the matching CLOSED MOUTH animation keyframe. Change ONLY the lower jaws and mouth openings: all three sharks should have naturally FULLY CLOSED mouths, correct smooth substantial lower jaw/chin, a subtle tight natural mouth seam, NO open dark gaps and NO visible rows of teeth. No squashed, melted or pointed chin. Preserve EXACT original canvas dimensions, row positions, shark species, eye positions, snout, head size, upper head silhouette, forebody, gills, fins, skin colors and lighting. The upper heads and all body registration must stay pixel aligned with the input; do not recenter or rescale anything. Raise the lower jaw naturally against the upper jaw. The original area below the raised chin becomes genuinely transparent. Preserve genuine transparency everywhere outside sharks. Photorealistic clean premium game sprite, no blur, no haze, no glow, no new objects, no water, no text, no gore. This is an exact matching closed-jaw pose, NOT a redesigned atlas."
+}
