@@ -11,7 +11,7 @@ final class BeachSharkRenderer {
     static final int X=64,Y=64;
     private static final int SWIM_X=40,SWIM_Y=12;
     private static final int[] BITE_RESTS={1450,900,1750,1150};
-    private static final float[] LANES={.32f,.72f,.16f,.86f,.50f},SPINES={.52f,.56f,.49f};
+    private static final float[] LANES={.32f,.72f,.16f,.86f,.50f},SPINES={.506f,.455f,.400f};
     private static Bitmap[] art;
     private static int nextSpecies=new Random().nextInt(3);
     private static synchronized int chooseSpecies(){int result=nextSpecies;nextSpecies=(nextSpecies+1)%3;return result;}
@@ -42,8 +42,8 @@ final class BeachSharkRenderer {
     BeachSharkRenderer(Context context){
         if(art==null){
             BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;
-            Bitmap atlas=BitmapFactory.decodeResource(context.getResources(),R.drawable.beach_sharks_overhead_v5,options);
-            int[] edges={0,Math.round(atlas.getHeight()*.366f),Math.round(atlas.getHeight()*.677f),atlas.getHeight()};
+            Bitmap atlas=BitmapFactory.decodeResource(context.getResources(),R.drawable.beach_sharks_dorsal_v8,options);
+            int[] edges={0,Math.round(atlas.getHeight()*.391f),Math.round(atlas.getHeight()*.695f),atlas.getHeight()};
             art=new Bitmap[3];for(int n=0;n<3;n++)art[n]=Bitmap.createBitmap(atlas,0,edges[n],atlas.getWidth(),edges[n+1]-edges[n]);
         }
     }
@@ -111,12 +111,12 @@ final class BeachSharkRenderer {
         float theta=orbitPhase;
         float phase=wrap(theta),attack=ease((.9f-Math.abs(phase))/.9f);
         float photoHeight=(float)Math.hypot(pose[1],pose[4]);
-        float radiusX=w*.25f*(1+.055f*(float)Math.sin(theta*.5f+species));
-        float radiusY=clamp(photoHeight*.56f,h*.14f,h*.23f);
-        noseX=orbitX+radiusX*(float)Math.cos(theta);
-        noseY=orbitY+radiusY*(float)Math.sin(theta);
+        float radiusX=w*(.25f+.045f*(float)Math.sin(theta*.43f+species));
+        float radiusY=clamp(photoHeight*(.56f+.09f*(float)Math.sin(theta*.61f)),h*.13f,h*.24f);
+        noseX=orbitX+radiusX*(float)Math.cos(theta)+w*.024f*(float)Math.sin(theta*1.73f);
+        noseY=orbitY+radiusY*(float)Math.sin(theta)+h*.036f*(float)Math.sin(theta*.63f+species);
         if(engaged)reach=lerp(reach,clamp(targetX+w*.060f,w*.07f,w*.38f),1-(float)Math.exp(-dt*2.5f));
-        if(engaged)noseX=lerp(noseX,reach,attack*.42f);
+        if(engaged)noseX=lerp(noseX,reach,attack*(.42f+.12f*(float)Math.sin(theta*.37f)));
         // Face the actual swim trajectory, including approach and vertical
         // pursuit, rather than sliding sideways while facing a scripted angle.
         float dx=noseX-oldNoseX,dy=noseY-oldNoseY;
@@ -196,15 +196,15 @@ final class BeachSharkRenderer {
         // stays perpendicular to that spine, so turns bend the animal instead of
         // rotating a stiff cutout or shearing its tail sideways.
         for(int col=0;col<=SWIM_X;col++){
-            float u=col/(float)SWIM_X,travel=(u-.94f)*length;
+            float u=col/(float)SWIM_X,travel=(u-.965f)*length;
             float cx=x,cy=y;int segments=Math.max(1,(int)(Math.abs(travel)/length*32));
             for(int k=0;k<segments;k++){
-                float at=.94f+(u-.94f)*(k+.5f)/segments;
+                float at=.965f+(u-.965f)*(k+.5f)/segments;
                 float local=spineAngle(at,angle,time,turnBend);
                 cx+=(float)Math.cos(local)*travel/segments;cy+=(float)Math.sin(local)*travel/segments;
             }
             float local=spineAngle(u,angle,time,turnBend),nx=-(float)Math.sin(local),ny=(float)Math.cos(local);
-            float aft=clamp((.94f-u)/.94f,0,1);
+            float aft=clamp((.965f-u)/.965f,0,1);
             // A small fin bank follows the turn; tail propulsion grows aft.
             float bank=1-.10f*Math.abs(turnBend)*(1-aft);
             for(int row=0;row<=SWIM_Y;row++){
@@ -223,7 +223,7 @@ final class BeachSharkRenderer {
         paint.setAlpha((int)(255*clamp(alpha,0,1)));canvas.drawBitmapMesh(sprite,SWIM_X,SWIM_Y,swimMesh,0,swimColors,0,paint);paint.setAlpha(255);
     }
     static float spineAngle(float u,float heading,float time,float bend){
-        float aft=clamp((.94f-u)/.94f,0,1);
+        float aft=clamp((.965f-u)/.965f,0,1);
         return heading-bend*aft+.62f*aft*aft*(float)Math.sin(time*7.2f-aft*5.4f);
     }
     private void crumbs(Canvas canvas,long now,float w,float h,float alpha){

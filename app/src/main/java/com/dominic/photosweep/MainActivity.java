@@ -353,7 +353,7 @@ public class MainActivity extends ComponentActivity {
             R.drawable.holiday_veterans,
             R.drawable.holiday_veterans,
             R.drawable.theme_slasher_v1,
-            R.drawable.theme_summer_coast_v1
+            R.drawable.theme_beach_shore_v8
     };
     private static final int[] THEME_FX_IDS = {
             R.drawable.fx_nebula,
@@ -445,7 +445,7 @@ public class MainActivity extends ComponentActivity {
             R.drawable.slasher_hand_overhand_v4,
             R.drawable.summer_wave_v1
     };
-    private Bitmap summerSurf;
+    private BeachBackgroundRenderer beachBackground;
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
     private int BG = Color.rgb(15, 28, 47);
@@ -750,6 +750,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override public void onDestroy() {
+        clearOutgoingSwipes();
         if(tokenSlot!=null){tokenSlot.dispose();tokenSlot=null;}
         if(tokenWalletDialog!=null){tokenWalletDialog.setOnDismissListener(null);tokenWalletDialog.dismiss();tokenWalletDialog=null;}
         stopPhotoIdle();
@@ -1077,6 +1078,7 @@ public class MainActivity extends ComponentActivity {
     private void renderContent() {
         dismissTip();
         if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
+        if(!reviewing || showingShop || showingSettings || showingThemes || showingTrash || renderedTheme!=themeChoice)clearOutgoingSwipes();
         if (updateReviewPage()) return;
         if (updateTrashPage()) return;
         stopPhotoIdle();
@@ -3105,6 +3107,43 @@ public class MainActivity extends ComponentActivity {
                 .withEndAction(() -> {card.setRotation(0);effect.track(card);}).start();
     }
 
+    private final ArrayList<SwipeEffect> outgoingSwipes=new ArrayList<>();
+    private final HashMap<SwipeEffect,Runnable> outgoingCleanup=new HashMap<>();
+    private void removeOutgoingSwipe(SwipeEffect effect){
+        Runnable cleanup=outgoingCleanup.remove(effect);
+        if(cleanup!=null)uiHandler.removeCallbacks(cleanup);
+        outgoingSwipes.remove(effect);effect.cancel();
+        if(effect.getParent() instanceof android.view.ViewGroup)
+            ((android.view.ViewGroup)effect.getParent()).removeView(effect);
+    }
+    private void clearOutgoingSwipes(){
+        for(SwipeEffect effect:new ArrayList<>(outgoingSwipes))removeOutgoingSwipe(effect);
+    }
+    private void continueOutgoingSwipe(SwipeEffect effect,boolean keep){
+        ReviewPage page=reviewPage;
+        if(page==null || page.effect!=effect)return;
+        effect.continueIndependently();
+        int[] at=new int[2],origin=new int[2];
+        effect.getLocationOnScreen(at);host.getLocationOnScreen(origin);
+        FrameLayout.LayoutParams placement=new FrameLayout.LayoutParams(effect.getWidth(),effect.getHeight());
+        placement.leftMargin=at[0]-origin[0];placement.topMargin=at[1]-origin[1];
+        SwipeEffect next=new SwipeEffect();next.setElevation(dp(18));
+        page.effect=next;((SwipeVfxView.Card)page.card).effect=next;
+        page.stage.addView(next,new FrameLayout.LayoutParams(-1,-1));
+        // Put outgoing photos behind the fresh card, so its visible surface and
+        // touch target are available even while a large wave/door is finishing.
+        effect.transferRelease(()->{
+            ((android.view.ViewGroup)effect.getParent()).removeView(effect);
+            effect.setElevation(0);
+            host.addView(effect,Math.max(0,host.indexOfChild(root)),placement);
+        });
+        while(outgoingSwipes.size()>=8)removeOutgoingSwipe(outgoingSwipes.get(0));
+        outgoingSwipes.add(effect);
+        Runnable cleanup=()->removeOutgoingSwipe(effect);
+        outgoingCleanup.put(effect,cleanup);
+        uiHandler.postDelayed(cleanup,effect.independentReleaseDuration(keep));
+    }
+
     private void attachSwipeGesture(FrameLayout card, FrameLayout stage, SwipeEffect effect,
                                     PhotoElementBorderView fireBorder, Photo shown, Runnable tap) {
         final boolean[] committed = {false}, multitouch = {false}; final float[] start = new float[2]; final int[] position = new int[2];
@@ -3200,6 +3239,13 @@ public class MainActivity extends ComponentActivity {
                         playEffect(actionDx > 0);
                         boolean keeping = actionDx > 0;
                         card.announceForAccessibility(SwipeMotion.actionLabel(keeping));
+                        if(effect.advancesOnRelease()){
+                            continueOutgoingSwipe(effect,keeping);
+                            card.setVisibility(View.INVISIBLE);
+                            reviewActionRunning=false;
+                            if(keeping)keep(shown);else trash(shown);
+                            return true;
+                        }
                         card.animate().translationX(effect.hasStagedRelease()?card.getTranslationX():(keeping ? 1 : -1) * (host.getWidth() + card.getWidth() / 2f))
                                 .translationY(reducedMotion ? 0 : card.getTranslationY())
                                 .scaleX(reducedMotion ? 1 : SwipeMotion.cardScale(1, keeping))
@@ -4313,6 +4359,12 @@ public class MainActivity extends ComponentActivity {
         @Override protected void onDraw(Canvas canvas) {
             float w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
+            if(themeChoice==ThemeCatalog.SUMMER) {
+                if(beachBackground==null)beachBackground=new BeachBackgroundRenderer(MainActivity.this);
+                beachBackground.draw(canvas,android.os.SystemClock.uptimeMillis(),w,h,reducedMotion);
+                if(!reducedMotion && isAttachedToWindow())postInvalidateDelayed(32);
+                return;
+            }
             paint.setColor(BG); canvas.drawColor(BG);
             if (!isColorTheme(themeChoice) && themeBackdrops[themeChoice] == null) {
                 BitmapFactory.Options opts = new BitmapFactory.Options(); opts.inScaled = false;
@@ -4326,12 +4378,6 @@ public class MainActivity extends ComponentActivity {
             }
             canvas.drawColor(isColorTheme(themeChoice) ? 0x18000000 : themeChoice==ThemeCatalog.SUMMER ? 0x1407111f : 0x6007111f);
             if (reducedMotion) return;
-            if(themeChoice==ThemeCatalog.SUMMER) {
-                if(summerSurf==null){BitmapFactory.Options opts=new BitmapFactory.Options();opts.inScaled=false;opts.inSampleSize=2;summerSurf=BitmapFactory.decodeResource(getResources(),R.drawable.summer_wave_v1,opts);}
-                float t=android.os.SystemClock.uptimeMillis()/1000f;
-                paint.setAlpha(75);canvas.drawBitmap(summerSurf,null,new RectF(-w*.35f+(float)Math.sin(t*.22f)*w*.05f,h*.83f+(float)Math.sin(t*.45f)*h*.01f,w*1.2f,h*1.22f),paint);paint.setAlpha(255);
-                if(isAttachedToWindow())postInvalidateDelayed(60);return;
-            }
             if(themeChoice==ThemeCatalog.SLASHER) {
                 // Slow practical-light breathing complements the painted corridor.
                 canvas.drawColor(Color.argb(7+(int)(3*Math.sin(android.os.SystemClock.uptimeMillis()/2600.0)),35,0,0));
