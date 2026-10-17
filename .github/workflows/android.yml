@@ -93,11 +93,13 @@ jobs:
 
       - name: Verify material lifecycle without emulator
         run: |
-          javac -d /tmp/photosweep-render $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{BeachSharkRenderer,SeasonalRenderer,SeasonalThemes,ThemeCatalog,PlayPolicy,SlasherMotion,SlasherRenderer,PhotoMaterialArt,PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
+          javac -d /tmp/photosweep-render $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{BeachBackgroundRenderer,BeachSharkRenderer,SeasonalRenderer,SeasonalThemes,ThemeCatalog,PlayPolicy,SlasherMotion,SlasherRenderer,PhotoMaterialArt,PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
           java -cp /tmp/photosweep-render com.dominic.photosweep.MaterialLifecycleCheck
           java -cp /tmp/photosweep-render com.dominic.photosweep.MaterialArtCheck
           java -cp /tmp/photosweep-render com.dominic.photosweep.SlasherCheck
           java -cp /tmp/photosweep-render com.dominic.photosweep.SeasonalCheck
+          java -cp /tmp/photosweep-render com.dominic.photosweep.RapidReleaseCheck
+          java -cp /tmp/photosweep-render com.dominic.photosweep.BeachBackgroundCheck
           java -cp /tmp/photosweep-render com.dominic.photosweep.BeachSwimCheck
           java -cp /tmp/photosweep-render com.dominic.photosweep.BeachKeepCheck
           java -cp /tmp/photosweep-render com.dominic.photosweep.BeachSharkCheck

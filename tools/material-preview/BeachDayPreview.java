@@ -9,12 +9,12 @@ public final class BeachDayPreview {
   BufferedImage fixture=ImageIO.read(new File("app/src/main/res/drawable/tutorial_samples.png"));
   Bitmap first=new Bitmap(fixture.getSubimage(0,0,fixture.getWidth()/2,fixture.getHeight()/2));
   Bitmap second=new Bitmap(fixture.getSubimage(0,0,fixture.getWidth()/2,fixture.getHeight()/2));
-  Bitmap bg=new Bitmap(ImageIO.read(new File("app/src/main/res/drawable-nodpi/theme_summer_coast_v1.png")));
+  BeachBackgroundRenderer background=new BeachBackgroundRenderer(context);
   SeasonalRenderer effect=new SeasonalRenderer(context,SwipeTheme.Kind.SUMMER);
   effect.beach.bind(first,BeachSharkCheck.pose(145,280,0));
   for(int frame=0;frame<360;frame++){
    float t=frame/30f;SystemClock.now=1000+frame*1000/30;
-   Bitmap image=Bitmap.createBitmap(600,840,Bitmap.Config.ARGB_8888);Canvas c=new Canvas(image);Paint paint=new Paint(3);c.drawBitmap(bg,null,new RectF(0,0,600,900),paint);
+   Bitmap image=Bitmap.createBitmap(600,840,Bitmap.Config.ARGB_8888);Canvas c=new Canvas(image);Paint paint=new Paint(3);background.draw(c,SystemClock.now,600,840,false);
    String title="BEACH DAY · TRASH",caption;
    if(frame<174){
     Matrix pose=BeachSharkCheck.pose(145-105*SlasherMotion.ease(t/.65f),280,-8);
@@ -32,7 +32,7 @@ public final class BeachDayPreview {
    }
    BufferedImage sheet=new BufferedImage(600,930,BufferedImage.TYPE_INT_RGB);java.awt.Graphics2D out=sheet.createGraphics();out.setColor(new java.awt.Color(8,29,40));out.fillRect(0,0,600,930);out.drawImage(image.image,0,64,null);
    out.setColor(java.awt.Color.WHITE);out.setFont(new java.awt.Font("SansSerif",java.awt.Font.BOLD,21));out.drawString(title,18,26);out.setFont(new java.awt.Font("SansSerif",0,15));out.drawString(caption,18,51);
-   out.setFont(new java.awt.Font("SansSerif",0,14));out.drawString("Combined Beach Day draft · production renderer · host preview",18,922);out.dispose();c.graphics.dispose();ImageIO.write(sheet,"png",new File(folder,String.format("frame-%03d.png",frame)));
+   out.setFont(new java.awt.Font("SansSerif",0,14));out.drawString("Anatomy + living shoreline draft · production renderer · host preview",18,922);out.dispose();c.graphics.dispose();ImageIO.write(sheet,"png",new File(folder,String.format("frame-%03d.png",frame)));
   }
   System.out.println("Rendered 360 combined Trash / Keep frames through the same controller.");
  }

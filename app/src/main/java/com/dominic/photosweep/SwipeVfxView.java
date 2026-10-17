@@ -26,6 +26,23 @@ class SwipeVfxView extends View {
             this.renderer=renderer;this.photo=photo;this.born=born;this.phase=phase;
         }
     }
+    private boolean independentRelease,transferringRelease;
+    private final Matrix independentPose=new Matrix();
+    private float independentExit;
+    boolean advancesOnRelease(){return elemental || hasStagedRelease();}
+    int independentReleaseDuration(boolean keep){
+        return elemental && keep?2600:releaseDuration(keep)+40;
+    }
+    void continueIndependently(){
+        if(released==0 || !advancesOnRelease())throw new IllegalStateException("No captured release");
+        independentRelease=true;independentPose.set(photoToStage);
+        independentExit=-getWidth()-photo.right;
+    }
+    // Reparent the outgoing view without dropping its captured renderer/bitmap.
+    void transferRelease(Runnable transfer){
+        transferringRelease=true;
+        try{transfer.run();}finally{transferringRelease=false;}
+    }
     boolean hasIndependentKeep(){return elemental || hasStagedRelease();}
     private float keepPhase(){return SwipeMotion.clamp((photo.right-restRight)/Math.max(dp(120),getWidth()*.72f));}
     private void drawKeptPhotos(Canvas canvas,long now) {
@@ -439,13 +456,13 @@ class SwipeVfxView extends View {
     }
     void beginKeepClose() { returnOpen=open;closing=SystemClock.uptimeMillis();invalidate(); }
     void cancel() {
-        onGrinderShake(0);holding=false;returning=0;closing=0;open=0;
+        independentRelease=false;onGrinderShake(0);holding=false;returning=0;closing=0;open=0;
         if(slasherRenderer!=null)slasherRenderer.clear();
         if(seasonalRenderer!=null)seasonalRenderer.clear();
         keepDetached=false;progress=0;released=0;tracked=false;resetBites();bitmap=null;photo.setEmpty();sleeveRect.setEmpty();visiblePath.reset();geometryFrame=0;clearChips();
         if(clippedPhoto!=null){clippedPhoto.invalidate();clippedPhoto=null;}invalidate();
     }
-    @Override protected void onDetachedFromWindow() { keptPhotos.clear();cancel();super.onDetachedFromWindow(); }
+    @Override protected void onDetachedFromWindow() { if(!transferringRelease){keptPhotos.clear();cancel();}super.onDetachedFromWindow(); }
     private void clearChips() { for(Chip chip:chips){chip.born=0;chip.bitmap=null;}feed=0; }
     private void spawnChip(float x,float y,float u,float v) {
         Chip chip=chips[nextChip++%chips.length];chip.born=SystemClock.uptimeMillis();
@@ -473,6 +490,13 @@ class SwipeVfxView extends View {
         float time=(now-started)/1000f*speed/100f;
         float dt=lastFrame==0?16:Math.min(50,now-lastFrame);lastFrame=now;
         float phase=released==0?0:SwipeMotion.clamp((now-released)/(float)(reducedMotion?80:releaseDuration(progress>0)));
+        if(independentRelease && elemental && progress<0 && bitmap!=null){
+            // The old card no longer drives this view. Continue its leftward
+            // travel in stage coordinates, preserving tilt and UV damage.
+            photoToStage.set(independentPose);
+            photoToStage.postTranslate(independentExit*SwipeMotion.ease(phase),0);
+            updatePhoto(bitmap);
+        }
         float amount=SwipeMotion.clamp(Math.abs(progress));
         float fade=released==0?1:1-SwipeMotion.ease(phase);
         if(released==0) {

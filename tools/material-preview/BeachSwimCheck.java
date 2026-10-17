@@ -11,7 +11,7 @@ public final class BeachSwimCheck {
   Method draw=BeachSharkRenderer.class.getDeclaredMethod("swimmer",Canvas.class,float.class,float.class,float.class,long.class,float.class,float.class);draw.setAccessible(true);
   Field field=BeachSharkRenderer.class.getDeclaredField("swimMesh");field.setAccessible(true);
   Canvas canvas=new Canvas(Bitmap.createBitmap(600,840,Bitmap.Config.ARGB_8888));
-  float spine=new float[]{.52f,.56f,.49f}[shark.species()];
+  float spine=new float[]{.506f,.455f,.400f}[shark.species()];
   float low=Float.MAX_VALUE,high=-Float.MAX_VALUE;
   for(int frame=0;frame<100;frame++){
    float heading=frame<50?0:(frame-50)*.035f;
@@ -24,7 +24,7 @@ public final class BeachSwimCheck {
    float arc=0;
    for(int col=1;col<=40;col++)arc+=Math.hypot(center[col*2]-center[(col-1)*2],center[col*2+1]-center[(col-1)*2+1]);
    check(Math.abs(arc-384)<1.5,"body stretches or collapses during swimming");
-   float headX=center[74]+(center[76]-center[74])*.6f,headY=center[75]+(center[77]-center[75])*.6f;
+   float headX=center[76]+(center[78]-center[76])*.6f,headY=center[77]+(center[79]-center[77])*.6f;
    check(Math.hypot(headX-400,headY-400)<.12,"snout drifts off its contact anchor");
    for(int col=2;col<38;col++){
     int i=(row*41+col)*2;float dx=center[(col+1)*2]-center[(col-1)*2],dy=center[(col+1)*2+1]-center[(col-1)*2+1];
