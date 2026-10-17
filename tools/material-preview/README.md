@@ -11,7 +11,7 @@ Mesh colors are averaged per triangle by the adapter; Android interpolates them 
 Run from the repository root with Java 17:
 
 ```
-java com.sun.tools.javac.Main -d /tmp/photo-preview $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{SeasonalRenderer,SeasonalThemes,ThemeCatalog,PlayPolicy,SlasherMotion,SlasherRenderer,PhotoMaterialArt,PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
+java com.sun.tools.javac.Main -d /tmp/photo-preview $(find tools/material-preview -name '*.java') app/src/main/java/com/dominic/photosweep/{BeachSharkRenderer,SeasonalRenderer,SeasonalThemes,ThemeCatalog,PlayPolicy,SlasherMotion,SlasherRenderer,PhotoMaterialArt,PhotoMaterialMotion,PhotoMaterialRenderer,PhotoContact,PhotoInteraction,SwipeVfxView,SwipeTheme,SwipeMotion,HolidayThemes}.java tests/PhotoMaterialPolishCheck.java
 java -cp /tmp/photo-preview com.dominic.photosweep.MaterialPreview /tmp/photo-preview-frames
 ```
 
@@ -28,6 +28,8 @@ art snapshots, time-varying ice lighting, and damage masking under the new optic
 SlasherCheck verifies its staged release lifecycle. SlasherPreview renders the actual
 photo/knife and hinged-door sequences without an emulator.
 
-SeasonalCheck verifies release lifecycle, Halloween lifecycle and reduced motion. SeasonalPreview renders the actual Halloween code using the generated transparent art.
+SeasonalCheck verifies release lifecycle, persistent shark bite masks and reduced motion. SeasonalPreview renders the actual Summer / Halloween code using the generated transparent art.
 
 ToxicMeltCheck verifies contact-only hanging stock, photo-textured runoff, tilted pool intersection and zero saw shake. ToxicMeltPreview renders the real View through feeding, holding and pulling away.
+
+BeachSharkCheck verifies actual-photo swept contact, retained UV bites, species stability and fresh-photo reset. BeachSharkPreview shows all three species through approach, pullback, quick tilted return and release.

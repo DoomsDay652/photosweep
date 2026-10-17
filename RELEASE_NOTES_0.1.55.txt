@@ -1,0 +1,9 @@
+Photo Sweep 0.1.55
+
+- Adds Summer · Beach Day to Tier 3 holiday and seasonal themes.
+- Great white, tiger and hammerhead sharks circle and occasionally bite the held photo at actual mouth contact. Bite damage remains when pulled away.
+- Release left for a final bite and locked drag away, preserving the photo angle.
+- Keep uses a full-height wave with water filling the right side, lifting the photo and carrying it away.
+- Includes the approved Halloween, Slasher and Toxic animations from 0.1.54.
+
+Signed APK and AAB through the existing workflow. No emulator sessions.

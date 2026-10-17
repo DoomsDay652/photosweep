@@ -3,8 +3,8 @@ import android.content.Context;import android.graphics.*;import java.awt.image.B
 /** Runs the app's seasonal renderer on the host; no emulator or simulated Android GPU. */
 public class SeasonalPreview {
  public static void main(String[]args)throws Exception {
-  File folder=new File(args[0]);folder.mkdirs();SwipeTheme.Kind kind=SwipeTheme.Kind.HALLOWEEN;
-  Context context=new Context();BufferedImage fixture=ImageIO.read(new File("app/src/main/res/drawable/tutorial_samples.png"));Bitmap photo=new Bitmap(fixture.getSubimage(0,0,fixture.getWidth()/2,fixture.getHeight()/2));Bitmap background=new Bitmap(ImageIO.read(new File("app/src/main/res/drawable-nodpi/"+"holiday_halloween"+".png")));
+  File folder=new File(args[0]);folder.mkdirs();boolean summer=args[1].equals("summer");SwipeTheme.Kind kind=summer?SwipeTheme.Kind.SUMMER:SwipeTheme.Kind.HALLOWEEN;
+  Context context=new Context();BufferedImage fixture=ImageIO.read(new File("app/src/main/res/drawable/tutorial_samples.png"));Bitmap photo=new Bitmap(fixture.getSubimage(0,0,fixture.getWidth()/2,fixture.getHeight()/2));Bitmap background=new Bitmap(ImageIO.read(new File("app/src/main/res/drawable-nodpi/"+(summer?"theme_summer_coast_v1":"holiday_halloween")+".png")));
   SeasonalRenderer[] effects={new SeasonalRenderer(context,kind),new SeasonalRenderer(context,kind)};Matrix[] poses={new Matrix(),new Matrix()};
   for(int frame=0;frame<104;frame++) {
    float t=frame/30f;BufferedImage sheet=new BufferedImage(864,650,BufferedImage.TYPE_INT_RGB);java.awt.Graphics2D out=sheet.createGraphics();
@@ -16,7 +16,7 @@ public class SeasonalPreview {
     else {if(frame==15)effects[panel].begin(photo,pose);effects[panel].draw(canvas,panel==1,Math.min(1,(t-.5f)/(panel==0?2.7f:2.6f)),600,840,1.6f);}
     out.drawImage(scene.image,panel*432,45,432,605,null);canvas.graphics.dispose();
    }
-   out.setColor(java.awt.Color.BLACK);out.fillRect(0,0,864,45);out.setColor(java.awt.Color.WHITE);out.setFont(new java.awt.Font("SansSerif",java.awt.Font.BOLD,18));out.drawString("HALLOWEEN"+" / TRASH",14,20);out.drawString("HALLOWEEN"+" / KEEP",446,20);out.setFont(new java.awt.Font("SansSerif",0,13));out.drawString(frame<15?"Drag left":"Jack-o-lantern folds and swallows the photo",14,38);out.drawString(frame<15?"Drag right":"A ghost carries the photo into the night",446,38);out.dispose();ImageIO.write(sheet,"png",new File(folder,String.format("frame-%03d.png",frame)));
+   out.setColor(java.awt.Color.BLACK);out.fillRect(0,0,864,45);out.setColor(java.awt.Color.WHITE);out.setFont(new java.awt.Font("SansSerif",java.awt.Font.BOLD,18));out.drawString((summer?"SUMMER":"HALLOWEEN")+" / TRASH",14,20);out.drawString((summer?"SUMMER":"HALLOWEEN")+" / KEEP",446,20);out.setFont(new java.awt.Font("SansSerif",0,13));out.drawString(frame<15?"Drag left":summer?"Shark bites remove pieces of the photo":"Jack-o-lantern folds and swallows the photo",14,38);out.drawString(frame<15?"Drag right":summer?"Rolling surf carries the photo away":"A ghost carries the photo into the night",446,38);out.dispose();ImageIO.write(sheet,"png",new File(folder,String.format("frame-%03d.png",frame)));
   }
   System.out.println("Rendered 104 production "+kind+" Trash / Keep frames.");
  }

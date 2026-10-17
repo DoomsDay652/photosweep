@@ -1,0 +1,6 @@
+{
+  "mode": "built-in imagegen edit",
+  "asset": "app/src/main/res/drawable-nodpi/beach_keep_surf_v3.png",
+  "reference": "app/src/main/res/drawable-nodpi/beach_keep_surf_v2.png",
+  "prompt": "Use case: precise-object-edit. Edit target is the supplied realistic overhead wave VFX. Keep the detailed photographic broken white foam crest running vertically along the left quarter and its turquoise seawater style. Extend the sea to FILL THE ENTIRE RIGHT SIDE to the right image edge: continuous opaque turquoise water with natural caustics and subtle foam veins, absolutely no transparent gap or fading on the right. The wave and water also continue past the TOP AND BOTTOM image edges with no taper, because this is a screen-filling wave sheet. Only the area to the LEFT of the frothy leading crest is genuine alpha transparency. Strict full overhead view, no horizon, no beach, no text, no borders. Preserve realistic translucent spray along the LEFT foam edge, but solid continuous seawater on the whole right two thirds. This is a replacement wide water sheet that must cover a screen behind its leading wave crest."
+}

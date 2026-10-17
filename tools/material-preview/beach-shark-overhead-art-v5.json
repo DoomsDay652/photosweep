@@ -1,0 +1,6 @@
+{
+  "mode": "built-in imagegen edit",
+  "asset": "app/src/main/res/drawable-nodpi/beach_sharks_overhead_v5.png",
+  "reference": "app/src/main/res/drawable-nodpi/beach_sharks_overhead_v4.png",
+  "prompt": "Use case: style-transfer. Edit target: attached shark sprite atlas for an Android game. Preserve the exact full overhead dorsal view, silhouettes, nose-right tail-left direction, three rows, spacing and transparent background. Row 1 great white, row 2 tiger shark, row 3 hammerhead. Change only materials and lighting: make these convincing living marine animals photographed from directly above underwater, natural charcoal slate skin, fine subtle dermal denticle texture, restrained mottled variations and realistic tiger stripes. Soft diffuse underwater illumination, subdued highlights, no bright white outline or glossy rim. Remove the shiny molded plastic/toy appearance. Keep the anatomy, pose and registration unchanged, each whole shark isolated with genuine alpha transparency, no water scenery, no shadows outside silhouettes, no labels."
+}

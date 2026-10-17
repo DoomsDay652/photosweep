@@ -18,7 +18,7 @@ class SwipeVfxView extends View {
     private long materialStarted;
     private float toxicPoolNX=0,toxicPoolNY=1,toxicPoolLevel=Float.NaN;
     void setToxicPool(float nx,float ny,float level){toxicPoolNX=nx;toxicPoolNY=ny;toxicPoolLevel=level;materials.setToxicPool(nx,ny,level); }
-    boolean hasRetainedDamage(){return elemental && bitmap!=null && materials.motion.hasDamage();}
+    boolean hasRetainedDamage(){return (elemental && bitmap!=null && materials.motion.hasDamage()) || (seasonalRenderer!=null && seasonalRenderer.beach!=null && seasonalRenderer.beach.hasDamage());}
     private float materialSeconds(long now){if(materialStarted==0)materialStarted=now;return (now-materialStarted)/1000f;}
     private static final class KeptPhoto {
         final PhotoMaterialRenderer renderer;final Bitmap photo;final long born;final float phase;
@@ -145,7 +145,7 @@ class SwipeVfxView extends View {
         this.reducedMotion=reducedMotion;this.kind=kind;this.elemental=PhotoInteraction.supports(kind)&&enabled&&!reducedMotion;
         this.slasher=kind==SwipeTheme.Kind.SLASHER&&enabled&&!reducedMotion;
         this.slasherRenderer=slasher?new SlasherRenderer(context):null;
-        this.seasonal=(kind==SwipeTheme.Kind.HALLOWEEN)&&enabled&&!reducedMotion;
+        this.seasonal=(kind==SwipeTheme.Kind.SUMMER || kind==SwipeTheme.Kind.HALLOWEEN)&&enabled&&!reducedMotion;
         this.seasonalRenderer=seasonal?new SeasonalRenderer(context,kind):null;
         // Share immutable textures; decode once at bounded sizes, never in a draw frame.
         BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;options.inSampleSize=4;
@@ -307,6 +307,7 @@ class SwipeVfxView extends View {
     }
     private void updatePhoto(Bitmap image) {
         bitmap=image;
+        if(seasonalRenderer!=null && seasonalRenderer.beach!=null)seasonalRenderer.beach.bind(image,photoToStage);
         corners[0]=0;corners[1]=0;corners[2]=1;corners[3]=0;
         corners[4]=1;corners[5]=1;corners[6]=0;corners[7]=1;
         photoToStage.mapPoints(corners);photoToStage.getValues(transform);photoToStage.invert(stageToPhoto);
@@ -486,7 +487,12 @@ class SwipeVfxView extends View {
             else if(holding && tracked)slasherRenderer.drawSwipeCue(canvas,photoToStage,getWidth(),getHeight());
         } else if(seasonal) {
             if(released!=0)seasonalRenderer.draw(canvas,progress>0,phase,getWidth(),getHeight(),dp(1));
-            else if(holding && tracked)seasonalRenderer.drawSwipeCue(canvas,photoToStage,getWidth(),getHeight());
+            else if(seasonalRenderer.beach!=null && bitmap!=null && (holding || returning!=0 || hasRetainedDamage())){
+                if(holding)seasonalRenderer.beach.contact(now,getWidth(),getHeight());
+                seasonalRenderer.beach.paper(canvas,photoToStage);
+                if(holding || returning!=0)seasonalRenderer.beach.draw(canvas,now,getWidth(),getHeight(),returning==0?1:1-SwipeMotion.ease((now-returning)/280f));
+                if(holding)seasonalRenderer.drawSwipeCue(canvas,photoToStage,getWidth(),getHeight());
+            } else if(holding && tracked)seasonalRenderer.drawSwipeCue(canvas,photoToStage,getWidth(),getHeight());
         } else if(elemental) {
             boolean active=bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0 || hasRetainedDamage());
             float contactAlpha=photo.isEmpty()?0:SwipeMotion.grinderProximity(photo.left,Math.max(dp(22),maximumContact),dp(100));
@@ -524,7 +530,7 @@ class SwipeVfxView extends View {
     float keepClipEdge() { preparePocket(SystemClock.uptimeMillis());return sleeveRect.left; }
     private void clipPhoto(Canvas canvas,View view) {
         clippedPhoto=view;
-        if(hasStagedRelease()){if(released!=0)canvas.clipRect(0,0,0,0);return;}
+        if(hasStagedRelease()){if(released!=0 || (seasonalRenderer!=null && seasonalRenderer.beach!=null && (holding || returning!=0 || hasRetainedDamage())))canvas.clipRect(0,0,0,0);return;}
         if(elemental && bitmap!=null && !bitmap.isRecycled() && (holding || released!=0 || returning!=0 || hasRetainedDamage())) {
             canvas.clipRect(0,0,0,0);return;
         }

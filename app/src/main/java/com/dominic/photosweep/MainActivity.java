@@ -161,7 +161,8 @@ public class MainActivity extends ComponentActivity {
             "Columbus Day · twilight sailing horizon · animated",
             "Veterans Day · lanterns of gratitude",
             "Veterans Day · lanterns of gratitude · animated",
-            "Slasher · midnight motel"
+            "Slasher · midnight motel",
+            "Summer · Beach Day"
     };
     private static final int[][] THEME_COLORS = {
             {0xFF0F1C2F, 0xFF23384D, 0xFF40D2BC, 0xFFFF7580, 0xFFF7CC80},
@@ -250,7 +251,8 @@ public class MainActivity extends ComponentActivity {
             {0xFF172F43, 0xFF344D60, 0xFFAADCE8, 0xFFFFAE9C, 0xFFE6C99A},
             {0xFF1C2C3D, 0xFF344B58, 0xFFBCDCD5, 0xFFF3A2A9, 0xFFF2DEB0},
             {0xFF1C2C3D, 0xFF344B58, 0xFFBCDCD5, 0xFFF3A2A9, 0xFFF2DEB0},
-            {0xFF101A24, 0xFF25303B, 0xFF91C9DC, 0xFFD87377, 0xFFC8B58D}
+            {0xFF101A24, 0xFF25303B, 0xFF91C9DC, 0xFFD87377, 0xFFC8B58D},
+            {0xFF0C3644, 0xFF1D5863, 0xFF83E5E3, 0xFFFFB69B, 0xFFFFDF99}
     };
     private static final int[] COLOR_THEMES = {0, 1, 2, 13, 14, 15, 16, 17};
     private static final int[] HERO_THEMES = {3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
@@ -350,7 +352,8 @@ public class MainActivity extends ComponentActivity {
             R.drawable.holiday_columbus,
             R.drawable.holiday_veterans,
             R.drawable.holiday_veterans,
-            R.drawable.theme_slasher_v1
+            R.drawable.theme_slasher_v1,
+            R.drawable.theme_summer_coast_v1
     };
     private static final int[] THEME_FX_IDS = {
             R.drawable.fx_nebula,
@@ -439,8 +442,10 @@ public class MainActivity extends ComponentActivity {
             R.drawable.fx_holiday_columbus,
             R.drawable.fx_holiday_veterans,
             R.drawable.fx_holiday_veterans,
-            R.drawable.slasher_hand_overhand_v4
+            R.drawable.slasher_hand_overhand_v4,
+            R.drawable.summer_wave_v1
     };
+    private Bitmap summerSurf;
     private int INK = Color.rgb(237, 248, 249);
     private int MUTED = Color.rgb(170, 193, 205);
     private int BG = Color.rgb(15, 28, 47);
@@ -1839,6 +1844,7 @@ public class MainActivity extends ComponentActivity {
         int country=countryCollection(index),holiday=HolidayThemes.collection(index);
         String searchable=THEME_NAMES[index]+" "+(hasThemeMotion(index)?"animated":"still")+" "+themeAccessLabel(index);
         if(country>=0)searchable+=" "+COUNTRY_NAMES[country]+" "+COUNTRY_SCENES[country]+" "+COUNTRY_MOTIONS[country];
+        if(index==ThemeCatalog.SUMMER)searchable+=" Summer beach ocean shark surf waves seasonal tier 3";
         if(index==ThemeCatalog.SLASHER)searchable+=" Halloween horror knife door suspense tier 3";
         if(holiday>=0)searchable+=" "+HolidayThemes.SEARCH[holiday]+" "+HolidayThemes.SCENES[holiday];
         return searchable.toLowerCase(Locale.ROOT).contains(query);
@@ -2905,7 +2911,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private boolean hasPhotoElementBorder() {
-        return themeChoice!=ThemeCatalog.SLASHER && SeasonalThemes.group(themeChoice)!=SeasonalThemes.HALLOWEEN && !reducedMotion && (themeTier(themeChoice) == 3 || countryCollection(themeChoice) >= 0) && swipeStyle != 9;
+        return themeChoice!=ThemeCatalog.SLASHER && themeChoice!=ThemeCatalog.SUMMER && SeasonalThemes.group(themeChoice)!=SeasonalThemes.HALLOWEEN && !reducedMotion && (themeTier(themeChoice) == 3 || countryCollection(themeChoice) >= 0) && swipeStyle != 9;
     }
 
     private void reviewScreen() {
@@ -4318,8 +4324,14 @@ public class MainActivity extends ComponentActivity {
                 float dw = art.getWidth() * scale, dh = art.getHeight() * scale;
                 canvas.drawBitmap(art, null, new RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), paint);
             }
-            canvas.drawColor(isColorTheme(themeChoice) ? 0x18000000 : 0x6007111f);
+            canvas.drawColor(isColorTheme(themeChoice) ? 0x18000000 : themeChoice==ThemeCatalog.SUMMER ? 0x1407111f : 0x6007111f);
             if (reducedMotion) return;
+            if(themeChoice==ThemeCatalog.SUMMER) {
+                if(summerSurf==null){BitmapFactory.Options opts=new BitmapFactory.Options();opts.inScaled=false;opts.inSampleSize=2;summerSurf=BitmapFactory.decodeResource(getResources(),R.drawable.summer_wave_v1,opts);}
+                float t=android.os.SystemClock.uptimeMillis()/1000f;
+                paint.setAlpha(75);canvas.drawBitmap(summerSurf,null,new RectF(-w*.35f+(float)Math.sin(t*.22f)*w*.05f,h*.83f+(float)Math.sin(t*.45f)*h*.01f,w*1.2f,h*1.22f),paint);paint.setAlpha(255);
+                if(isAttachedToWindow())postInvalidateDelayed(60);return;
+            }
             if(themeChoice==ThemeCatalog.SLASHER) {
                 // Slow practical-light breathing complements the painted corridor.
                 canvas.drawColor(Color.argb(7+(int)(3*Math.sin(android.os.SystemClock.uptimeMillis()/2600.0)),35,0,0));
