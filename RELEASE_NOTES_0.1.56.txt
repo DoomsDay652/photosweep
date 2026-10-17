@@ -1,0 +1,7 @@
+Photo Sweep 0.1.56
+
+Beach Day: corrected overhead shark anatomy, more varied swimming, and a beach shoreline with six kinds of drifting props carried by surf.
+
+Immediate next photo: Summer, Halloween, Slasher and all six material themes advance on release while the outgoing Keep/Trash effect finishes independently behind the new card. Captured angle and photo damage are preserved.
+
+Validated without an emulator, including rapid release ownership and existing animation regression checks.
