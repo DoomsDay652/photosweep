@@ -46,6 +46,21 @@ public final class BeachSwimCheck {
    lastX=x;lastY=y;
   }
   check(samples>150&&alignment/samples>.85f,"head slides sideways instead of tracking swim direction");
-  System.out.println("PASS: constant body length, snout/contact registration, no inverted spine sections, strong traveling tail stroke through turns.");
+  Field routes=BeachSharkRenderer.class.getDeclaredField("routes");routes.setAccessible(true);
+  Field recovery=BeachSharkRenderer.class.getDeclaredField("lastRecovery");recovery.setAccessible(true);
+  for(int seed=0;seed<16;seed++){
+   BeachSharkRenderer run=new BeachSharkRenderer(new Context());((java.util.Random)routes.get(run)).setSeed(seed);
+   run.bind(photo,BeachSharkCheck.pose(145,280,0));int last=-1,changes=0;float px=0,py=0;
+   for(int frame=0;frame<420;frame++){
+    run.bind(photo,BeachSharkCheck.pose(35,280,-8));run.contact(20000+frame*16,600,840);
+    int route=recovery.getInt(run);if(route>=0&&route!=last){changes++;last=route;}
+    float x=run.mouthX(),y=run.mouthY();
+    check(Float.isFinite(x+y+run.heading()),"invalid steering");
+    if(frame>0)check(Math.hypot(x-px,y-py)<9,"visible swim teleports");
+    px=x;py=y;
+   }
+   check(changes>=3&&run.biteCount()>=3,"seeded swim repeats one route or misses contact bites");
+  }
+  System.out.println("PASS: constant body length, snout/contact registration, no inverted spine sections, strong traveling tail stroke through turns and 16 varied seeded swim routes.");
  }
 }
