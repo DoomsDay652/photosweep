@@ -943,8 +943,9 @@ public class MainActivity extends ComponentActivity {
         stopPhotoIdle();
         android.widget.VideoView player=new android.widget.VideoView(this);
         FrameLayout container=new FrameLayout(this);container.setBackgroundColor(Color.BLACK);
-        container.setMinimumHeight(dp(300));
-        container.addView(player,new FrameLayout.LayoutParams(-1,dp(420),Gravity.CENTER));
+        int previewHeight=Math.min(dp(420),Math.max(dp(160),getResources().getDisplayMetrics().heightPixels-dp(180)));
+        container.setMinimumHeight(previewHeight);
+        container.addView(player,new FrameLayout.LayoutParams(-1,previewHeight,Gravity.CENTER));
         android.widget.MediaController controls=new android.widget.MediaController(this);
         controls.setAnchorView(player);player.setMediaController(controls);
         android.app.AlertDialog dialog=themedFeedbackDialog("Video"+(duration>0?" · "+MediaReviewPolicy.duration(duration):""))
@@ -3445,7 +3446,16 @@ public class MainActivity extends ComponentActivity {
         if (cached != null && !cached.isRecycled()) return cached;
         try {
             if(photo.video){
-                Bitmap thumbnail=getContentResolver().loadThumbnail(photo.uri,new Size(1080,1080),null);
+                Bitmap thumbnail=null;
+                try{thumbnail=getContentResolver().loadThumbnail(photo.uri,new Size(1080,1080),null);}catch(Exception unavailable){}
+                if(thumbnail==null){
+                    thumbnail=Bitmap.createBitmap(720,540,Bitmap.Config.ARGB_8888);
+                    Canvas poster=new Canvas(thumbnail);poster.drawColor(0xff152839);
+                    Paint text=new Paint(Paint.ANTI_ALIAS_FLAG);text.setColor(Color.WHITE);text.setTextAlign(Paint.Align.CENTER);
+                    text.setTextSize(42);poster.drawText("▶",360,220,text);
+                    text.setTextSize(28);poster.drawText("Video · "+MediaReviewPolicy.duration(photo.duration),360,285,text);
+                    text.setTextSize(22);poster.drawText("Thumbnail unavailable · tap to try playback",360,330,text);
+                }
                 if(thumbnail!=null && isDestroyed()){thumbnail.recycle();return null;}
                 if(thumbnail!=null)reviewPhotos.put(photo.id,thumbnail);
                 return thumbnail;
