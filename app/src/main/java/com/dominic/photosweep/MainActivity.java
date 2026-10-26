@@ -455,7 +455,8 @@ public class MainActivity extends ComponentActivity {
     private int GOLD = Color.rgb(247, 204, 128);
 
     private static class Photo {
-        long id, timestamp, size;
+        long id, timestamp, size, duration;
+        boolean video;
         Uri uri;
         String month;
         int year;
@@ -467,10 +468,19 @@ public class MainActivity extends ComponentActivity {
         Uri uri;
         TrashEntry(long id, long trashedAt, long timestamp) {
             this.id = id; this.trashedAt = trashedAt; this.timestamp = timestamp;
-            this.uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+            this.uri = mediaUri(id);
         }
     }
 
+    private static Uri mediaUri(long key) {
+        return ContentUris.withAppendedId(MediaReviewPolicy.isVideo(key)
+                ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                MediaReviewPolicy.providerId(key));
+    }
+
+    private boolean videoMode;
+    private android.widget.VideoView activeVideo;
+    private android.app.AlertDialog videoDialog;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService reviewWorker = Executors.newSingleThreadExecutor();
     private final ExecutorService duplicateWorker = Executors.newSingleThreadExecutor();
@@ -531,6 +541,8 @@ public class MainActivity extends ComponentActivity {
         final String month = selectedMonth;
         final boolean full = fullScreenReview;
         final int theme = themeChoice;
+        final boolean videos = videoMode;
+        TextView videoBadge;
         long photoId = -1;
         boolean ready;
         FrameLayout stage, card, progress;
@@ -646,6 +658,7 @@ public class MainActivity extends ComponentActivity {
             if (gravitySensor == null) gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         }
         themeChoice = getPreferences(MODE_PRIVATE).getInt("theme", 0);
+        videoMode = getPreferences(MODE_PRIVATE).getBoolean("video_mode", false);
         adminMode = getPreferences(MODE_PRIVATE).getBoolean("admin_mode", false);
         testingVisible = adminMode || getPreferences(MODE_PRIVATE).getBoolean("testing_visible", false);
         reducedMotion = getPreferences(MODE_PRIVATE).getBoolean("reduced_motion", false);
@@ -734,6 +747,7 @@ public class MainActivity extends ComponentActivity {
     @Override protected void onPause() {
         if(tokenSlot!=null)tokenSlot.finishImmediately();
         photoIdleResumed = false;
+        if(videoDialog!=null)videoDialog.dismiss();
         stopPhotoIdle();
         if(reviewPage!=null && !reviewActionRunning && pendingTrash==-1 && pendingRestore==-1) {
             reviewPage.card.animate().cancel();reviewPage.effect.cancel();
@@ -750,6 +764,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override public void onDestroy() {
+        if(videoDialog!=null)videoDialog.dismiss();
         clearOutgoingSwipes();
         if(tokenSlot!=null){tokenSlot.dispose();tokenSlot=null;}
         if(tokenWalletDialog!=null){tokenWalletDialog.setOnDismissListener(null);tokenWalletDialog.dismiss();tokenWalletDialog=null;}
@@ -883,9 +898,78 @@ public class MainActivity extends ComponentActivity {
         if (getWindow() != null) getWindow().setNavigationBarColor(BG);
     }
 
+    private void addMediaTabs() {
+        if(tutorialStep>=0)return;
+        LinearLayout tabs=new LinearLayout(this);tabs.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams row=new LinearLayout.LayoutParams(-1,dp(36));
+        row.topMargin=dp(5);row.bottomMargin=dp(9);root.addView(tabs,row);
+        for(boolean videos:new boolean[]{false,true}){
+            boolean selected=videos==videoMode;
+            Button tab=button(tabs,videos?"Videos":"Photos",selected?GREEN:PANEL,selected?BG:INK,()->selectMediaTab(videos));
+            tab.setTextSize(13);tab.setAllCaps(false);tab.setSelected(selected);tab.setMinimumHeight(0);
+            tab.setContentDescription((videos?"Show videos":"Show photos")+(selected?", selected":""));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(34),1);
+            if(videos)lp.leftMargin=dp(6);tab.setLayoutParams(lp);
+        }
+    }
+
+    private void selectMediaTab(boolean videos) {
+        if(videos==videoMode || reviewActionRunning || pendingTrash!=-1 || pendingRestore!=-1)return;
+        if(videoDialog!=null)videoDialog.dismiss();
+        stopPhotoDrag();stopPhotoIdle();clearOutgoingSwipes();
+        if(reviewPage!=null)reviewPage.effect.cancel();
+        reviewPage=null;fullScreenReview=false;
+        videoMode=videos;getPreferences(MODE_PRIVATE).edit().putBoolean("video_mode",videos).apply();
+        invalidateMediaSnapshot();photos.clear();photosByMonth.clear();duplicates.clear();
+        // Cached identities remain separate; only the selected collection is queried.
+        render();
+        boolean needsVideoChoice=videos && Build.VERSION.SDK_INT>=33
+                && checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO)!=PackageManager.PERMISSION_GRANTED
+                && !getPreferences(MODE_PRIVATE).getBoolean("video_permission_requested",false);
+        if(needsVideoChoice)requestAccess();else if(hasAccess())loadPhotos();else requestAccess();
+    }
+
+    private void openReviewMedia(long id) {
+        if(reviewActionRunning || pendingTrash!=-1 || pendingRestore!=-1)return;
+        for(Photo item:photos)if(item.id==id){
+            if(item.video)showVideoPreview(item.uri,item.duration);
+            else{fullScreenReview=true;render();}
+            return;
+        }
+    }
+
+    private void showVideoPreview(Uri uri,long duration) {
+        if(videoDialog!=null)videoDialog.dismiss();
+        stopPhotoIdle();
+        android.widget.VideoView player=new android.widget.VideoView(this);
+        FrameLayout container=new FrameLayout(this);container.setBackgroundColor(Color.BLACK);
+        container.setMinimumHeight(dp(300));
+        container.addView(player,new FrameLayout.LayoutParams(-1,dp(420),Gravity.CENTER));
+        android.widget.MediaController controls=new android.widget.MediaController(this);
+        controls.setAnchorView(player);player.setMediaController(controls);
+        android.app.AlertDialog dialog=themedFeedbackDialog("Video"+(duration>0?" · "+MediaReviewPolicy.duration(duration):""))
+                .setView(container).setNegativeButton("Close",null).create();
+        activeVideo=player;videoDialog=dialog;
+        player.setOnErrorListener((mp,what,extra)->{
+            Toast.makeText(this,"This video could not be played. You can still review its thumbnail.",Toast.LENGTH_LONG).show();
+            dialog.dismiss();return true;
+        });
+        dialog.setOnShowListener(d->{stopMusic();player.start();});
+        dialog.setOnDismissListener(d->{
+            player.stopPlayback();
+            if(activeVideo==player)activeVideo=null;
+            if(videoDialog==dialog)videoDialog=null;
+            if(!isDestroyed() && photoIdleResumed){
+                if(audio!=null)audio.resume(musicEnabled,musicVolume/100f);
+                if(reviewPage!=null)schedulePhotoIdle(reviewPage.card);
+            }
+        });
+        player.setVideoURI(uri);dialog.show();
+    }
+
     private boolean hasAccess() {
         if (Build.VERSION.SDK_INT <= 32) return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-        return checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+        return checkSelfPermission(videoMode ? Manifest.permission.READ_MEDIA_VIDEO : Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
                 (Build.VERSION.SDK_INT >= 34 && checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED);
     }
 
@@ -909,14 +993,15 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void requestAccess() {
-        new android.app.AlertDialog.Builder(this).setTitle("Choose photo access")
-            .setMessage("Photo Sweep reads photos you allow so you can review, keep or move them to Android Trash. Photos are processed on this device and are not uploaded. You can allow selected photos, allow all photos, or decline. Android asks for confirmation before Trash or Restore unless you separately allow Manage media.")
+        new android.app.AlertDialog.Builder(this).setTitle(videoMode ? "Choose video access" : "Choose photo access")
+            .setMessage("Photo Sweep reads the photos or videos you allow so you can review, keep or move them to Android Trash. Media is processed on this device and is not uploaded. You can allow selected items, allow all, or decline. Android asks for confirmation before Trash or Restore unless you separately allow Manage media.")
             .setNegativeButton("Not now", null).setPositiveButton("Continue", (d,w) -> requestPhotoPermission()).show();
     }
 
     private void requestPhotoPermission() {
-        if (Build.VERSION.SDK_INT >= 34) requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED}, PERMISSION_REQUEST);
-        else if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES}, PERMISSION_REQUEST);
+        if(videoMode)getPreferences(MODE_PRIVATE).edit().putBoolean("video_permission_requested",true).apply();
+        if (Build.VERSION.SDK_INT >= 34) requestPermissions(new String[]{videoMode ? Manifest.permission.READ_MEDIA_VIDEO : Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED}, PERMISSION_REQUEST);
+        else if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{videoMode ? Manifest.permission.READ_MEDIA_VIDEO : Manifest.permission.READ_MEDIA_IMAGES}, PERMISSION_REQUEST);
         else requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_REQUEST);
     }
 
@@ -932,21 +1017,24 @@ public class MainActivity extends ComponentActivity {
         if (loading) { reloadPhotosPending = true; return; }
         loading = true; reloadPhotosPending = false;
         final int token = ++generation;
+        final boolean videos = videoMode;
         if (photos.isEmpty()) render();
         io.execute(() -> {
             ArrayList<Photo> found = new ArrayList<>();
             String[] columns = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN,
-                    MediaStore.Images.Media.DATE_ADDED, MediaStore.Images.Media.SIZE};
-            try (Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    MediaStore.Images.Media.DATE_ADDED, MediaStore.Images.Media.SIZE,
+                    videos ? MediaStore.Video.Media.DURATION : MediaStore.Images.Media.WIDTH};
+            try (Cursor cursor = getContentResolver().query(videos ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     columns, null, null, MediaStore.Images.Media.DATE_ADDED + " DESC")) {
                 if (cursor != null) {
                     while (cursor.moveToNext()) {
                         Photo p = new Photo();
-                        p.id = cursor.getLong(0);
+                        p.video=videos; p.id = MediaReviewPolicy.key(cursor.getLong(0),videos);
+                        p.duration=videos ? cursor.getLong(4) : 0;
                         p.timestamp = cursor.getLong(1);
                         if (p.timestamp <= 0) p.timestamp = cursor.getLong(2) * 1000L;
                         p.size = cursor.getLong(3);
-                        p.uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, p.id);
+                        p.uri = mediaUri(p.id);
                         java.time.YearMonth date = java.time.YearMonth.from(java.time.Instant.ofEpochMilli(p.timestamp)
                                 .atZone(java.time.ZoneId.systemDefault()));
                         p.year = date.getYear(); p.month = date.toString();
@@ -962,7 +1050,8 @@ public class MainActivity extends ComponentActivity {
                 render();
                 if (reloadPhotosPending) { loadPhotos(); return; }
                 if (canManage()) cleanupTrash();
-                scanDuplicates(new ArrayList<>(found), token);
+                if(!videos)scanDuplicates(new ArrayList<>(found), token);
+                else duplicateScanning=false;
             });
         });
     }
@@ -1129,7 +1218,7 @@ public class MainActivity extends ComponentActivity {
         else if (showingSettings) settingsScreen();
         else if (tutorialStep < 0 && !hasAccess()) intro();
         else if (tutorialStep < 0 && loading && photos.isEmpty() && !showingTrash) {
-            if (!reviewing || !fullScreenReview) heading("Photo Sweep", "Gathering your photos…");
+            if (!reviewing || !fullScreenReview) heading("Photo Sweep", videoMode?"Gathering your videos…":"Gathering your photos…");
         }
         else if (showingTrash) trashScreen();
         else if (reviewing && selectedMonth != null) reviewScreen();
@@ -1230,7 +1319,7 @@ public class MainActivity extends ComponentActivity {
     private boolean updateReviewPage() {
         ReviewPage page = reviewPage;
         if (tutorialStep >= 0 || page == null || page.content != root || !reviewing || showingShop || showingSettings || showingThemes || showingTrash
-                || !hasAccess() || page.theme != themeChoice || page.full != fullScreenReview
+                || !hasAccess() || page.videos != videoMode || page.theme != themeChoice || page.full != fullScreenReview
                 || !page.month.equals(selectedMonth)) return false;
         List<Photo> month = monthPhotos();
         Photo current = null; int remaining = 0;
@@ -1239,6 +1328,7 @@ public class MainActivity extends ComponentActivity {
         }
         if (current == null) return pendingTrash!=-1;
         if (page.date != null) page.date.setText(photoDate(current));
+        if(page.videoBadge!=null)page.videoBadge.setText("▶  "+MediaReviewPolicy.duration(current.duration)+" · Tap to play");
         if (page.count != null) page.count.setText(page.full ? remaining + "/" + month.size() + " left"
                 : remaining + " of " + month.size() + " left to review");
         if (page.fill != null) {
@@ -1262,7 +1352,7 @@ public class MainActivity extends ComponentActivity {
             page.photoId = current.id;
             loadReviewPhoto(current, page.image);
             attachSwipeGesture(page.card, page.stage, page.effect, page.border, current,
-                    page.full ? null : () -> { fullScreenReview = true; render(); });
+                    page.full ? null : () -> openReviewMedia(page.photoId));
             schedulePhotoIdle(page.card);
         }
         return true;
@@ -1287,10 +1377,11 @@ public class MainActivity extends ComponentActivity {
         label("Photo Sweep", 36, INK, true);
         spacer(10);
         label("A calmer way to clear your camera roll.", 18, MUTED, false);
+        addMediaTabs();
         spacer(34);
         
         spacer(32);
-        button(root, "Choose photo access", GREEN, Color.WHITE, this::requestAccess);
+        button(root, videoMode ? "Choose video access" : "Choose photo access", GREEN, Color.WHITE, this::requestAccess);
         button(root, "Privacy policy", PANEL, INK, () -> accounts.showPrivacy());
         spacer(18);
         
@@ -1340,7 +1431,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void yearsScreen() {
-        libraryHeader(accounts == null ? "Your photos" : accounts.photosHeading());
+        libraryHeader(videoMode ? (accounts==null?"Your videos":accounts.photosHeading().replace("photos","videos")) : accounts == null ? "Your photos" : accounts.photosHeading());
+        addMediaTabs();
         LinearLayout statsToggle = new LinearLayout(this); statsToggle.setGravity(Gravity.CENTER_VERTICAL);
         statsToggle.setPadding(dp(16), dp(12), dp(16), dp(12)); statsToggle.setBackground(themeButton(PANEL, 20));
         root.addView(statsToggle, new LinearLayout.LayoutParams(-1, -2));
@@ -1361,7 +1453,11 @@ public class MainActivity extends ComponentActivity {
         }
         java.util.TreeSet<Integer> years = new java.util.TreeSet<>(Collections.reverseOrder());
         for (Photo photo : photos) years.add(photo.year);
-        if (years.isEmpty()) { label("No photos available. Check photo access.", 17, MUTED, false); return; }
+        if (years.isEmpty()) {
+            label(loading?(videoMode?"Loading videos…":"Loading photos…"):(videoMode?"No videos available. Check video access.":"No photos available. Check photo access."),17,MUTED,false);
+            if(!loading)button(root,videoMode?"Change video access":"Change photo access",PANEL,GREEN,this::requestAccess);
+            return;
+        }
         LinearLayout list = optionsList("years");
         for (int year : years) {
             Photo cover = null; int remaining = 0; java.util.HashSet<String> months = new java.util.HashSet<>();
@@ -1420,6 +1516,7 @@ public class MainActivity extends ComponentActivity {
             card.setOnClickListener(v -> tutorialClick("month", () -> openReviewMonth(month)));
         }
         if (count % 2 != 0) row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        if(count==0 && !loading)label(videoMode?"No videos in this year. Choose another year or Photos.":"No photos in this year.",15,MUTED,false);
     }
 
     private void loadMonthThumbnail(Photo photo, ImageView image) {
@@ -2036,7 +2133,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void addPrivacyOptions(LinearLayout list) {
-        settingsRow(list,"","Photo access","",this::requestAccess);
+        settingsRow(list,"","Photo / video access","",this::requestAccess);
         settingsRow(list,"","Android permissions","",()->startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()))));
         settingsRow(list,"","Privacy policy","",()->accounts.showPrivacy());
         settingsRow(list,"","On-device data","",()->showThemedFeedbackDialog(themedFeedbackDialog("On-device data").setMessage("Photos and review progress stay on this device. Signing in does not back them up or sync them.").setPositiveButton("Done",null).create()));
@@ -2589,6 +2686,7 @@ public class MainActivity extends ComponentActivity {
     private void monthsScreen() {
         back("All years", () -> { selectedYear = -1; selectedMonth = null; render(); });
         libraryHeader(Integer.toString(selectedYear));
+        addMediaTabs();
         addMonthLibrary(selectedYear, "months:" + selectedYear);
     }
 
@@ -2650,7 +2748,7 @@ public class MainActivity extends ComponentActivity {
 
     private boolean canUndoLastPhoto() {
         if (tutorialStep >= 0) return tutorialStep == 2;
-        if (lastUndo == null || !lastUndo.month.equals(selectedMonth)) return false;
+        if (lastUndo == null || MediaReviewPolicy.isVideo(lastUndo.id)!=videoMode || !lastUndo.month.equals(selectedMonth)) return false;
         return lastUndo.trashed ? trashEntries.stream().anyMatch(entry -> entry.id == lastUndo.id)
                 : photos.stream().anyMatch(photo -> photo.id == lastUndo.id);
     }
@@ -2769,11 +2867,11 @@ public class MainActivity extends ComponentActivity {
                 check.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             }
             long timeLeft = Math.max(0, SEVEN_DAYS - (System.currentTimeMillis() - entry.trashedAt));
-            TextView days = new TextView(this); days.setText(ReviewNavigation.expiry(timeLeft));
+            TextView days = new TextView(this); days.setText((MediaReviewPolicy.isVideo(entry.id)?"▶ Video · ":"")+ReviewNavigation.expiry(timeLeft));
             days.setTextColor(0xffffcf83); days.setTextSize(12); days.setGravity(Gravity.CENTER);
             days.setPadding(dp(2), dp(7), dp(2), dp(4)); card.addView(days);
-            page.descriptions.put(entry.id,DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))+". "+days.getText());
-            card.setContentDescription(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))
+            page.descriptions.put(entry.id,(MediaReviewPolicy.isVideo(entry.id)?"Video. ":"Photo. ")+DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))+". "+days.getText());
+            card.setContentDescription((MediaReviewPolicy.isVideo(entry.id)?"Video. ":"Photo. ")+DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp))
                     + ". " + days.getText() + (selected ? ". Selected" : "")
                     + (trashSelecting ? ". Tap to toggle selection" : ". Tap to inspect"));
             tutorialBind(card, entry.id == -101 ? "sample-first" : entry.id == -201 ? "sample-second" : "other-sample");
@@ -2821,9 +2919,10 @@ public class MainActivity extends ComponentActivity {
     private void inspectTrash(TrashEntry entry) {
         ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
         image.setBackgroundColor(BG);
+        if(MediaReviewPolicy.isVideo(entry.id)){image.setContentDescription("Video in Trash. Tap to play");image.setOnClickListener(v->showVideoPreview(entry.uri,0));}
         image.setLayoutParams(new android.view.ViewGroup.LayoutParams(-1, dp(320)));
         loadPreview(entry.id, entry.uri, image);
-        showThemedFeedbackDialog(themedFeedbackDialog(DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp)))
+        showThemedFeedbackDialog(themedFeedbackDialog((MediaReviewPolicy.isVideo(entry.id)?"Video · ":"")+DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(entry.timestamp)))
                 .setView(image).setNegativeButton("Close", null)
                 .setPositiveButton("Restore", (dialog, which) -> restore(entry))
                 .setNeutralButton("Select", (dialog, which) -> {
@@ -2920,6 +3019,7 @@ public class MainActivity extends ComponentActivity {
         List<Photo> month = monthPhotos();
         Photo current = null; int remaining = 0;
         for (Photo p : month) if (p.id!=pendingTrash && !reviewed.contains(Long.toString(p.id))) { remaining++; if (current == null) current = p; }
+        if(videoMode && fullScreenReview){fullScreenReview=false;applyContentInsets();}
         if (fullScreenReview && current != null) { fullScreenReviewScreen(current, remaining, month.size()); return; }
         if (fullScreenReview) { fullScreenReview = false; applyContentInsets(); }
         LinearLayout reviewToolbar = new LinearLayout(this); reviewToolbar.setGravity(Gravity.CENTER_VERTICAL);
@@ -2933,6 +3033,7 @@ public class MainActivity extends ComponentActivity {
         });
         Button more=button(reviewToolbar,"⋯",PANEL,INK,this::showReviewMenu);more.setContentDescription("More: Themes, Shop, Settings, Feedback");
         LinearLayout.LayoutParams moreLp=new LinearLayout.LayoutParams(dp(48),dp(48));moreLp.leftMargin=dp(7);more.setLayoutParams(moreLp);
+        addMediaTabs();
         String monthName = ReviewNavigation.title(selectedMonth, true);
         TextView dateHeading = heading(current == null ? monthName : photoDate(current), remaining + " of " + month.size() + " left to review");
         TextView remainingHeading = headingSubtitle;
@@ -2950,7 +3051,7 @@ public class MainActivity extends ComponentActivity {
             lp.width = (int) (progress.getWidth() * (month.size() == 0 ? 0 : (month.size() - remainingCount) / (float) month.size()));
             fill.setLayoutParams(lp); });
         if (current == null) {
-            spacer(65); label("All caught up ✨", 28, INK, true); spacer(12);
+            spacer(65); label(month.isEmpty() ? (videoMode ? "No videos this month" : "No photos this month") : "All caught up ✨", 28, INK, true); spacer(12);
             
             if (canUndoLastPhoto()) {
                 spacer(20);
@@ -2973,14 +3074,19 @@ public class MainActivity extends ComponentActivity {
         FrameLayout card = new SwipeVfxView.Card(this);
         card.setBackgroundColor(Color.TRANSPARENT);
         card.setClipChildren(false); card.setClipToPadding(false); page.card = card;
-        card.setContentDescription("Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
+        card.setContentDescription(shown.video ? "Video. Tap to play, swipe left to Trash or right to Keep" : "Photo. Tap for full-screen review, swipe left to Trash or right to Keep");
         stage.addView(card, new FrameLayout.LayoutParams(-1, -1));
         ImageView photo = new ImageView(this); photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         photo.setPadding(root.getPaddingLeft()+dp(28), dp(20), root.getPaddingRight()+dp(28), dp(42)); page.image = photo;
-        photo.setContentDescription("Tap for full-screen photo review");
+        photo.setContentDescription(shown.video ? "Video preview. Tap to play" : "Tap for full-screen photo review");
         card.addView(new PhotoShadowView(photo), new FrameLayout.LayoutParams(-1, -1));
         card.addView(photo, new FrameLayout.LayoutParams(-1, -1));
         loadReviewPhoto(shown, photo);
+        if(shown.video){
+            TextView badge=pill("▶  "+MediaReviewPolicy.duration(shown.duration)+" · Tap to play",INK,PANEL);
+            FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-2,dp(34),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+            lp.bottomMargin=dp(7);card.addView(badge,lp);page.videoBadge=badge;
+        }
         PhotoElementBorderView fireBorder = null;
         if (hasPhotoElementBorder()) {
             fireBorder = new PhotoElementBorderView(photo, themeChoice);
@@ -3013,7 +3119,7 @@ public class MainActivity extends ComponentActivity {
             uiHandler.postDelayed(() -> overlay.animate().alpha(0f).setDuration(400)
                     .withEndAction(() -> overlay.setVisibility(View.GONE)).start(), 2300);
         } else overlay.setVisibility(View.GONE);
-        attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> { fullScreenReview = true; render(); });
+        attachSwipeGesture(card, stage, effect, fireBorder, shown, () -> openReviewMedia(shown.id));
         tutorialBind(card, tutorialStep == 1 ? "keep" : "trash");
         page.card = card; page.effect = effect; page.border = fireBorder;
         schedulePhotoIdle(card);
@@ -3338,6 +3444,12 @@ public class MainActivity extends ComponentActivity {
         Bitmap cached = reviewPhotos.get(photo.id);
         if (cached != null && !cached.isRecycled()) return cached;
         try {
+            if(photo.video){
+                Bitmap thumbnail=getContentResolver().loadThumbnail(photo.uri,new Size(1080,1080),null);
+                if(thumbnail!=null && isDestroyed()){thumbnail.recycle();return null;}
+                if(thumbnail!=null)reviewPhotos.put(photo.id,thumbnail);
+                return thumbnail;
+            }
             Bitmap decoded = ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(), photo.uri), (decoder, info, source) -> {
                 int w = info.getSize().getWidth(), h = info.getSize().getHeight();
                 float scale = PhotoFit.scale(w, h);
@@ -3403,6 +3515,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void showPhotoZoom(Photo photo) {
+        if(photo.video){showVideoPreview(photo.uri,photo.duration);return;}
         if (zoomOverlay != null) closePhotoZoom();
         FrameLayout overlay = new FrameLayout(this);
         overlay.setBackgroundColor(Color.BLACK);
@@ -4069,7 +4182,7 @@ public class MainActivity extends ComponentActivity {
         } catch (Exception e) {
             pendingTrash = -1; pendingTrashUndo = null; skipMediaReloadOnResume = false;
             if (reviewPage != null) reviewPage.photoId = -1;
-            Toast.makeText(this, "Could not move photo to Trash", Toast.LENGTH_SHORT).show(); render();
+            Toast.makeText(this, "Could not move item to Trash", Toast.LENGTH_SHORT).show(); render();
         }
     }
 
@@ -4082,7 +4195,7 @@ public class MainActivity extends ComponentActivity {
             invalidateMediaSnapshot();
             startIntentSenderForResult(request.getIntentSender(), RESTORE_REQUEST, null, 0, 0, 0);
         } catch (Exception e) {
-            pendingRestore = -1; pendingRestoreUndo = false; skipMediaReloadOnResume = false; Toast.makeText(this, "Could not restore photo", Toast.LENGTH_SHORT).show();
+            pendingRestore = -1; pendingRestoreUndo = false; skipMediaReloadOnResume = false; Toast.makeText(this, "Could not restore item", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -4260,7 +4373,7 @@ public class MainActivity extends ComponentActivity {
                         }
                         for (int i = 0; i < queued.length(); i++) {
                             JSONObject item = queued.getJSONObject(i);
-                            Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, item.getLong("id"));
+                            Uri uri = mediaUri(item.getLong("id"));
                             try {
                                 int state = TrashPolicy.state(getContentResolver(), uri);
                                 if (state < 0) retry.put(item);
