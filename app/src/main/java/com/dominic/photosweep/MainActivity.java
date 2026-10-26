@@ -766,6 +766,7 @@ public class MainActivity extends ComponentActivity {
     @Override public void onDestroy() {
         if(videoDialog!=null)videoDialog.dismiss();
         clearOutgoingSwipes();
+        if(revealReviewPhoto!=null)uiHandler.removeCallbacks(revealReviewPhoto);
         if(tokenSlot!=null){tokenSlot.dispose();tokenSlot=null;}
         if(tokenWalletDialog!=null){tokenWalletDialog.setOnDismissListener(null);tokenWalletDialog.dismiss();tokenWalletDialog=null;}
         stopPhotoIdle();
@@ -916,7 +917,8 @@ public class MainActivity extends ComponentActivity {
     private void selectMediaTab(boolean videos) {
         if(videos==videoMode || reviewActionRunning || pendingTrash!=-1 || pendingRestore!=-1)return;
         if(videoDialog!=null)videoDialog.dismiss();
-        stopPhotoDrag();stopPhotoIdle();clearOutgoingSwipes();
+        stopPhotoDrag();stopPhotoIdle();clearOutgoingSwipes();nextReviewPhotoAt=0;
+        if(revealReviewPhoto!=null){uiHandler.removeCallbacks(revealReviewPhoto);revealReviewPhoto=null;}
         if(reviewPage!=null)reviewPage.effect.cancel();
         reviewPage=null;fullScreenReview=false;
         videoMode=videos;getPreferences(MODE_PRIVATE).edit().putBoolean("video_mode",videos).apply();
@@ -1168,7 +1170,10 @@ public class MainActivity extends ComponentActivity {
     private void renderContent() {
         dismissTip();
         if (reviewActionRunning) return; // Keep asynchronous updates out of a held/swiping card.
-        if(!reviewing || showingShop || showingSettings || showingThemes || showingTrash || renderedTheme!=themeChoice)clearOutgoingSwipes();
+        if(!reviewing || showingShop || showingSettings || showingThemes || showingTrash || renderedTheme!=themeChoice){
+            clearOutgoingSwipes();nextReviewPhotoAt=0;
+            if(revealReviewPhoto!=null){uiHandler.removeCallbacks(revealReviewPhoto);revealReviewPhoto=null;}
+        }
         if (updateReviewPage()) return;
         if (updateTrashPage()) return;
         stopPhotoIdle();
@@ -3214,6 +3219,8 @@ public class MainActivity extends ComponentActivity {
                 .withEndAction(() -> {card.setRotation(0);effect.track(card);}).start();
     }
 
+    private long nextReviewPhotoAt;
+    private Runnable revealReviewPhoto;
     private final ArrayList<SwipeEffect> outgoingSwipes=new ArrayList<>();
     private final HashMap<SwipeEffect,Runnable> outgoingCleanup=new HashMap<>();
     private void removeOutgoingSwipe(SwipeEffect effect){
@@ -3347,6 +3354,7 @@ public class MainActivity extends ComponentActivity {
                         boolean keeping = actionDx > 0;
                         card.announceForAccessibility(SwipeMotion.actionLabel(keeping));
                         if(effect.advancesOnRelease()){
+                            nextReviewPhotoAt=android.os.SystemClock.uptimeMillis()+2500;
                             continueOutgoingSwipe(effect,keeping);
                             card.setVisibility(View.INVISIBLE);
                             reviewActionRunning=false;
@@ -3477,6 +3485,17 @@ public class MainActivity extends ComponentActivity {
         if(page==null || page.image!=view || page.photoId!=photo.id)return;
         if(page.ready && (reviewActionRunning || photoDrag!=null))return;
         view.setImageBitmap(bitmap);invalidatePhotoDecorations(view);
+        long wait=nextReviewPhotoAt-android.os.SystemClock.uptimeMillis();
+        if(wait>0){
+            page.ready=false;page.card.setVisibility(View.INVISIBLE);
+            if(revealReviewPhoto!=null)uiHandler.removeCallbacks(revealReviewPhoto);
+            revealReviewPhoto=()->{
+                revealReviewPhoto=null;
+                if(!isDestroyed() && reviewPage==page && page.image==view && Long.valueOf(photo.id).equals(view.getTag()))
+                    presentReviewPhoto(photo,view,bitmap);
+            };
+            uiHandler.postDelayed(revealReviewPhoto,wait);return;
+        }
         boolean first=!page.ready;page.ready=true;page.card.setVisibility(View.VISIBLE);
         if(first && page.effect!=null && photoIdleResumed)schedulePhotoIdle(page.card);
     }

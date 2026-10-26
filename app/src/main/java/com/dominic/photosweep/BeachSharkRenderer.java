@@ -21,7 +21,7 @@ final class BeachSharkRenderer {
     private final float[] swimMesh=new float[(SWIM_X+1)*(SWIM_Y+1)*2];
     private long swimAt=-1;
     private float swimHeading,turnBend;
-    private float swimX,swimY,swimDrive,strokePhase,orbitPhase,reach,orbitX;
+    private float swimX,swimY,swimDrive,strokePhase;
     private final int[] swimColors=new int[(SWIM_X+1)*(SWIM_Y+1)];
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final RectF destination=new RectF();
@@ -30,8 +30,13 @@ final class BeachSharkRenderer {
     private boolean prior,damaged,engaged,releasing,releaseBitten;
     private int species,bites;
     private long orbitStart=-1,lastNow,biteAt=-10000,releaseAt;
-    private float noseX,noseY,heading,oldNoseX,oldNoseY,oldHeading,orbitY,visibility;
+    private float noseX,noseY,heading,oldNoseX,oldNoseY,oldHeading,visibility;
     private float targetX,targetY,stageW,restLeft;
+    private final Random routes=new Random();
+    private float waypointX,waypointY,travelSpeed,turnSpeed;
+    private long recoverUntil,approachAt;
+    private int lastRecovery=-1;
+    private boolean wasEngaged;
     private final float[] chipU=new float[24],chipV=new float[24],chipX=new float[24],chipY=new float[24];
     private int chipCount;
     private final Matrix releasePose=new Matrix(),carriedPose=new Matrix(),turn=new Matrix();
@@ -62,7 +67,7 @@ final class BeachSharkRenderer {
     void clear(){
         photo=null;prior=false;damaged=false;bites=0;chipCount=0;biteAt=-10000;
         orbitStart=-1;lastNow=0;visibility=0;engaged=false;releasing=false;releaseBitten=false;Arrays.fill(removed,false);
-        swimAt=-1;turnBend=0;swimDrive=0;strokePhase=0;orbitPhase=-(float)Math.PI*.72f;reach=0;
+        swimAt=-1;turnBend=0;swimDrive=0;strokePhase=0;recoverUntil=0;approachAt=0;travelSpeed=0;turnSpeed=0;lastRecovery=-1;wasEngaged=false;
     }
     void bind(Bitmap value,Matrix matrix){
         boolean fresh=value!=photo;
@@ -97,33 +102,34 @@ final class BeachSharkRenderer {
         stageW=w;float dt=lastNow==0?1/60f:clamp((now-lastNow)/1000f,0,.05f);lastNow=now;
         engaged=target(w,h);
         visibility=lerp(visibility,engaged?1:0,1-(float)Math.exp(-dt*7));
-        if(orbitStart<0){orbitStart=now;orbitX=w*.08f;orbitY=engaged?targetY:h*.5f;noseX=-w*.3f;noseY=orbitY;heading=0;}
+        if(orbitStart<0){orbitStart=now;noseX=-w*.30f;noseY=engaged?targetY:h*.5f;heading=0;}
+        if(engaged && !wasEngaged && visibility<.5f && noseX<-w*.30f){
+            noseX=-w*.30f;noseY=targetY;heading=0;turnSpeed=0;travelSpeed=0;
+        }
         oldNoseX=noseX;oldNoseY=noseY;oldHeading=heading;
+        if(engaged && !wasEngaged){approachAt=now;recoverUntil=0;}
         if(engaged){
-            float follow=1-(float)Math.exp(-dt*2.2f);
-            orbitY=lerp(orbitY,py(.5f,.5f,pose),follow);
-            orbitX=lerp(orbitX,clamp(px(.5f,.5f,pose)-w*.07f,w*.08f,w*.25f),follow);
-        }
-        // Unhurried recovery around the outer arc, then a powered approach.
-        // Keep phase continuous as the photo moves; no resetting a canned loop.
-        float surge=.5f+.5f*(float)Math.cos(orbitPhase+.6f);
-        orbitPhase+=dt*(2.15f+1.15f*surge);
-        float theta=orbitPhase;
-        float phase=wrap(theta),attack=ease((.9f-Math.abs(phase))/.9f);
-        float photoHeight=(float)Math.hypot(pose[1],pose[4]);
-        float radiusX=w*(.25f+.045f*(float)Math.sin(theta*.43f+species));
-        float radiusY=clamp(photoHeight*(.56f+.09f*(float)Math.sin(theta*.61f)),h*.13f,h*.24f);
-        noseX=orbitX+radiusX*(float)Math.cos(theta)+w*.024f*(float)Math.sin(theta*1.73f);
-        noseY=orbitY+radiusY*(float)Math.sin(theta)+h*.036f*(float)Math.sin(theta*.63f+species);
-        if(engaged)reach=lerp(reach,clamp(targetX+w*.060f,w*.07f,w*.38f),1-(float)Math.exp(-dt*2.5f));
-        if(engaged)noseX=lerp(noseX,reach,attack*(.42f+.12f*(float)Math.sin(theta*.37f)));
-        // Face the actual swim trajectory, including approach and vertical
-        // pursuit, rather than sliding sideways while facing a scripted angle.
-        float dx=noseX-oldNoseX,dy=noseY-oldNoseY;
-        if(dx*dx+dy*dy>.01f){
-            float aim=(float)Math.atan2(dy,dx);
-            heading+=wrap(aim-heading)*(1-(float)Math.exp(-dt*11));
-        }
+            if(now>=recoverUntil){
+                // Pursue surviving paper, with different recovery waypoints on
+                // each pass instead of replaying an ellipse.
+                waypointX=clamp(targetX+w*.085f,w*.09f,w*.39f);
+                waypointY=targetY;
+                if(approachAt==0)approachAt=now;
+                if(now-approachAt>3000)recover(now,w,h,450);
+            }
+        }else{waypointX=-w*.55f;waypointY=clamp(noseY,h*.15f,h*.85f);}
+        float dx=waypointX-noseX,dy=waypointY-noseY;
+        float aim=(float)Math.atan2(dy,dx),error=wrap(aim-heading);
+        float wantedTurn=clamp(error*4.5f,-4.2f,4.2f);
+        turnSpeed=lerp(turnSpeed,wantedTurn,1-(float)Math.exp(-dt*7));
+        heading+=turnSpeed*dt;
+        float cruise=now<recoverUntil?.43f:.57f;
+        float wantedSpeed=w*cruise*(.82f+.18f*(float)Math.cos((now-orbitStart)/1000f*1.7f+species));
+        wantedSpeed*=1-.46f*clamp(Math.abs(error)/2.4f,0,1);
+        travelSpeed=lerp(travelSpeed,wantedSpeed,1-(float)Math.exp(-dt*3));
+        noseX+=(float)Math.cos(heading)*travelSpeed*dt;
+        noseY+=(float)Math.sin(heading)*travelSpeed*dt;
+        wasEngaged=engaged;
         // Occasional nips between circuits; the held print never enters a haul.
         int rest=BITE_RESTS[bites%4];
         if((engaged||visibility>.15f)&&now-biteAt>=rest){
@@ -138,12 +144,22 @@ final class BeachSharkRenderer {
                     int i=row*(X+1)+col;if(removed[i])continue;float u=col/(float)X,v=row/(float)Y;
                     float sx=lerp(px(u,v,previous),px(u,v,pose),t),sy=lerp(py(u,v,previous),py(u,v,pose),t);
                     if(inside(sx,sy,x,y,a,b,angle)){
-                        stamp(t,x,y,a,b,angle,-1);biteAt=now;bites++;hit=true;break;
+                        stamp(t,x,y,a,b,angle,-1);biteAt=now;bites++;recover(now,w,h,Math.max(520,BITE_RESTS[bites%4]/2));hit=true;break;
                     }
                 }
             }
         }
         System.arraycopy(pose,0,previous,0,9);prior=true;
+    }
+    private void recover(long now,float w,float h,int duration){
+        int route=routes.nextInt(4);
+        if(route==lastRecovery)route=(route+1+routes.nextInt(3))%4;
+        lastRecovery=route;
+        float cy=py(.5f,.5f,pose),spread=h*(.13f+routes.nextFloat()*.10f);
+        waypointX=w*(-.20f+routes.nextFloat()*.30f);
+        waypointY=clamp(cy+(route%2==0?-spread:spread),h*.10f,h*.90f);
+        if(route>=2)waypointX=-w*(.22f+routes.nextFloat()*.16f);
+        recoverUntil=now+duration;approachAt=0;
     }
     private boolean inside(float x,float y,float cx,float cy,float a,float b,float angle){
         float c=(float)Math.cos(angle),s=(float)Math.sin(angle),dx=x-cx,dy=y-cy;
