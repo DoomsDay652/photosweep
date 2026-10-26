@@ -21,3 +21,9 @@ Keep marks a photo reviewed without changing the original. Uninstalling removes 
 ## Build
 
 The workflow uses Java 17, Gradle 8.13, Android Gradle Plugin 8.13.2 and Android SDK 36. It reads the private signing key from the existing `PHOTO_SWEEP_KEYSTORE_BASE64` and `PHOTO_SWEEP_STORE_PASSWORD` repository secrets. The package ID stays `com.dominic.photosweep` for in-place updates.
+
+## Video review
+
+The compact Photos / Videos tabs switch the current library and review list. Selecting Photos hides videos; selecting Videos shows only videos and requests Android video access if needed. Tap a video thumbnail to play it with seek controls, then swipe to Keep or Trash. The selected tab is remembered.
+
+Video decisions and cached thumbnails use separate identifiers from photos. The existing Undo, Restore and shared 20-item/seven-day recovery rules also apply to videos. Old photo history stays compatible.
