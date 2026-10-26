@@ -5,3 +5,5 @@ Added small Photos / Videos tabs on the library, month list and review screen. V
 Photos and videos have separate stable review identities. Video Keep, Trash, Undo, Restore and the recovery window route to the original video URI, including after restarting the app. Existing photo history is retained.
 
 No emulator used.
+
+Includes the approved 2.5-second next-photo spacing and changing shark approach/recovery routes from the previous draft.
